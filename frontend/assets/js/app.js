@@ -17,7 +17,7 @@ function doLogin() {
   const user=Utils.el("login-user").value.trim(), pass=Utils.el("login-pass").value;
   const errEl=Utils.el("login-err"); errEl.textContent="";
   const found=USERS.find(u=>u.login===user&&u.password===pass);
-  if (!found) { errEl.textContent="Usuário ou senha incorretos."; Utils.el("login-pass").value=""; return; }
+  if (!found) { errEl.textContent="nome ou senha inseridos estão incorretos"; Utils.el("login-pass").value=""; return; }
   currentUser=found;
   Utils.el("login-screen").style.display="none";
   Utils.el("app").style.display="flex";
@@ -214,6 +214,9 @@ async function handleQRResolved(result) {
 document.addEventListener("DOMContentLoaded", () => {
   Utils.el("login-user")?.focus();
   ["login-user","login-pass"].forEach(id=>Utils.el(id)?.addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();}));
+  // Garantir que o botão de login dispare a função mesmo se onclick inline falhar
+  const loginBtn = document.getElementById("login-btn");
+  if (loginBtn) loginBtn.addEventListener("click", doLogin);
 
   Utils.qsa(".nav-btn[data-page]").forEach(btn=>btn.addEventListener("click",()=>navigateTo(btn.dataset.page)));
 

@@ -217,6 +217,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Garantir que o botão de login dispare a função mesmo se onclick inline falhar
   const loginBtn = document.getElementById("login-btn");
   if (loginBtn) loginBtn.addEventListener("click", doLogin);
+  if (loginBtn) loginBtn.onclick = doLogin;
 
   Utils.qsa(".nav-btn[data-page]").forEach(btn=>btn.addEventListener("click",()=>navigateTo(btn.dataset.page)));
 

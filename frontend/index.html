@@ -13,7 +13,7 @@
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-card">
+  <div class="login-card" id="login-card-form">
     <div class="login-head">
       <div class="logo-icon"><i class="ti ti-books"></i></div>
       <h1>Biblioteca IFES</h1><p>Acesso Restrito — Campus Aracruz</p>
@@ -22,7 +22,15 @@
     <div class="form-field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"></div>
       <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
     <p class="login-err" id="login-err"></p>
+    <div class="login-divider">ou</div>
+    <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
     <p class="login-hint">Padrão: <strong>admin</strong> / <strong>ifes2024</strong></p>
+  </div>
+
+  <!-- Resultado do login por QR -->
+  <div class="login-card" id="login-card-qr-result" style="display:none;">
+    <div id="login-qr-result-body"></div>
+    <button type="button" class="btn" style="width:100%;margin-top:1rem;" onclick="cancelQRLoginResult()"><i class="ti ti-arrow-left"></i> Voltar</button>
   </div>
 </div>
 
@@ -37,16 +45,19 @@
         <button class="nav-btn" data-page="emprestimo"><i class="ti ti-transfer"></i>Empréstimos</button>
         <div class="sb-section">Cadastros</div>
         <button class="nav-btn" data-page="livros"><i class="ti ti-book"></i>Acervo</button>
-        <button class="nav-btn" data-page="generos"><i class="ti ti-tag"></i>Gêneros</button>
-        <button class="nav-btn" data-page="alunos"><i class="ti ti-users"></i>Alunos</button>
-        <button class="nav-btn" data-page="salas"><i class="ti ti-door"></i>Salas</button>
-        <div class="sb-section">Outros</div>
-        <button class="nav-btn" data-page="relatorios"><i class="ti ti-chart-bar"></i>Relatórios</button>
-        <button class="nav-btn" data-page="config"><i class="ti ti-settings"></i>Configurações</button>
+        <button class="nav-btn" data-page="generos" data-role="admin"><i class="ti ti-tag"></i>Gêneros</button>
+        <button class="nav-btn" data-page="alunos" data-role="admin"><i class="ti ti-users"></i>Alunos</button>
+        <button class="nav-btn" data-page="salas" data-role="admin"><i class="ti ti-door"></i>Salas</button>
+        <div class="sb-section" data-role="admin">Outros</div>
+        <button class="nav-btn" data-page="relatorios" data-role="admin"><i class="ti ti-chart-bar"></i>Relatórios</button>
+        <button class="nav-btn" data-page="config" data-role="admin"><i class="ti ti-settings"></i>Configurações</button>
       </div>
       <div class="sb-footer">
         <div class="sb-avatar" id="sb-avatar-initials">AD</div>
-        <span class="sb-user-name" id="sb-user-name">Administrador</span>
+        <div class="sb-user-info">
+          <span class="sb-user-name" id="sb-user-name">Administrador</span>
+          <span id="sb-role-badge"></span>
+        </div>
         <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout"></i></button>
       </div>
     </nav>
@@ -55,6 +66,7 @@
       <div class="topbar">
         <div><div class="topbar-title" id="topbar-title">Painel</div><div class="topbar-sub" id="topbar-sub">Visão geral</div></div>
         <div class="topbar-actions" id="topbar-actions"></div>
+        <button class="topbar-cam-btn" title="Escanear carteirinha de aluno" onclick="openGlobalScanner()"><i class="ti ti-camera"></i></button>
       </div>
       <div class="content">
 
@@ -245,6 +257,18 @@
               </div>
             </div>
           </div>
+
+          <div class="card" style="max-width:520px;">
+            <div class="card-header"><h2><i class="ti ti-id-badge2" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Minha carteirinha de acesso</h2></div>
+            <div class="card-body">
+              <p style="font-size:13px;color:var(--muted);margin-bottom:1rem;">
+                Gere a carteirinha do seu usuário administrativo com QR Code. Use-a na tela de login para entrar escaneando, sem digitar senha.
+              </p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="printAdminCard()"><i class="ti ti-printer"></i>Gerar minha carteirinha</button>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -292,6 +316,18 @@
   </div>
 </div></div>
 
+<!-- Entrou como (admin/bibliotecário) -->
+<div class="overlay" id="modal-role-success"><div class="modal" style="max-width:340px;">
+  <div class="modal-body">
+    <div class="role-toast-card" style="box-shadow:none;padding:.5rem;">
+      <i class="ti ti-circle-check" id="role-success-icon"></i>
+      <div class="rtc-title" id="role-success-title">Você entrou como Bibliotecário</div>
+      <div class="rtc-sub" id="role-success-sub"></div>
+    </div>
+  </div>
+  <div class="modal-foot" style="justify-content:center;"><button class="btn btn-primary" onclick="Utils.closeModal('modal-role-success')"><i class="ti ti-check"></i>Continuar</button></div>
+</div></div>
+
 <!-- Aluno -->
 <div class="overlay" id="modal-student"><div class="modal">
   <div class="modal-head"><h2 id="modal-student-title">Cadastrar aluno</h2><button class="modal-close" onclick="Utils.closeModal('modal-student')"><i class="ti ti-x"></i></button></div>
@@ -317,10 +353,31 @@
   <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-devolution')">Cancelar</button><button class="btn btn-success" onclick="confirmDevolution()"><i class="ti ti-check"></i>Confirmar devolução</button></div>
 </div></div>
 
+<!-- Renovação -->
+<div class="overlay" id="modal-renewal"><div class="modal">
+  <div class="modal-head"><h2><i class="ti ti-rotate-clockwise" style="vertical-align:-2px;margin-right:5px;"></i>Renovar empréstimo</h2><button class="modal-close" onclick="Utils.closeModal('modal-renewal')"><i class="ti ti-x"></i></button></div>
+  <div class="modal-body">
+    <div class="dev-info" id="renew-info"></div>
+    <div class="form-group"><label>Estender prazo por</label>
+      <select id="renew-days">
+        <option value="7">7 dias (padrão)</option><option value="14">14 dias</option>
+        <option value="3">3 dias</option><option value="30">30 dias</option>
+      </select>
+    </div>
+    <div class="alert alert-blue"><i class="ti ti-calendar-due"></i><span id="renew-new-date-text"></span></div>
+  </div>
+  <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-renewal')">Cancelar</button><button class="btn btn-primary" onclick="confirmRenewal()"><i class="ti ti-rotate-clockwise"></i>Confirmar renovação</button></div>
+</div></div>
+
 <!-- Histórico aluno -->
 <div class="overlay" id="modal-student-history"><div class="modal modal-lg">
   <div class="modal-head"><h2 id="modal-history-title">Histórico do aluno</h2><button class="modal-close" onclick="Utils.closeModal('modal-student-history')"><i class="ti ti-x"></i></button></div>
-  <div class="modal-body"><div id="student-history-content"></div></div>
+  <div class="modal-body">
+    <div id="student-history-card"></div>
+    <div id="student-history-active"></div>
+    <div id="student-history-newloan"></div>
+    <div id="student-history-content"></div>
+  </div>
   <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-student-history')">Fechar</button></div>
 </div></div>
 
@@ -364,6 +421,7 @@
 <div id="toast"></div>
 
 <!-- Scripts (ordem importa) -->
+<script src="assets/js/lib/supabase-config.js"></script>
 <script src="assets/js/utils.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/api.js"></script>

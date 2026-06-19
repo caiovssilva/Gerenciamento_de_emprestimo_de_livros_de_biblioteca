@@ -1,0 +1,44 @@
+[
+  {
+    "id": "cd0db7a1-b9bf-4f94-9b7a-1fa389ec4a1d",
+    "nome": "Ana Paula Souza",
+    "turma": "INFO3A",
+    "carteirinha": "2024001",
+    "sala_id": "s1"
+  },
+  {
+    "id": "1e3b0a1f-f10f-4ed0-80e0-a00d0066db5f",
+    "nome": "Carlos Eduardo Lima",
+    "turma": "INFO3A",
+    "carteirinha": "2024002",
+    "sala_id": "s1"
+  },
+  {
+    "id": "1808c89c-e206-44fd-a695-20324b57e2e0",
+    "nome": "Beatriz Ferreira",
+    "turma": "ELET2B",
+    "carteirinha": "2024003",
+    "sala_id": "s2"
+  },
+  {
+    "id": "d7956f55-1e83-47bc-b236-ee47533fb53c",
+    "nome": "Rafael Oliveira",
+    "turma": "ELET2B",
+    "carteirinha": "2024004",
+    "sala_id": "s2"
+  },
+  {
+    "id": "cb67bd72-37c1-4cd1-9a2a-a7fe6496ec03",
+    "nome": "Larissa Costa",
+    "turma": "EDIF1C",
+    "carteirinha": "2024005",
+    "sala_id": "s3"
+  },
+  {
+    "id": "a5d8012f-1862-41fa-81b7-8b71a73eec91",
+    "nome": "Pedro Henrique Nunes",
+    "turma": "INFO3A",
+    "carteirinha": "2024006",
+    "sala_id": "s1"
+  }
+]

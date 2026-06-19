@@ -4,15 +4,16 @@
  * Usado para autenticação de usuários e fallback offline.
  */
 
-const SUPABASE_URL = "https://jwncagbmqipbzoeldlet.supabase.co";
-const SUPABASE_KEY = "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX";
+// Define as variáveis globais de forma segura, evitando erro se o arquivo for carregado
+// mais de uma vez no navegador.
+window.SUPABASE_URL = window.SUPABASE_URL || "https://jwncagbmqipbzoeldlet.supabase.co";
+window.SUPABASE_KEY = window.SUPABASE_KEY || "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX";
 
-// Inicializa cliente Supabase (para auth / realtime direto no browser)
-let _sbFrontend = null;
+window._sbFrontend = window._sbFrontend || null;
 
 function getSupabaseFrontend() {
-  if (!_sbFrontend && window.supabase) {
-    _sbFrontend = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  if (!window._sbFrontend && window.supabase) {
+    window._sbFrontend = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
   }
-  return _sbFrontend;
+  return window._sbFrontend;
 }

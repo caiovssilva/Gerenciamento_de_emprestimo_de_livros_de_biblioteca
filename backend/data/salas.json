@@ -1,0 +1,23 @@
+[
+  {
+    "id": "s1",
+    "nome": "Sala 101",
+    "codigo": "101",
+    "descricao": "Turma de Informática",
+    "capacidade": 35
+  },
+  {
+    "id": "s2",
+    "nome": "Sala 202",
+    "codigo": "202",
+    "descricao": "Turma de Eletrotécnica",
+    "capacidade": 30
+  },
+  {
+    "id": "s3",
+    "nome": "Sala 303",
+    "codigo": "303",
+    "descricao": "Turma de Edificações",
+    "capacidade": 32
+  }
+]

@@ -134,29 +134,132 @@ def decode_image():
         return jsonify({"error": str(exc)}), 400
 
 
+ADMIN_CARD_PREFIX = "ADMIN-"
+ADMIN_LOGIN_DEFAULT = "admin"
+
+
 def _resolve_qr(code: str) -> dict:
-    """Tenta encontrar o código como ID de livro ou aluno."""
+    """Tenta encontrar o código como ID/ISBN de livro, carteirinha de aluno ou cartão de admin."""
+    from pathlib import Path
+    from api._helpers import read_json
+    DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
+    BOOKS_FILE  = DATA_DIR / "livros.json"
+    ALUNOS_FILE = DATA_DIR / "alunos.json"
+
+    code = (code or "").strip()
+
+    # Cartão de administrador (gerado pelo próprio sistema, não está no banco)
+    if code.startswith(ADMIN_CARD_PREFIX):
+        login = code[len(ADMIN_CARD_PREFIX):] or ADMIN_LOGIN_DEFAULT
+        return {"type": "admin", "data": {"login": login}}
+
     try:
         from utils import get_client, sb_exec
         sb = get_client()
 
         # Tenta como livro
-        books = sb_exec(sb.table("livros").select("*").eq("id", code))
+        try:
+            books = sb_exec(sb.table("livros").select("*").eq("id", code))
+        except Exception:
+            books = []
         if not books:
-            books = sb_exec(sb.table("livros").select("*").eq("isbn", code))
+            try:
+                books = sb_exec(sb.table("livros").select("*").eq("isbn", code))
+            except Exception:
+                books = []
         if books:
             return {"type": "book", "data": books[0]}
 
         # Tenta como aluno
-        students = sb_exec(sb.table("alunos").select("*").eq("id", code))
+        try:
+            students = sb_exec(sb.table("alunos").select("*").eq("id", code))
+        except Exception:
+            students = []
         if not students:
-            students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
+            try:
+                students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
+            except Exception:
+                students = []
         if students:
+            students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}
-
-        return {"type": "unknown", "data": None}
     except Exception:
-        return {"type": "unknown", "data": None}
+        pass
+
+    # Fallback: arquivos JSON locais
+    try:
+        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == code or b.get("isbn") == code]
+        if books:
+            return {"type": "book", "data": books[0]}
+        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code]
+        if students:
+            students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
+            return {"type": "student", "data": students[0]}
+    except Exception:
+        pass
+
+    return {"type": "unknown", "data": None}
+
+
+# ── Login por QR (carteirinha de admin ou bibliotecário) ──────────────
+@qr_bp.route("/login", methods=["POST"])
+def qr_login():
+    """
+    Recebe o código lido pela câmera (carteirinha) e resolve o tipo de acesso:
+    - admin: cartão administrativo, login direto.
+    - librarian: aluno com is_librarian=True, entra como Bibliotecário.
+    - student: aluno comum, sem acesso ao painel (apenas informativo).
+    - unknown: código não reconhecido.
+    """
+    body = request.get_json(force=True) or {}
+    code = (body.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "Código vazio"}), 400
+
+    resolved = _resolve_qr(code)
+
+    if resolved["type"] == "admin":
+        return jsonify({"access": "admin", **resolved})
+
+    if resolved["type"] == "student":
+        student = resolved["data"]
+        if student.get("is_librarian"):
+            return jsonify({"access": "librarian", "type": "student", "data": student})
+        return jsonify({"access": "denied", "type": "student", "data": student,
+                         "message": "Este aluno não possui acesso ao painel. Solicite ao administrador para 'Permitir acesso'."})
+
+    return jsonify({"access": "denied", "type": resolved["type"], "data": resolved["data"],
+                     "message": "Código não reconhecido."})
+
+
+# ── Cartão imprimível: Administrador ──────────────────────────────────
+@qr_bp.route("/card/admin/<login>", methods=["GET"])
+def admin_card(login):
+    """Gera a 'carteirinha' do administrador/bibliotecária, com QR Code de login."""
+    try:
+        users = {
+            "admin":      {"name": "Administrador", "password": "ifes2024"},
+            "biblioteca": {"name": "Bibliotecária",  "password": "ifes2024"},
+        }
+        info = users.get(login, {"name": login.capitalize(), "password": "—"})
+        qr_data = f"{ADMIN_CARD_PREFIX}{login}"
+
+        img_b64 = _build_card(
+            entity_type = "aluno",
+            title       = info["name"],
+            subtitle    = "Acesso administrativo",
+            field1      = f"Usuário: {login}",
+            field2      = f"Senha: {info['password']}",
+            field3      = "Acesso: Total ao sistema",
+            qr_data     = qr_data,
+            badge       = "ADMIN",
+            color       = "#1a4f8a",
+        )
+        return jsonify({"image": img_b64, "filename": f"carteirinha-admin-{login}.png"})
+    except ImportError as e:
+        return jsonify({"error": f"Pillow não instalado: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Geração de QR Code simples ────────────────────────────────────────
@@ -195,16 +298,21 @@ def book_card(book_id):
         import textwrap
 
         sb    = get_client()
-        books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
+        try:
+            books = sb_exec(sb.table("livros").select("*, generos(nome, cor, icone)").eq("id", book_id))
+        except Exception:
+            books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
         if not books:
             return jsonify({"error": "Livro não encontrado"}), 404
         book = books[0]
+        genero = book.pop("generos", None) or {}
+        book["genero_nome"] = genero.get("nome", "")
 
         img_b64 = _build_card(
             entity_type = "livro",
             title       = book.get("titulo", ""),
-            subtitle    = book.get("autor", ""),
-            field1      = f"Área: {book.get('area', '')}",
+            subtitle    = f"Autor: {book.get('autor', '')}",
+            field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
             field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
             field3      = f"Exemplares: {book.get('exemplares', 1)}",
             qr_data     = book["id"],
@@ -229,27 +337,25 @@ def student_card(student_id):
         from utils import get_client, sb_exec
 
         sb       = get_client()
-        students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
+        try:
+            students = sb_exec(sb.table("alunos").select("*, salas(nome, codigo)").eq("id", student_id))
+        except Exception:
+            students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
         if not students:
             return jsonify({"error": "Aluno não encontrado"}), 404
         student = students[0]
-
-        # Busca sala
-        sala_nome = ""
-        if student.get("sala_id"):
-            salas = sb_exec(sb.table("salas").select("nome").eq("id", student["sala_id"]))
-            if salas:
-                sala_nome = salas[0]["nome"]
+        sala_data = student.pop("salas", None) or {}
+        sala_nome = sala_data.get("nome", "") or "Não atribuída"
 
         img_b64 = _build_card(
             entity_type = "aluno",
             title       = student.get("nome", ""),
             subtitle    = f"Turma: {student.get('turma', '')}",
-            field1      = f"Sala: {sala_nome or 'Não atribuída'}",
+            field1      = f"Sala: {sala_nome}",
             field2      = f"Carteirinha: {student.get('carteirinha', '') or 'N/A'}",
             field3      = f"ID: {student['id'][:8].upper()}",
             qr_data     = student["id"],
-            badge       = student.get("turma", ""),
+            badge       = "BIBLIOTECÁRIO" if student.get("is_librarian") else student.get("turma", ""),
             color       = "#166534",
         )
 
@@ -264,126 +370,124 @@ def student_card(student_id):
 def _build_card(entity_type, title, subtitle, field1, field2, field3,
                 qr_data, badge="", color="#1a4f8a"):
     """
-    Constrói um cartão PNG 600x220px profissional com QR Code embutido.
+    Constrói um cartão PNG 600x260px com visual de carteirinha.
     Retorna string base64 "data:image/png;base64,..."
     """
     import qrcode as qr_lib
     from PIL import Image, ImageDraw, ImageFont
     import textwrap
 
-    W, H = 600, 220
-    MARGIN = 16
+    W, H = 600, 260
+    MARGIN = 18
 
-    # Cores
-    bg_color     = (255, 255, 255)
+    bg_color     = (245, 247, 250)
+    card_color   = (255, 255, 255)
     header_color = tuple(int(color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
-    text_dark    = (15, 23, 42)
-    text_muted   = (100, 116, 139)
-    border_color = (226, 232, 240)
+    text_dark    = (17, 24, 39)
+    text_muted   = (80, 92, 123)
+    border_color = (216, 226, 241)
 
     img  = Image.new("RGB", (W, H), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # Borda
-    draw.rectangle([0, 0, W-1, H-1], outline=border_color, width=2)
+    # Card principal
+    draw.rounded_rectangle([8, 8, W-8, H-8], radius=22, fill=card_color, outline=border_color, width=2)
 
-    # Faixa lateral colorida
-    draw.rectangle([0, 0, 8, H], fill=header_color)
+    # Header
+    draw.rounded_rectangle([14, 14, W-14, 72], radius=16, fill=header_color)
+    draw.text((28, 24), "BIBLIOTECA IFES", fill=(255, 255, 255), font=_load_font(18, bold=True))
+    header_label = "CARTEIRINHA" if entity_type == "aluno" else "CARTÃO DE LIVRO"
+    draw.text((28, 46), header_label, fill=(255, 255, 255), font=_load_font(12, bold=True))
+    draw.rectangle([14, 72, W-14, 76], fill=(255, 255, 255))
 
-    # Header colorido topo
-    draw.rectangle([0, 0, W, 48], fill=header_color)
+    # QR Code
+    chip_text = "IFES"
+    chip_w    = draw.textlength(chip_text, font=_load_font(11, bold=True)) + 20
+    chip_x    = W - chip_w - 24
+    chip_y    = 24
+    draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + 28], radius=14, fill=(255, 255, 255), outline=(255, 255, 255), width=0)
+    draw.text((chip_x + 10, chip_y + 6), chip_text, fill=header_color, font=_load_font(11, bold=True))
 
-    # Texto do tipo no header
-    type_label = "📚 BIBLIOTECA IFES" if entity_type == "livro" else "🎓 BIBLIOTECA IFES"
-    try:
-        font_header = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-        font_title  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-        font_sub    = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-        font_field  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-        font_small  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
-    except Exception:
-        font_header = ImageFont.load_default()
-        font_title  = font_header
-        font_sub    = font_header
-        font_field  = font_header
-        font_small  = font_header
-
-    draw.text((20, 14), type_label, fill=(255, 255, 255), font=font_header)
-
-    # Tipo do cartão (direita do header)
-    card_label = "FICHA DO LIVRO" if entity_type == "livro" else "CARTEIRINHA DO ALUNO"
-    draw.text((W - 160, 14), card_label, fill=(255, 255, 255, 180), font=font_small)
-
-    # Gera QR Code
-    qr     = qr_lib.QRCode(version=1, box_size=5, border=1)
+    qr = qr_lib.QRCode(version=1, box_size=5, border=1)
     qr.add_data(qr_data)
     qr.make(fit=True)
-    qr_img = qr.make_image(fill_color=color, back_color="white").convert("RGB")
-    qr_size = 140
+    qr_img = qr.make_image(fill_color=header_color, back_color="white").convert("RGB")
+    qr_size = 146
     qr_img  = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
-
-    # Posição QR (direita, centralizado verticalmente na área de conteúdo)
-    qr_x = W - qr_size - MARGIN - 8
-    qr_y = 48 + (H - 48 - qr_size) // 2
+    qr_x = W - qr_size - MARGIN - 4
+    qr_y = 88
     img.paste(qr_img, (qr_x, qr_y))
+    draw.rectangle([qr_x-3, qr_y-3, qr_x+qr_size+3, qr_y+qr_size+3], outline=border_color, width=2)
+    qr_label = "ESCANEAR QR"
+    label_w  = draw.textlength(qr_label, font=_load_font(11))
+    draw.text((qr_x + (qr_size - label_w) / 2, qr_y + qr_size + 8), qr_label, fill=text_muted, font=_load_font(11))
 
-    # Borda ao redor do QR
-    draw.rectangle(
-        [qr_x - 2, qr_y - 2, qr_x + qr_size + 2, qr_y + qr_size + 2],
-        outline=border_color, width=1
-    )
+    # Texto principal
+    cx = 34
+    cy = 90
+    title_wrapped = textwrap.wrap(title, width=22)
+    for line in title_wrapped[:3]:
+        draw.text((cx, cy), line, fill=text_dark, font=_load_font(24, bold=True))
+        cy += 34
+    cy += 4
+    draw.text((cx, cy), subtitle, fill=text_dark, font=_load_font(14, bold=False))
+    cy += 28
 
-    # Texto "Escaneie" abaixo do QR
-    draw.text((qr_x + 18, qr_y + qr_size + 4), "Escaneie o QR Code", fill=text_muted, font=font_small)
+    # Bloco de detalhes com fundo suave
+    details_x = cx
+    details_y = cy
+    details_w = qr_x - details_x - 12
+    details_h = 118
+    draw.rounded_rectangle([details_x, details_y, details_x + details_w, details_y + details_h], radius=20, fill=(249, 250, 252), outline=border_color, width=1)
 
-    # Conteúdo textual (esquerda)
-    cx = 20
-    cy = 58
-
-    # Título (nome do livro / aluno)
-    title_wrapped = textwrap.wrap(title, width=32)
-    for line in title_wrapped[:2]:
-        draw.text((cx, cy), line, fill=text_dark, font=font_title)
-        cy += 22
-
-    cy += 2
-
-    # Subtítulo
-    draw.text((cx, cy), subtitle, fill=text_muted, font=font_sub)
-    cy += 18
-
-    # Linha divisória
-    draw.line([(cx, cy), (qr_x - 16, cy)], fill=border_color, width=1)
-    cy += 10
-
-    # Campos
+    info_x = details_x + 18
+    info_y = details_y + 18
     for field in [field1, field2, field3]:
-        if field and field.split(": ")[1] if ": " in field else field:
+        if field and ("".join(field.split(": ")[1:]).strip() if ": " in field else field).strip():
             label, _, value = field.partition(": ")
-            draw.text((cx, cy), f"{label}:", fill=text_muted, font=font_small)
-            draw.text((cx + 80, cy), value, fill=text_dark, font=font_field)
-            cy += 16
+            draw.text((info_x, info_y), label, fill=text_muted, font=_load_font(10, bold=True))
+            draw.text((info_x, info_y + 22), value, fill=text_dark, font=_load_font(16, bold=False))
+            info_y += 36
 
-    # Badge / turma
+    # Badge / turma ou gênero
     if badge:
-        badge_x, badge_y = cx, H - 28
-        badge_w = len(badge) * 7 + 16
-        draw.rounded_rectangle(
-            [badge_x, badge_y, badge_x + badge_w, badge_y + 18],
-            radius=4, fill=header_color
-        )
-        draw.text((badge_x + 8, badge_y + 3), badge, fill=(255, 255, 255), font=font_small)
+        badge_text = badge.upper()
+        badge_w = draw.textlength(badge_text, font=_load_font(12, bold=True)) + 26
+        badge_x = details_x + details_w - badge_w - 18
+        badge_y = details_y + 18
+        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 28], radius=14, fill=header_color)
+        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=_load_font(12, bold=True))
 
-    # ID no rodapé
+    cy = details_y + details_h + 20
+
+    # Badge / turma ou gênero
+    if badge:
+        badge_text = badge.upper()
+        badge_w = draw.textlength(badge_text, font=_load_font(12, bold=True)) + 26
+        badge_x = cx
+        badge_y = H - 58
+        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 30], radius=14, fill=header_color)
+        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=_load_font(12, bold=True))
+
+    # Rodapé com id curto
     id_short = qr_data[:8].upper() if len(qr_data) >= 8 else qr_data
-    draw.text((cx, H - 14), f"ID: {id_short}", fill=text_muted, font=font_small)
+    draw.text((34, H - 45), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
+    draw.text((34, H - 24), "Biblioteca IFES — Carteirinha", fill=text_muted, font=_load_font(10))
 
-    # Linha de corte pontilhada no rodapé
-    for x in range(0, W, 8):
-        draw.point((x, H - 1), fill=border_color)
+    # Barra inferior contrastante
+    draw.rectangle([0, H - 10, W, H], fill=header_color)
 
-    # Converte para base64
     buf = BytesIO()
     img.save(buf, format="PNG", dpi=(300, 300))
     b64 = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{b64}"
+
+
+def _load_font(size, bold=False):
+    from PIL import ImageFont
+    try:
+        if bold:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+    except Exception:
+        return ImageFont.load_default()

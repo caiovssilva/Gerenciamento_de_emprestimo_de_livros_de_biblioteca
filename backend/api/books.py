@@ -1,56 +1,53 @@
-"""
-api/books.py
-CRUD de livros com suporte a genero_id e geração de QR automático.
-"""
-
+"""api/books.py — CRUD de livros com fallback JSON local."""
 from flask import Blueprint, request, jsonify
-from utils import get_client, sb_exec, new_id
+from pathlib import Path
+from utils import get_client, sb_exec, new_id, today_str
+from api._helpers import read_json, write_json, table_ok, has_deleted_at, is_offline_error
 
-books_bp = Blueprint("books", __name__)
+books_bp   = Blueprint("books", __name__)
+DATA_DIR   = Path(__file__).resolve().parent.parent / "data"
+BOOKS_FILE = DATA_DIR / "livros.json"
+GENR_FILE  = DATA_DIR / "generos.json"
+LOAN_FILE  = DATA_DIR / "emprestimos.json"
 
 
 @books_bp.route("/", methods=["GET"])
 def list_books():
-    sb     = get_client()
-    q      = request.args.get("q", "").strip().lower()
-    genre  = request.args.get("genre", "").strip()
+    sb    = get_client()
+    q     = request.args.get("q", "").strip().lower()
+    genre = request.args.get("genre", "").strip()
 
-    books = sb_exec(sb.table("livros").select("*, generos(nome, cor, icone)").order("titulo"))
+    if table_ok(sb, "livros"):
+        try:    books = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").order("titulo"))
+        except: books = sb_exec(sb.table("livros").select("*").order("titulo"))
+    else:
+        books = read_json(BOOKS_FILE)
 
     if q:
-        books = [
-            b for b in books
-            if q in (b.get("titulo") or "").lower()
-            or q in (b.get("autor") or "").lower()
-            or q in (b.get("isbn") or "").lower()
-            or q in (b.get("id") or "").lower()
-        ]
+        books = [b for b in books if q in (b.get("titulo","")).lower() or
+                 q in (b.get("autor","")).lower() or q in (b.get("isbn","")).lower()]
     if genre:
         books = [b for b in books if b.get("genero_id") == genre]
 
-    # Flatten genero info
+    gmap = {g["id"]: g for g in read_json(GENR_FILE)}
     for b in books:
-        gen = b.pop("generos", None) or {}
-        b["genero_nome"] = gen.get("nome", "")
-        b["genero_cor"]  = gen.get("cor", "")
-        b["genero_icone"]= gen.get("icone", "")
-
+        g = b.pop("generos", None) or gmap.get(b.get("genero_id"), {})
+        b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")
     return jsonify(books)
 
 
 @books_bp.route("/<book_id>", methods=["GET"])
 def get_book(book_id):
-    sb   = get_client()
-    rows = sb_exec(sb.table("livros").select("*, generos(nome, cor, icone)").eq("id", book_id))
-    if not rows:
-        rows = sb_exec(sb.table("livros").select("*, generos(nome, cor, icone)").eq("isbn", book_id))
-    if not rows:
-        return jsonify({"error": "Livro não encontrado"}), 404
-    b   = rows[0]
-    gen = b.pop("generos", None) or {}
-    b["genero_nome"] = gen.get("nome", "")
-    b["genero_cor"]  = gen.get("cor", "")
-    b["genero_icone"]= gen.get("icone", "")
+    sb = get_client()
+    try:
+        rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("id", book_id))
+        if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("isbn", book_id))
+    except:
+        all_b = read_json(BOOKS_FILE)
+        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id]
+    if not rows: return jsonify({"error": "Livro não encontrado"}), 404
+    b = rows[0]; g = b.pop("generos", None) or {}
+    b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")
     return jsonify(b)
 
 
@@ -59,63 +56,73 @@ def create_book():
     body = request.get_json(force=True) or {}
     if not body.get("titulo") or not body.get("autor"):
         return jsonify({"error": "titulo e autor são obrigatórios"}), 400
+    sb = get_client()
+    try: copies = max(1, int(body.get("exemplares", 1)))
+    except: copies = 1
+    payload = {"id": new_id(), "isbn": body.get("isbn",""), "titulo": body["titulo"].strip(),
+               "autor": body["autor"].strip(), "area": body.get("area","Geral"), "exemplares": copies}
+    gid = body.get("genero_id") or None
+    if gid:
+        try:
+            if sb_exec(sb.table("generos").select("id").eq("id", gid)): payload["genero_id"] = gid
+        except:
+            if any(g.get("id")==gid for g in read_json(GENR_FILE)): payload["genero_id"] = gid
 
-    sb      = get_client()
-    book_id = new_id()
-    payload = {
-        "id":         book_id,
-        "isbn":       body.get("isbn", "") or "",
-        "titulo":     body["titulo"].strip(),
-        "autor":      body["autor"].strip(),
-        "area":       body.get("area", "Geral"),
-        "genero_id":  body.get("genero_id") or None,
-        "exemplares": max(1, int(body.get("exemplares", 1))),
-    }
+    if table_ok(sb, "livros"):
+        try: rows = sb_exec(sb.table("livros").insert(payload))
+        except Exception as e:
+            if "genero_id" in str(e): payload.pop("genero_id",None); rows = sb_exec(sb.table("livros").insert(payload))
+            elif is_offline_error(e): books=read_json(BOOKS_FILE); books.append(payload); write_json(BOOKS_FILE,books); rows=[payload]
+            else: raise
+    else:
+        books=read_json(BOOKS_FILE); books.append(payload); write_json(BOOKS_FILE,books); rows=[payload]
 
-    rows = sb_exec(sb.table("livros").insert(payload))
     result = rows[0] if rows else payload
-
-    # Gera QR Code e retorna junto
     try:
-        import qrcode as qr_lib
-        import base64
-        from io import BytesIO
-        qr = qr_lib.QRCode(version=1, box_size=6, border=2)
-        qr.add_data(book_id)
-        qr.make(fit=True)
+        import qrcode as ql, base64; from io import BytesIO
+        qr = ql.QRCode(version=1, box_size=6, border=2)
+        qr.add_data(payload["id"]); qr.make(fit=True)
         img = qr.make_image(fill_color="#1a4f8a", back_color="white")
-        buf = BytesIO()
-        img.save(buf, format="PNG")
+        buf = BytesIO(); img.save(buf, format="PNG")
         result["qr_code"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        result["qr_code"] = None
-
+    except: result["qr_code"] = None
     return jsonify(result), 201
 
 
 @books_bp.route("/<book_id>", methods=["PUT"])
 def update_book(book_id):
     body = request.get_json(force=True) or {}
-    body.pop("id", None); body.pop("criado_em", None)
-    body.pop("generos", None); body.pop("genero_nome", None)
-    body.pop("genero_cor", None); body.pop("genero_icone", None)
-
-    sb   = get_client()
-    rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
-    if not rows:
-        return jsonify({"error": "Livro não encontrado"}), 404
-    return jsonify(rows[0])
+    for k in ["id","criado_em","generos","genero_nome","genero_cor","genero_icone"]: body.pop(k,None)
+    sb = get_client()
+    if table_ok(sb, "livros"):
+        try: rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
+        except Exception as e:
+            if "genero_id" in str(e): body.pop("genero_id",None); rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
+            elif is_offline_error(e):
+                books=read_json(BOOKS_FILE); rows=[]
+                for b in books:
+                    if b.get("id")==book_id: b.update(body); rows=[b]; break
+                write_json(BOOKS_FILE,books)
+            else: raise
+        if not rows: return jsonify({"error": "Livro não encontrado"}), 404
+        return jsonify(rows[0])
+    books=read_json(BOOKS_FILE)
+    for b in books:
+        if b.get("id")==book_id: b.update(body); write_json(BOOKS_FILE,books); return jsonify(b)
+    return jsonify({"error": "Livro não encontrado"}), 404
 
 
 @books_bp.route("/<book_id>", methods=["DELETE"])
 def delete_book(book_id):
-    sb     = get_client()
-    ativos = sb_exec(
-        sb.table("emprestimos").select("id")
-          .eq("livro_id", book_id)
-          .is_("devolvido_em", "null")
-    )
-    if ativos:
-        return jsonify({"error": "Livro possui empréstimos ativos."}), 409
-    sb_exec(sb.table("livros").delete().eq("id", book_id))
+    sb = get_client()
+    try: ativos = sb_exec(sb.table("emprestimos").select("id").eq("livro_id",book_id).is_("devolvido_em","null"))
+    except: ativos = [l for l in read_json(LOAN_FILE) if l.get("livro_id")==book_id and not l.get("devolvido_em")]
+    if ativos: return jsonify({"error": "Livro possui empréstimos ativos."}), 409
+    if table_ok(sb, "livros"):
+        try:
+            if has_deleted_at(sb, "livros"): sb_exec(sb.table("livros").update({"deleted_at":today_str()}).eq("id",book_id))
+            else: sb_exec(sb.table("livros").delete().eq("id",book_id))
+            return jsonify({"success": True})
+        except: pass
+    books=read_json(BOOKS_FILE); write_json(BOOKS_FILE,[b for b in books if b.get("id")!=book_id])
     return jsonify({"success": True})

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "84ca2e5e-a13c-4f10-9ebf-48219a5d191f",
+    "isbn": "978-85-508-0240-3",
+    "titulo": "Algoritmos - Teoria e Prática",
+    "autor": "Thomas H. Cormen",
+    "area": "Informática",
+    "genero_id": "g1",
+    "exemplares": 3
+  },
+  {
+    "id": "e1b63b3a-8073-4b04-9f09-59943e58da8c",
+    "isbn": "978-85-7054-065-2",
+    "titulo": "Estruturas de Dados em Python",
+    "autor": "Michael T. Goodrich",
+    "area": "Informática",
+    "genero_id": "g1",
+    "exemplares": 2
+  },
+  {
+    "id": "c2e64b28-4b77-480f-9d88-296dace7e0f8",
+    "isbn": "978-85-352-9080-1",
+    "titulo": "Redes de Computadores",
+    "autor": "Andrew Tanenbaum",
+    "area": "Informática",
+    "genero_id": "g1",
+    "exemplares": 4
+  },
+  {
+    "id": "dac33372-ced6-4d9c-b7a9-7e189260d140",
+    "isbn": "978-85-216-3028-2",
+    "titulo": "Dom Casmurro",
+    "autor": "Machado de Assis",
+    "area": "Literatura",
+    "genero_id": "g3",
+    "exemplares": 5
+  },
+  {
+    "id": "33549814-59ad-47e6-91d5-658d09e8d68a",
+    "isbn": "978-85-359-0277-5",
+    "titulo": "Grande Sertão: Veredas",
+    "autor": "João Guimarães Rosa",
+    "area": "Literatura",
+    "genero_id": "g3",
+    "exemplares": 3
+  },
+  {
+    "id": "bdf290cb-aa24-48fd-af3d-745da1e0cf62",
+    "isbn": "978-85-7583-112-4",
+    "titulo": "Cálculo - Volume 1",
+    "autor": "James Stewart",
+    "area": "Matemática",
+    "genero_id": "g4",
+    "exemplares": 6
+  },
+  {
+    "id": "0199adf4-c1bf-4ebb-89a9-beb72d9305e5",
+    "isbn": "978-85-431-0599-7",
+    "titulo": "Fundamentos de Engenharia Elétrica",
+    "autor": "Giorgio Rizzoni",
+    "area": "Engenharia",
+    "genero_id": "g5",
+    "exemplares": 2
+  },
+  {
+    "id": "e21801df-a4d6-4aca-b62c-221277f4b315",
+    "isbn": "978-85-7600-475-5",
+    "titulo": "Neuromancer",
+    "autor": "William Gibson",
+    "area": "Literatura",
+    "genero_id": "g2",
+    "exemplares": 2
+  }
+]

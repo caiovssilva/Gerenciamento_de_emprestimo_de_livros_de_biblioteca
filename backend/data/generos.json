@@ -1,0 +1,32 @@
+[
+  {
+    "id": "g1",
+    "nome": "Informática",
+    "icone": "ti-cpu",
+    "cor": "#6366f1"
+  },
+  {
+    "id": "g2",
+    "nome": "Ficção Científica",
+    "icone": "ti-rocket",
+    "cor": "#8b5cf6"
+  },
+  {
+    "id": "g3",
+    "nome": "Literatura Brasileira",
+    "icone": "ti-book",
+    "cor": "#22c55e"
+  },
+  {
+    "id": "g4",
+    "nome": "Matemática",
+    "icone": "ti-math-function",
+    "cor": "#f59e0b"
+  },
+  {
+    "id": "g5",
+    "nome": "Engenharia",
+    "icone": "ti-tool",
+    "cor": "#ef4444"
+  }
+]

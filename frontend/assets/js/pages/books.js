@@ -37,6 +37,9 @@ function renderBooks() {
       ? `<span class="badge" style="${genreStyle}"><i class="ti ${b.genero_icone||'ti-book'}"></i>${b.genero_nome}</span>`
       : `<span class="badge badge-gray">Sem gênero</span>`;
 
+    const manageBtns = isLibrarian() ? "" : `
+          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>`;
     return `<tr>
       <td class="td-mono">${b.isbn||b.id.slice(0,8)}</td>
       <td><strong>${b.titulo||b.title}</strong></td>
@@ -49,9 +52,7 @@ function renderBooks() {
         <div style="display:flex;gap:4px;flex-wrap:wrap;">
           <button class="btn btn-sm" title="Ver exemplares"  onclick="showExemplares('${b.id}')"><i class="ti ti-list-details"></i></button>
           <button class="btn btn-sm" title="QR Code"         onclick="showEntityQR('book','${b.id}')"><i class="ti ti-qrcode"></i></button>
-          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>
-          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>
+          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>${manageBtns}
         </div>
       </td>
     </tr>`;

@@ -10,6 +10,24 @@ _KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or ""
 _client  = None
 _offline = False
 
+_NETWORK_ERROR_TOKENS = (
+    "name or service not known",
+    "gaierror",
+    "connection refused",
+    "connection reset",
+    "timed out",
+    "timeout",
+    "temporary failure",
+    "network is unreachable",
+    "offline mode",
+    "certificate verify failed",
+)
+
+
+def _looks_like_offline_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(token in message for token in _NETWORK_ERROR_TOKENS) or isinstance(exc, (ConnectionError, TimeoutError, OSError))
+
 
 class _OfflineQuery:
     """Stub que imita a interface do supabase-py mas sempre levanta exceção controlada."""
@@ -42,7 +60,12 @@ class SupabaseTable:
     def delete(self):                 self.q = self.q.delete();                       return self
     def upsert(self, p, on_conflict=None): self.q = self.q.upsert(p, on_conflict=on_conflict); return self
     def execute(self):
-        r = self.q.execute()
+        try:
+            r = self.q.execute()
+        except Exception as exc:
+            if _looks_like_offline_error(exc):
+                raise Exception("could not find the table — offline mode") from exc
+            raise
         if hasattr(r, "error") and r.error:
             raise Exception(r.error.message or str(r.error))
         if isinstance(r, dict) and r.get("error"):

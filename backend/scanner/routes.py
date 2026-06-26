@@ -237,11 +237,12 @@ def qr_login():
 def admin_card(login):
     """Gera a 'carteirinha' do administrador/bibliotecária, com QR Code de login."""
     try:
+        # IMPORTANTE: Nunca armazene ou exiba senhas em cartões
         users = {
-            "admin":      {"name": "Administrador", "password": "ifes2024"},
-            "biblioteca": {"name": "Bibliotecária",  "password": "ifes2024"},
+            "admin":      {"name": "Administrador", "role": "Sistema"},
+            "biblioteca": {"name": "Bibliotecária",  "role": "Sistema"},
         }
-        info = users.get(login, {"name": login.capitalize(), "password": "—"})
+        info = users.get(login, {"name": login.capitalize(), "role": "Usuário"})
         qr_data = f"{ADMIN_CARD_PREFIX}{login}"
 
         img_b64 = _build_card(

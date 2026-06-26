@@ -13,14 +13,19 @@ LOAN_FILE  = DATA_DIR / "emprestimos.json"
 
 @books_bp.route("/", methods=["GET"])
 def list_books():
-    sb    = get_client()
     q     = request.args.get("q", "").strip().lower()
     genre = request.args.get("genre", "").strip()
 
-    if table_ok(sb, "livros"):
-        try:    books = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").order("titulo"))
-        except: books = sb_exec(sb.table("livros").select("*").order("titulo"))
-    else:
+    try:
+        sb = get_client()
+        if table_ok(sb, "livros"):
+            try:
+                books = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").order("titulo"))
+            except Exception:
+                books = sb_exec(sb.table("livros").select("*").order("titulo"))
+        else:
+            books = read_json(BOOKS_FILE)
+    except Exception:
         books = read_json(BOOKS_FILE)
 
     if q:

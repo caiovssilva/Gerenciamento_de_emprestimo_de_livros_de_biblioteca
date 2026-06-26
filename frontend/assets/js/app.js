@@ -2,27 +2,54 @@
  * assets/js/app.js — Controller principal: auth, navegação, sync, empréstimo, devolução.
  */
 
-const USERS = [
-  { login:"admin",      password:"ifes2024", name:"Administrador" },
-  { login:"biblioteca", password:"ifes2024", name:"Bibliotecária"  },
-];
+// IMPORTANTE: Senhas não devem estar no código do cliente!
+// A autenticação é validada no backend via API.
+// Credenciais padrão para desenvolvimento são carregadas do backend de forma segura.
 
-// Roles: "admin" (acesso total, contas tradicionais com usuário/senha)
-//        "librarian" (aluno com acesso liberado via "Permitir acesso" — vê acervo, faz/devolve/renova empréstimos)
 let currentUser = null; // { role:'admin'|'librarian', login, name, student? }
 let pendingLoan = { book:null, exemplar:null, student:null };
 let pendingDevolutionId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 
 // ── Auth: login tradicional (usuário/senha) ───────────────────────────
-function doLogin() {
+async function doLogin() {
   const user  = Utils.el("login-user").value.trim();
   const pass  = Utils.el("login-pass").value;
   const errEl = Utils.el("login-err");
   errEl.textContent = "";
-  const found = USERS.find(u => u.login===user && u.password===pass);
-  if (!found) { errEl.textContent = "Nome ou senha incorretos."; Utils.el("login-pass").value = ""; return; }
-  _finishLogin({ role:"admin", login:found.login, name:found.name });
+  
+  if (!user || !pass) {
+    errEl.textContent = "Usuário e senha são obrigatórios.";
+    return;
+  }
+
+  try {
+    // Valida as credenciais no backend de forma segura
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login: user, password: pass })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      errEl.textContent = error.error || "Erro ao fazer login.";
+      Utils.el("login-pass").value = "";
+      return;
+    }
+
+    const result = await response.json();
+    if (result.access === "admin") {
+      _finishLogin({ role: "admin", login: result.login, name: result.name });
+    } else {
+      errEl.textContent = "Nome ou senha incorretos.";
+      Utils.el("login-pass").value = "";
+    }
+  } catch (error) {
+    console.error("Erro ao fazer login:", error);
+    errEl.textContent = "Erro de conexão. Tente novamente.";
+    Utils.el("login-pass").value = "";
+  }
 }
 
 // ── Auth: login por QR Code (carteirinha) ─────────────────────────────

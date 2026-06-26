@@ -1,31 +1,86 @@
 """api/_helpers.py — Funções compartilhadas entre todos os blueprints."""
 import json
+import logging
 from pathlib import Path
 from utils import sb_exec
+from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 def ensure(path: Path):
+    """Garante que o arquivo JSON existe."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists(): path.write_text("[]", encoding="utf-8")
+    if not path.exists():
+        path.write_text("[]", encoding="utf-8")
+
 
 def read_json(path: Path):
+    """Lê um arquivo JSON com tratamento de erro."""
     ensure(path)
-    try: return json.loads(path.read_text(encoding="utf-8") or "[]")
-    except: return []
+    try:
+        content = path.read_text(encoding="utf-8") or "[]"
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao decodificar JSON em {path}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Erro ao ler JSON de {path}: {e}")
+        return []
 
-def write_json(path: Path, data):
+
+def write_json(path: Path, data: list) -> bool:
+    """Escreve dados em arquivo JSON com validação."""
     ensure(path)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        if not isinstance(data, (list, dict)):
+            logger.warning(f"Tentativa de escrever dados inválidos em {path}")
+            return False
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao escrever JSON em {path}: {e}")
+        return False
+
 
 def table_ok(sb, table: str) -> bool:
-    try: sb_exec(sb.table(table).select("id").limit(1)); return True
-    except Exception as e: return "could not find the table" not in str(e).lower()
+    """Verifica se a tabela Supabase existe e está acessível."""
+    try:
+        sb_exec(sb.table(table).select("id").limit(1))
+        return True
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "could not find the table" in error_msg:
+            return False
+        logger.debug(f"Erro ao verificar tabela {table}: {e}")
+        return False
+
 
 def has_deleted_at(sb, table: str) -> bool:
-    try: sb_exec(sb.table(table).select("deleted_at").limit(1)); return True
+    """Verifica se a tabela tem coluna 'deleted_at' (soft delete)."""
+    try:
+        sb_exec(sb.table(table).select("deleted_at").limit(1))
+        return True
     except Exception as e:
-        m = str(e).lower()
-        return not ("could not find the 'deleted_at' column" in m or "column deleted_at does not exist" in m)
+        error_msg = str(e).lower()
+        if any(msg in error_msg for msg in ["could not find the 'deleted_at' column", "column deleted_at does not exist"]):
+            return False
+        logger.debug(f"Erro ao verificar coluna deleted_at: {e}")
+        return False
+
 
 def is_offline_error(e: Exception) -> bool:
-    m = str(e).lower()
-    return "could not find the table" in m or "offline mode" in m
+    """Detecta se o erro é de conexão/modo offline."""
+    error_msg = str(e).lower()
+    offline_keywords = [
+        "could not find the table",
+        "offline mode",
+        "connection refused",
+        "connection reset",
+        "timed out",
+        "temporary failure",
+        "network is unreachable",
+    ]
+    return any(keyword in error_msg for keyword in offline_keywords)

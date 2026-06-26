@@ -17,12 +17,21 @@ async function apiFetch(path, options = {}) {
       ...options,
     });
     if (res.status === 204) return {};
-    const data = await res.json();
+
+    const rawText = await res.text();
+    let data = {};
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = { error: rawText };
+      }
+    }
+
     if (!res.ok) throw new Error(data.error || `Erro HTTP ${res.status}`);
     return data;
   } catch (err) {
-    console.error("[API]", path, err.message);
-    alert(`Erro na requisição: ${err.message}`);
+    console.error("[API]", path, err.message || err);
     throw err;
   }
 }

@@ -34,8 +34,8 @@ def get_default_users():
     """
     # Hashes pré-computados de "ifes2024"
     # Para regenerar: hash_password("ifes2024")
-    admin_hash = "8b14c70e17c89a5ed49175b1263f47eb48f48a9ef5e33d8e8f8d4e8e8f8d4e8e"
-    admin_salt = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+    admin_hash = "6a7a47a7cb82a78947fc8917f982f076433f26d2399524df5455b7804142364f"
+    admin_salt = "100c3c34b730606bd01adf1960aa9ffe"
     
     return [
         {

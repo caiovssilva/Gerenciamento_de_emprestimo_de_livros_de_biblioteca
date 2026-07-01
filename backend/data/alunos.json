@@ -40,5 +40,29 @@
     "turma": "INFO3A",
     "carteirinha": "2024006",
     "sala_id": "s1"
+  },
+  {
+    "id": "51c709e3-5ba4-41ea-a1f4-23735159c1d4",
+    "nome": "Teste",
+    "turma": "INF1A",
+    "carteirinha": "51c709e3"
+  },
+  {
+    "id": "c41e0ce2-b8c8-47c2-9d5d-0e07fa353c61",
+    "nome": "Aluno Card",
+    "turma": "INF1B",
+    "carteirinha": "c41e0ce2"
+  },
+  {
+    "id": "f15c7df3-a557-43eb-9057-cf65ca1f3bf2",
+    "nome": "Aluno Card 2",
+    "turma": "INF1B",
+    "carteirinha": "f15c7df3"
+  },
+  {
+    "id": "d7ed7e74-1c5d-4bf5-a05c-21c288462375",
+    "nome": "Aluno Card Fix",
+    "turma": "INF1C",
+    "carteirinha": "d7ed7e74"
   }
 ]

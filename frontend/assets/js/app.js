@@ -169,6 +169,61 @@ function doLogout() {
 }
 
 
+function setupNavigationBindings() {
+  Utils.qsa(".nav-btn[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const page = btn.dataset.page;
+      if (!page) return;
+      navigateTo(page);
+    });
+  });
+
+  Utils.qsa("#emp-tabs .tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      if (!tab) return;
+      Utils.qsa("#emp-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      const novo = Utils.el("tab-novo");
+      const lista = Utils.el("tab-lista");
+      if (novo) novo.style.display = tab === "novo" ? "block" : "none";
+      if (lista) lista.style.display = tab === "lista" ? "block" : "none";
+      if (tab === "lista") renderLoans();
+    });
+  });
+}
+
+
+function improveFormAccessibility() {
+  const controls = Utils.qsa("input, select, textarea");
+
+  controls.forEach((control, idx) => {
+    if (control.type === "hidden" || control.id === "csv-file-input") return;
+
+    if (!control.id) control.id = `field-auto-${idx + 1}`;
+
+    const hasAccessibleName =
+      control.getAttribute("aria-label") ||
+      control.getAttribute("aria-labelledby") ||
+      control.getAttribute("title");
+
+    const explicitLabel = Utils.qs(`label[for="${control.id}"]`);
+    const nearbyLabel = control.closest(".form-group, .form-field")?.querySelector("label");
+    const label = explicitLabel || nearbyLabel;
+
+    if (label && !label.getAttribute("for")) {
+      label.setAttribute("for", control.id);
+    }
+
+    if (!hasAccessibleName) {
+      const baseText = (label?.textContent || control.getAttribute("placeholder") || control.name || control.id || "campo").trim();
+      control.setAttribute("aria-label", baseText.replace(/\*/g, "").trim());
+    }
+  });
+}
+
+
 // ── Sync ──────────────────────────────────────────────────────────────
 async function syncAll() {
   await Promise.all([syncData(), syncRooms(), syncGenres()]);
@@ -241,7 +296,7 @@ function lookupBook() {
     (b.id||"").toLowerCase().startsWith(q) ||
     (b.titulo||b.title||"").toLowerCase().includes(q)
   );
-  const infoEl = Utils.el("book-info");
+  const infoEl = Utils.el("book-result");
   if (!found) { infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`; pendingLoan.book=null; return; }
   const loans  = Store.loans();
   const active = loans.filter(l=>l.livro_id===found.id && !l.devolvido_em);
@@ -267,7 +322,7 @@ function selectExemplar(bookId, ex, btn) {
 }
 
 function lookupStudent() {
-  const q = Utils.el("student-search").value.trim().toLowerCase();
+  const q = Utils.el("student-input").value.trim().toLowerCase();
   if (!q) return;
   const studs = Store.students();
   const found = studs.find(s =>
@@ -275,7 +330,7 @@ function lookupStudent() {
     (s.id||"").toLowerCase().startsWith(q) ||
     (s.nome||s.name||"").toLowerCase().includes(q)
   );
-  const infoEl = Utils.el("student-info");
+  const infoEl = Utils.el("student-result");
   if (!found) { infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Aluno não encontrado.</span>`; pendingLoan.student=null; return; }
   const loans  = Store.loans().filter(l=>l.aluno_id===found.id && !l.devolvido_em);
   const overdue= loans.filter(l=>Utils.daysLeft(l.data_devolucao_prevista)<0);
@@ -292,7 +347,8 @@ async function confirmLoan() {
   if (!pendingLoan.student) { Utils.toast("Selecione um aluno.", "error"); return; }
   const days = parseInt(Utils.el("loan-days").value) || 7;
   const date = Utils.el("loan-date").value || Utils.today();
-  const obs  = Utils.el("loan-obs").value.trim();
+  const obsEl = Utils.el("loan-obs");
+  const obs = obsEl ? obsEl.value.trim() : "";
   try {
     await API.loans.create({
       livro_id: pendingLoan.book.id,
@@ -310,11 +366,11 @@ async function confirmLoan() {
 
 function resetLoanForm() {
   pendingLoan = { book:null, exemplar:null, student:null };
-  ["isbn-input","student-search","loan-obs"].forEach(id => { const el=Utils.el(id); if(el) el.value=""; });
+  ["isbn-input","student-input","loan-obs"].forEach(id => { const el=Utils.el(id); if(el) el.value=""; });
   Utils.el("loan-date").value = Utils.today();
   Utils.el("loan-days").value = 7;
-  Utils.el("book-info").innerHTML    = "";
-  Utils.el("student-info").innerHTML = "";
+  Utils.el("book-result").innerHTML    = "";
+  Utils.el("student-result").innerHTML = "";
   updateDueDate();
 }
 
@@ -436,12 +492,29 @@ async function openGlobalScanner() {
 
 // ── Init ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
+  loadSupabaseConfig?.().then((config) => {
+    if (!config) {
+      const status = Utils.el("cloud-status");
+      if (status && !status.textContent.includes("Offline")) {
+        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Configuração Supabase indisponível — usando fallback local</span>`;
+      }
+    }
+  });
+
   // Login ao pressionar Enter
   Utils.el("login-pass")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
   Utils.el("login-user")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
 
   // Botão login — apenas um handler
   Utils.el("login-btn")?.addEventListener("click", doLogin);
+
+  // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)
+  Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);
+  Utils.el("app")?.querySelector(".logout-btn")?.addEventListener("click", doLogout);
+  Utils.el("app")?.querySelector(".topbar-cam-btn")?.addEventListener("click", openGlobalScanner);
+
+  setupNavigationBindings();
+  improveFormAccessibility();
 
   // Atualiza prévia da nova data ao trocar o prazo de renovação
   Utils.el("renew-days")?.addEventListener("change", _updateRenewalPreview);

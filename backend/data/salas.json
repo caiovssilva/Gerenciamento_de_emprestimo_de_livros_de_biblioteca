@@ -19,5 +19,12 @@
     "codigo": "303",
     "descricao": "Turma de Edificações",
     "capacidade": 32
+  },
+  {
+    "id": "84090c53-6e16-468a-beeb-24b2568c9d02",
+    "nome": "sala",
+    "codigo": "",
+    "descricao": "",
+    "capacidade": 40
   }
 ]

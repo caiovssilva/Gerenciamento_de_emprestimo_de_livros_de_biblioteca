@@ -121,3 +121,9 @@ def get_supabase_config():
     except Exception as e:
         current_app.logger.error(f"Erro ao carregar config Supabase: {e}")
         return jsonify({"error": "Erro ao carregar configuração"}), 500
+
+
+@auth_bp.route("/supabase-config", methods=["GET"])
+def get_supabase_config_compat():
+    """Compatibilidade com frontends antigos que chamam /api/config/supabase."""
+    return get_supabase_config()

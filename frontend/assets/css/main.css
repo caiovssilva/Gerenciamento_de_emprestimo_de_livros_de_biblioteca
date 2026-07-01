@@ -2,8 +2,6 @@
    Biblioteca IFES — Campus Aracruz | main.css
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -26,8 +24,8 @@
   --hint:    #94a3b8;
   --r:  6px;
   --rl: 10px;
-  --font: 'DM Sans', system-ui, sans-serif;
-  --mono: 'DM Mono', monospace;
+  --font: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Courier New', Courier, monospace;
 }
 
 html, body {

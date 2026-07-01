@@ -70,5 +70,37 @@
     "area": "Literatura",
     "genero_id": "g2",
     "exemplares": 2
+  },
+  {
+    "id": "dc1da8c5-0a94-4641-ac75-d6b0a3947197",
+    "isbn": "",
+    "titulo": "Livro Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1
+  },
+  {
+    "id": "19784078-87a7-492d-8220-3ad32bc31760",
+    "isbn": "",
+    "titulo": "Livro Card",
+    "autor": "Autor Card",
+    "area": "Geral",
+    "exemplares": 1
+  },
+  {
+    "id": "83218fa2-c9d4-497f-94ca-a8eb3036e988",
+    "isbn": "",
+    "titulo": "Livro Card 2",
+    "autor": "Autor Card",
+    "area": "Geral",
+    "exemplares": 1
+  },
+  {
+    "id": "79eadaa9-2946-4ab6-b1e8-5bd82dd3906f",
+    "isbn": "",
+    "titulo": "Livro Card Fix",
+    "autor": "Autor Card",
+    "area": "Geral",
+    "exemplares": 1
   }
 ]

@@ -201,6 +201,17 @@ def _resolve_qr(code: str) -> dict:
     return {"type": "unknown", "data": None}
 
 
+def _read_local_record(file_path, record_id, alt_field=None):
+    from api._helpers import read_json
+
+    rows = read_json(file_path)
+    if alt_field:
+        matches = [row for row in rows if row.get("id") == record_id or row.get(alt_field) == record_id]
+    else:
+        matches = [row for row in rows if row.get("id") == record_id]
+    return matches[0] if matches else None
+
+
 # ── Login por QR (carteirinha de admin ou bibliotecário) ──────────────
 @qr_bp.route("/login", methods=["POST"])
 def qr_login():
@@ -237,7 +248,6 @@ def qr_login():
 def admin_card(login):
     """Gera a 'carteirinha' do administrador/bibliotecária, com QR Code de login."""
     try:
-        # IMPORTANTE: Nunca armazene ou exiba senhas em cartões
         users = {
             "admin":      {"name": "Administrador", "role": "Sistema"},
             "biblioteca": {"name": "Bibliotecária",  "role": "Sistema"},
@@ -250,7 +260,7 @@ def admin_card(login):
             title       = info["name"],
             subtitle    = "Acesso administrativo",
             field1      = f"Usuário: {login}",
-            field2      = f"Senha: {info['password']}",
+            field2      = f"Perfil: {info['role']}",
             field3      = "Acesso: Total ao sistema",
             qr_data     = qr_data,
             badge       = "ADMIN",
@@ -293,21 +303,32 @@ def book_card(book_id):
     Gera imagem PNG do cartão do livro com QR Code para impressão.
     """
     try:
+        from pathlib import Path
+        from api._helpers import read_json
         from utils import get_client, sb_exec
-        import qrcode as qr_lib
-        from PIL import Image, ImageDraw, ImageFont
-        import textwrap
+
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        books_file = data_dir / "livros.json"
+        genres_file = data_dir / "generos.json"
 
         sb    = get_client()
+        book = None
         try:
-            books = sb_exec(sb.table("livros").select("*, generos(nome, cor, icone)").eq("id", book_id))
-        except Exception:
             books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
-        if not books:
+        except Exception:
+            books = []
+        if books:
+            book = books[0]
+        if not book:
+            rows = [b for b in read_json(books_file) if b.get("id") == book_id or b.get("isbn") == book_id]
+            if rows:
+                book = rows[0]
+        if not book:
             return jsonify({"error": "Livro não encontrado"}), 404
-        book = books[0]
-        genero = book.pop("generos", None) or {}
-        book["genero_nome"] = genero.get("nome", "")
+
+        genres = {g.get("id"): g for g in read_json(genres_file)}
+        genero = genres.get(book.get("genero_id"), {})
+        book["genero_nome"] = book.get("genero_nome") or genero.get("nome", "")
 
         img_b64 = _build_card(
             entity_type = "livro",
@@ -335,17 +356,31 @@ def student_card(student_id):
     Gera imagem PNG da carteirinha do aluno com QR Code para impressão.
     """
     try:
+        from pathlib import Path
+        from api._helpers import read_json
         from utils import get_client, sb_exec
 
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        students_file = data_dir / "alunos.json"
+        rooms_file = data_dir / "salas.json"
+
         sb       = get_client()
+        student = None
         try:
-            students = sb_exec(sb.table("alunos").select("*, salas(nome, codigo)").eq("id", student_id))
-        except Exception:
             students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
-        if not students:
+        except Exception:
+            students = []
+        if students:
+            student = students[0]
+        if not student:
+            rows = [s for s in read_json(students_file) if s.get("id") == student_id or s.get("carteirinha") == student_id]
+            if rows:
+                student = rows[0]
+        if not student:
             return jsonify({"error": "Aluno não encontrado"}), 404
-        student = students[0]
-        sala_data = student.pop("salas", None) or {}
+
+        rooms = {r.get("id"): r for r in read_json(rooms_file)}
+        sala_data = rooms.get(student.get("sala_id"), {})
         sala_nome = sala_data.get("nome", "") or "Não atribuída"
 
         img_b64 = _build_card(

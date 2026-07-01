@@ -52,7 +52,21 @@ const QRScanner = (() => {
       if (_stream) return;
       _inputId=inputId; _callback=cb; _container=_buildUI();
       try {
-        _stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+        const constraints = [
+          { video: { facingMode: { ideal: "environment" } } },
+          { video: { facingMode: { ideal: "user" } } },
+          { video: true },
+        ];
+        let lastError = null;
+        for (const opts of constraints) {
+          try {
+            _stream = await navigator.mediaDevices.getUserMedia(opts);
+            break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        if (!_stream) throw lastError || new Error("Câmera indisponível");
         const v=document.getElementById("cam-video");
         v.srcObject=_stream; await v.play();
         const st=document.getElementById("cam-status");

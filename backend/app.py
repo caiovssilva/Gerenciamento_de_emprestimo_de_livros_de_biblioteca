@@ -45,6 +45,27 @@ app.register_blueprint(rooms_bp,    url_prefix="/api/rooms")
 app.register_blueprint(genres_bp,   url_prefix="/api/genres")
 app.register_blueprint(qr_bp,       url_prefix="/api/qr")
 
+
+@app.after_request
+def apply_security_headers(response):
+    # CSP compatível com frontend atual, incluindo execução por CDN, câmera,
+    # WebSocket/Supabase e handlers legados inline.
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' https: blob: 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' https: 'unsafe-inline'; "
+        "font-src 'self' https: data:; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' https: wss:; "
+        "media-src 'self' blob:; "
+        "worker-src 'self' blob:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'self'"
+    )
+    response.headers["Content-Security-Policy"] = csp
+    return response
+
 # ── Tratamento de erros ───────────────────────────────────────────────
 @app.errorhandler(HTTPException)
 def handle_http(err):
@@ -66,7 +87,7 @@ def health():
         return jsonify({"status": "ok", "service": "Biblioteca IFES v3", "database": "conectado"}), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return jsonify({"status": "offline", "service": "Biblioteca IFES v3", "database": f"offline — {e}"}), 200
+        return jsonify({"status": "offline", "service": "Biblioteca IFES v3", "database": f"offline — {e}", "hint": "defina SUPABASE_URL e SUPABASE_KEY reais no backend/.env"}), 200
 
 # ── Serve o frontend ──────────────────────────────────────────────────
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))

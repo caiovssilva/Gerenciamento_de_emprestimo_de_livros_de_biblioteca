@@ -11,6 +11,9 @@
 const Charts = (() => {
   let _charts   = { summary: null, topbooks: null, byclass: null };
   let _pollTimer = null;
+  let _summarySeq = 0;
+  let _topBooksSeq = 0;
+  let _byClassSeq = 0;
 
   // ── Paleta ────────────────────────────────────────────────────
   const PALETTE = {
@@ -78,12 +81,14 @@ const Charts = (() => {
 
   // ── Gráfico 1: Resumo (emprestados / atrasados / devolvidos) ──
   async function _buildSummary(rawType = "bar") {
+    const seq = ++_summarySeq;
     const ctx = Utils.el("chart-summary");
     if (!ctx) return;
     _destroy("summary");
 
     let data;
     try { data = await API.reports.chartSummary(); } catch { return; }
+    if (seq !== _summarySeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
     const bgColors = [
@@ -121,6 +126,7 @@ const Charts = (() => {
 
   // ── Gráfico 2: Top livros ─────────────────────────────────────
   async function _buildTopBooks(rawType = "bar") {
+    const seq = ++_topBooksSeq;
     const ctx = Utils.el("chart-topbooks");
     if (!ctx) return;
     _destroy("topbooks");
@@ -128,6 +134,7 @@ const Charts = (() => {
     let data;
     try { data = await API.reports.topBooks(8); } catch { return; }
     if (!data?.length) return;
+    if (seq !== _topBooksSeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
     const labels  = data.map(d => d.titulo.length > 22 ? d.titulo.slice(0,22) + "…" : d.titulo);
@@ -152,6 +159,7 @@ const Charts = (() => {
 
   // ── Gráfico 3: Por turma ──────────────────────────────────────
   async function _buildByClass(rawType = "bar") {
+    const seq = ++_byClassSeq;
     const ctx = Utils.el("chart-byclass");
     if (!ctx) return;
     _destroy("byclass");
@@ -159,6 +167,7 @@ const Charts = (() => {
     let data;
     try { data = await API.reports.byClass(); } catch { return; }
     if (!data?.labels?.length) return;
+    if (seq !== _byClassSeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
 
@@ -215,6 +224,7 @@ const Charts = (() => {
   // ── API pública ───────────────────────────────────────────────
   return {
     async init() {
+      this.destroy();
       await Promise.all([
         _buildSummary( Utils.el("chart-type-summary")?.value  || "bar"),
         _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar"),
@@ -237,6 +247,9 @@ const Charts = (() => {
 
     destroy() {
       _stopPolling();
+      _summarySeq += 1;
+      _topBooksSeq += 1;
+      _byClassSeq += 1;
       Object.keys(_charts).forEach(_destroy);
     },
   };

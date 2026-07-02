@@ -512,6 +512,72 @@ tbody tr:hover td { background: #f8fafc; }
   margin-bottom: 10px; font-size: 14px;
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
+.cam-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cam-toolbar label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cam-toolbar select {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  font-family: var(--font);
+  font-size: 12px;
+  background: var(--bg);
+  outline: none;
+}
+.cam-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px 0 7px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  background: linear-gradient(135deg, var(--brand-dark), var(--brand-mid));
+  box-shadow: 0 10px 20px rgba(15,47,90,.22);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  white-space: nowrap;
+}
+.cam-switch-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+  box-shadow: 0 12px 24px rgba(15,47,90,.28);
+}
+.cam-switch-btn:active {
+  transform: translateY(0);
+}
+.cam-switch-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.2);
+  flex-shrink: 0;
+}
+.cam-switch-btn i {
+  font-size: 15px;
+}
+.cam-switch-btn span {
+  line-height: 1;
+}
 .cam-viewport {
   position: relative;
   border-radius: 8px; overflow: hidden;
@@ -520,7 +586,15 @@ tbody tr:hover td { background: #f8fafc; }
   background: #000;
   aspect-ratio: 1;
 }
-#cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+#cam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+}
 .cam-reticle {
   position: absolute; inset: 0;
   pointer-events: none;

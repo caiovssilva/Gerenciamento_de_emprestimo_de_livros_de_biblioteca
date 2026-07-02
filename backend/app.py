@@ -52,7 +52,7 @@ def apply_security_headers(response):
     # WebSocket/Supabase e handlers legados inline.
     csp = (
         "default-src 'self'; "
-        "script-src 'self' https: blob: 'unsafe-inline' 'unsafe-eval'; "
+        "script-src 'self' https: blob: 'unsafe-inline'; "
         "style-src 'self' https: 'unsafe-inline'; "
         "font-src 'self' https: data:; "
         "img-src 'self' data: blob: https:; "

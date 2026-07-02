@@ -28,5 +28,11 @@
     "nome": "Engenharia",
     "icone": "ti-tool",
     "cor": "#ef4444"
+  },
+  {
+    "id": "98275e2a-fc8c-4f76-823d-6c8710cdcc76",
+    "nome": "romance",
+    "icone": "ti-book",
+    "cor": "#6366f1"
   }
 ]

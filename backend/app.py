@@ -1,5 +1,5 @@
 """
-app.py — Biblioteca IFES Campus Aracruz (v3)
+app.py — Biblioteca narceu de paiva filho Campus Aracruz (v3)
 Servidor Flask que serve o backend (API) e o frontend (SPA) juntos.
 """
 import os, sys
@@ -13,6 +13,8 @@ import logging
 
 load_dotenv()
 
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
 from api.books    import books_bp
 from api.students import students_bp
 from api.loans    import loans_bp
@@ -22,8 +24,8 @@ from api.genres   import genres_bp
 from api.auth     import auth_bp
 from scanner.routes import qr_bp
 
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "ifes-biblioteca-2024-dev-only")
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
+app.secret_key = os.getenv("SECRET_KEY", "narceu-biblioteca-2026-dev-only")
 
 # ── Configuração de logging ──────────────────────────────────────────
 logging.basicConfig(
@@ -44,6 +46,13 @@ app.register_blueprint(reports_bp,  url_prefix="/api/reports")
 app.register_blueprint(rooms_bp,    url_prefix="/api/rooms")
 app.register_blueprint(genres_bp,   url_prefix="/api/genres")
 app.register_blueprint(qr_bp,       url_prefix="/api/qr")
+
+
+@app.route("/api/config/supabase", methods=["GET"])
+@app.route("/api/supabase-config", methods=["GET"])
+def legacy_supabase_config():
+    from api.auth import get_supabase_config
+    return get_supabase_config()
 
 
 @app.after_request
@@ -84,10 +93,10 @@ def health():
     try:
         get_client().table("livros").select("id").limit(1).execute()
         logger.info("Health check OK - Database connected")
-        return jsonify({"status": "ok", "service": "Biblioteca IFES v3", "database": "conectado"}), 200
+        return jsonify({"status": "ok", "service": "Biblioteca narceu de paiva filho v3", "database": "conectado"}), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return jsonify({"status": "offline", "service": "Biblioteca IFES v3", "database": f"offline — {e}", "hint": "defina SUPABASE_URL e SUPABASE_KEY reais no backend/.env"}), 200
+        return jsonify({"status": "offline", "service": "Biblioteca narceu de paiva filho v3", "database": f"offline — {e}", "hint": "defina SUPABASE_URL e SUPABASE_KEY reais no backend/.env"}), 200
 
 # ── Serve o frontend ──────────────────────────────────────────────────
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -104,7 +113,7 @@ def serve_frontend(path):
 if __name__ == "__main__":
     port  = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
-    print(f"\n🚀 Biblioteca IFES v3 — http://localhost:{port}\n")
+    print(f"\n🚀 Biblioteca narceu de paiva filho v3 — http://localhost:{port}\n")
     print(f"📝 DEBUG mode: {debug}")
     print(f"🔐 Secret key set: {'Yes' if os.getenv('SECRET_KEY') else 'No (using default)'}\n")
     app.run(host="0.0.0.0", port=port, debug=debug)

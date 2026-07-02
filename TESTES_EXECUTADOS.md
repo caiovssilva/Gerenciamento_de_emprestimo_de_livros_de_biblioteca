@@ -28,14 +28,14 @@
    Resposta: 
    {
      "status": "offline",
-     "service": "Biblioteca IFES v3",
+     "service": "Biblioteca narceu de paiva filho v3",
      "database": "offline — could not find the table — offline mode"
    }
    Análise: OK (esperado em modo offline)
 
 ✅ TESTE 2: Login com Credenciais Corretas (admin)
    Endpoint: POST /api/auth/login
-   Body: {"login": "admin", "password": "ifes2024"}
+   Body: {"login": "admin", "password": "narceu2026"}
    Status: 200 OK
    Resposta:
    {
@@ -48,7 +48,7 @@
 
 ✅ TESTE 3: Login com Credenciais Corretas (biblioteca)
    Endpoint: POST /api/auth/login
-   Body: {"login": "biblioteca", "password": "ifes2024"}
+   Body: {"login": "biblioteca", "password": "narceu2026"}
    Status: 200 OK
    Resposta:
    {

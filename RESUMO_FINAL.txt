@@ -1,6 +1,6 @@
 ╔════════════════════════════════════════════════════════════════════════════════╗
 ║                     REVISÃO DE CÓDIGO - RESUMO FINAL                           ║
-║            Biblioteca IFES - Gerenciamento de Empréstimo de Livros              ║
+║            Biblioteca narceu de paiva filho - Gerenciamento de Empréstimo de Livros              ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
 
 📋 STATUS FINAL: ✅ CONCLUÍDO COM SUCESSO
@@ -14,12 +14,12 @@
    Antes: window.SUPABASE_KEY = "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX"
    Depois: Carregadas dinamicamente via /api/auth/config/supabase
    
-2. ✅ Senhas Admin Hardcoded (admin:ifes2024)
-   Antes: const USERS = [{login:"admin", password:"ifes2024"}]
+2. ✅ Senhas Admin Hardcoded (admin:narceu2026)
+   Antes: const USERS = [{login:"admin", password:"narceu2026"}]
    Depois: Autenticação segura via hash SHA-256 + salt em api/auth.py
    
 3. ✅ Senhas em Cartões Administrativos
-   Antes: { name: "Admin", password: "ifes2024" }
+   Antes: { name: "Admin", password: "narceu2026" }
    Depois: { name: "Admin", role: "Sistema" } (sem exposição de senhas)
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -208,7 +208,7 @@ MÉDIO PRAZO (1 mês):
 4. Testar login seguro:
    curl -X POST http://localhost:5000/api/auth/login \
         -H "Content-Type: application/json" \
-        -d '{"login": "admin", "password": "ifes2024"}'
+        -d '{"login": "admin", "password": "narceu2026"}'
 
 5. Ver commits realizados:
    git log --oneline -n 5

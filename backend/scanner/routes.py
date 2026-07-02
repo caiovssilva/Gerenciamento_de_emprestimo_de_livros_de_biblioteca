@@ -431,13 +431,13 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
 
     # Header
     draw.rounded_rectangle([14, 14, W-14, 72], radius=16, fill=header_color)
-    draw.text((28, 24), "BIBLIOTECA IFES", fill=(255, 255, 255), font=_load_font(18, bold=True))
+    draw.text((28, 24), "BIBLIOTECA narceu de paiva filho", fill=(255, 255, 255), font=_load_font(18, bold=True))
     header_label = "CARTEIRINHA" if entity_type == "aluno" else "CARTÃO DE LIVRO"
     draw.text((28, 46), header_label, fill=(255, 255, 255), font=_load_font(12, bold=True))
     draw.rectangle([14, 72, W-14, 76], fill=(255, 255, 255))
 
     # QR Code
-    chip_text = "IFES"
+    chip_text = "narceu"
     chip_w    = draw.textlength(chip_text, font=_load_font(11, bold=True)) + 20
     chip_x    = W - chip_w - 24
     chip_y    = 24
@@ -473,17 +473,20 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     details_x = cx
     details_y = cy
     details_w = qr_x - details_x - 12
-    details_h = 118
-    draw.rounded_rectangle([details_x, details_y, details_x + details_w, details_y + details_h], radius=20, fill=(249, 250, 252), outline=border_color, width=1)
 
-    info_x = details_x + 18
-    info_y = details_y + 18
+    info_blocks = []
     for field in [field1, field2, field3]:
         if field and ("".join(field.split(": ")[1:]).strip() if ": " in field else field).strip():
             label, _, value = field.partition(": ")
-            draw.text((info_x, info_y), label, fill=text_muted, font=_load_font(10, bold=True))
-            draw.text((info_x, info_y + 22), value, fill=text_dark, font=_load_font(16, bold=False))
-            info_y += 36
+            wrapped = textwrap.wrap(value, width=28) or [""]
+            info_blocks.append((label, wrapped))
+
+    block_top_padding = 18
+    block_spacing = 16
+    line_height = 22
+    details_h = max(118, block_top_padding + sum(line_height * (1 + len(wrapped)) + block_spacing for _, wrapped in info_blocks))
+
+    draw.rounded_rectangle([details_x, details_y, details_x + details_w, details_y + details_h], radius=20, fill=(249, 250, 252), outline=border_color, width=1)
 
     # Badge / turma ou gênero
     if badge:
@@ -494,21 +497,20 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
         draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 28], radius=14, fill=header_color)
         draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=_load_font(12, bold=True))
 
-    cy = details_y + details_h + 20
+    info_x = details_x + 18
+    info_y = details_y + block_top_padding
+    for label, wrapped_value in info_blocks:
+        draw.text((info_x, info_y), label, fill=text_muted, font=_load_font(10, bold=True))
+        info_y += line_height
+        for line in wrapped_value:
+            draw.text((info_x, info_y), line, fill=text_dark, font=_load_font(16, bold=False))
+            info_y += line_height
+        info_y += block_spacing
 
-    # Badge / turma ou gênero
-    if badge:
-        badge_text = badge.upper()
-        badge_w = draw.textlength(badge_text, font=_load_font(12, bold=True)) + 26
-        badge_x = cx
-        badge_y = H - 58
-        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 30], radius=14, fill=header_color)
-        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=_load_font(12, bold=True))
-
-    # Rodapé com id curto
+    footer_y = details_y + details_h + 18
     id_short = qr_data[:8].upper() if len(qr_data) >= 8 else qr_data
-    draw.text((34, H - 45), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
-    draw.text((34, H - 24), "Biblioteca IFES — Carteirinha", fill=text_muted, font=_load_font(10))
+    draw.text((34, footer_y), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
+    draw.text((34, footer_y + 21), "Biblioteca narceu de paiva filho — Carteirinha", fill=text_muted, font=_load_font(10))
 
     # Barra inferior contrastante
     draw.rectangle([0, H - 10, W, H], fill=header_color)

@@ -32,9 +32,9 @@ def get_default_users():
     Retorna lista de usuários com credenciais hash.
     Em produção, isso deve vir de um banco de dados seguro.
     """
-    # Hashes pré-computados de "ifes2024"
-    # Para regenerar: hash_password("ifes2024")
-    admin_hash = "6a7a47a7cb82a78947fc8917f982f076433f26d2399524df5455b7804142364f"
+    # Hashes pré-computados de "narceu2026"
+    # Para regenerar: hash_password("narceu2026")
+    admin_hash = "d0c6835868ebc523d38a57f92a4966fe4eea96f6b732e512ec2f853e1724bf5f"
     admin_salt = "100c3c34b730606bd01adf1960aa9ffe"
     
     return [
@@ -60,7 +60,7 @@ def get_default_users():
 def login():
     """
     POST /api/auth/login
-    Body: { "login": "admin", "password": "ifes2024" }
+    Body: { "login": "admin", "password": "narceu2026" }
     
     Response:
     {
@@ -71,18 +71,19 @@ def login():
     }
     """
     body = request.get_json(force=True) or {}
-    login_str = (body.get("login") or "").strip()
-    password = body.get("password") or ""
+    login_str = (body.get("login") or "").strip().lower()
+    password = (body.get("password") or "").strip()
     
     if not login_str or not password:
         return jsonify({"error": "Login e senha são obrigatórios"}), 400
     
     try:
         users = get_default_users()
-        user = next((u for u in users if u["login"] == login_str), None)
+        user = next((u for u in users if u["login"].lower() == login_str), None)
         
         if not user or not verify_password(password, user["password_hash"], user["salt"]):
-            return jsonify({"error": "Credenciais inválidas"}), 401
+            current_app.logger.warning(f"Falha de login para '{login_str}'")
+            return jsonify({"error": "Usuário ou senha incorretos"}), 401
         
         return jsonify({
             "access": "admin",
@@ -113,17 +114,24 @@ def get_supabase_config():
         key = os.getenv("SUPABASE_KEY", "")
         
         if not url or not key:
-            current_app.logger.warning("Credenciais Supabase não configuradas")
-            return jsonify({"error": "Configuração Supabase não disponível"}), 503
+            current_app.logger.info("Supabase não configurado: usando fallback local")
+            return jsonify({"url": "", "key": ""}), 200
         
         return jsonify({"url": url, "key": key}), 200
     
     except Exception as e:
         current_app.logger.error(f"Erro ao carregar config Supabase: {e}")
-        return jsonify({"error": "Erro ao carregar configuração"}), 500
+        return jsonify({"error": "Erro ao carregar configuração", "url": "", "key": ""}), 200
 
 
 @auth_bp.route("/supabase-config", methods=["GET"])
 def get_supabase_config_compat():
-    """Compatibilidade com frontends antigos que chamam /api/config/supabase."""
+    """Compatibilidade com frontends antigos.
+
+    Suporta:
+      /api/auth/config/supabase
+      /api/config/supabase
+      /api/auth/supabase-config
+      /api/supabase-config
+    """
     return get_supabase_config()

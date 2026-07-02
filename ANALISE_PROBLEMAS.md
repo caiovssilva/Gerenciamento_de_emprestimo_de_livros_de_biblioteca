@@ -35,8 +35,8 @@ window.SUPABASE_KEY = "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX";
 - As senhas dos usuários admin estão armazenadas em texto plano no JavaScript:
 ```javascript
 const USERS = [
-  { login:"admin",      password:"ifes2024", name:"Administrador" },
-  { login:"biblioteca", password:"ifes2024", name:"Bibliotecária"  },
+  { login:"admin",      password:"narceu2026", name:"Administrador" },
+  { login:"biblioteca", password:"narceu2026", name:"Bibliotecária"  },
 ];
 ```
 - Qualquer pessoa com acesso ao código-fonte pode fazer login.
@@ -57,8 +57,8 @@ const USERS = [
 - As mesmas senhas hardcoded aparecem no backend:
 ```python
 users = {
-    "admin":      {"name": "Administrador", "password": "ifes2024"},
-    "biblioteca": {"name": "Bibliotecária",  "password": "ifes2024"},
+    "admin":      {"name": "Administrador", "password": "narceu2026"},
+    "biblioteca": {"name": "Bibliotecária",  "password": "narceu2026"},
 }
 ```
 - Senhas visíveis em dois arquivos fonte
@@ -393,5 +393,5 @@ def get_client() -> SupabaseClient:
 ## 🔍 Fim da Análise
 
 **Data:** 2026-06-26  
-**Projeto:** Gerenciamento de Empréstimo de Livros - Biblioteca IFES Campus Aracruz  
+**Projeto:** Gerenciamento de Empréstimo de Livros - Biblioteca narceu de paiva filho Campus Aracruz  
 **Status:** 15 problemas identificados | 3 críticos | Ação imediata necessária

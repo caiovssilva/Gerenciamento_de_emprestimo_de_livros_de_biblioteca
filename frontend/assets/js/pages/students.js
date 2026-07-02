@@ -122,6 +122,12 @@ async function saveStudent() {
 
   try {
     const payload = { nome, turma, carteirinha:card, sala_id:sala };
+    const duplicate = card ? Store.students().find(s => (s.carteirinha||s.card||"") === card) : null;
+    if (duplicate && (!editId || duplicate.id !== editId)) {
+      Utils.toast(`Carteirinha já pertence a ${duplicate.nome||duplicate.name}. Corrija antes de salvar.`, "error");
+      return;
+    }
+
     if (editId) {
       await API.students.update(editId, payload);
       Utils.toast("Aluno atualizado!","success");
@@ -137,6 +143,38 @@ async function saveStudent() {
     }
     await syncData();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
+}
+
+function scanStudentCard() {
+  QRScanner.start('student-card', async (res) => {
+    const input = Utils.el('student-card');
+    if (!input) return;
+    const code = (res?.primary || '').trim();
+    if (!code) {
+      Utils.toast('Não foi possível ler o QR. Tente novamente.', 'error');
+      return;
+    }
+
+    input.value = code;
+    const scanned = await resolveQRCodeAsync(code);
+
+    if (scanned.type === 'student') {
+      Utils.toast(`Carteirinha de aluno reconhecida: ${scanned.data.nome||scanned.data.name}.`, 'success');
+      return;
+    }
+
+    if (scanned.type === 'book') {
+      Utils.toast('O QR lido pertence a um livro. Use o campo de livro ou escaneie a carteirinha do aluno.', 'error');
+      return;
+    }
+
+    if (scanned.type === 'admin') {
+      Utils.toast('O QR lido é de acesso administrativo. Use a tela de login por QR.', 'error');
+      return;
+    }
+
+    Utils.toast('Carteirinha preenchida. Complete os dados do aluno e salve.', 'success');
+  });
 }
 
 async function deleteStudent(id) {

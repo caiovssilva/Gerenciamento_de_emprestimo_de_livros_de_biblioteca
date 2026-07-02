@@ -1,5 +1,5 @@
 -- ============================================================
--- BIBLIOTECA IFES — Campus Aracruz v3
+-- BIBLIOTECA narceu de paiva filho — Campus Aracruz v3
 -- Execute no SQL Editor do Supabase
 -- ============================================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -24,8 +24,8 @@ CREATE TABLE usuarios (
     criado_em TIMESTAMP    DEFAULT NOW()
 );
 INSERT INTO usuarios (nome, login, senha) VALUES
-    ('Administrador', 'admin',      'ifes2024'),
-    ('Bibliotecária', 'biblioteca', 'ifes2024')
+    ('Administrador', 'admin',      'narceu2026'),
+    ('Bibliotecária', 'biblioteca', 'narceu2026')
 ON CONFLICT (login) DO NOTHING;
 
 -- ── 2. SALAS ─────────────────────────────────────────────────

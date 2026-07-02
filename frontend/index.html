@@ -95,7 +95,7 @@
                 <div class="barcode-row">
                   <div class="form-group"><label>Código de barras / ISBN ou ID</label>
                     <input type="text" id="isbn-input" placeholder="Câmera QR ou digite..." onkeydown="if(event.key==='Enter')lookupBook()"></div>
-                  <button class="scan-btn" onclick="QRScanner.start('isbn-input',r=>{if(r.type==='book'&&r.data){Utils.el('isbn-input').value=r.data.id;lookupBook();}else{Utils.el('isbn-input').value=r.primary;lookupBook();}})">
+                  <button class="scan-btn" onclick="QRScanner.start('isbn-input',r=>{const code=(r.primary||'').trim();const payload=decodeQrPayload(code);Utils.el('isbn-input').value=(payload.type==='book'&&payload.data?.id)?payload.data.id:code;lookupBook();})">
                     <i class="ti ti-camera"></i>Câmera</button>
                   <button class="scan-btn" onclick="lookupBook()"><i class="ti ti-search"></i>Buscar</button>
                 </div>
@@ -107,7 +107,7 @@
                 <div class="barcode-row">
                   <div class="form-group"><label>Carteirinha, nome ou ID</label>
                     <input type="text" id="student-input" placeholder="Câmera QR ou digite..." onkeydown="if(event.key==='Enter')lookupStudent()"></div>
-                  <button class="scan-btn" onclick="QRScanner.start('student-input',r=>{if(r.type==='student'&&r.data){Utils.el('student-input').value=r.data.id;lookupStudent();}else{Utils.el('student-input').value=r.primary;lookupStudent();}})">
+                  <button class="scan-btn" onclick="scanLoanStudent()">
                     <i class="ti ti-camera"></i>Câmera</button>
                   <button class="scan-btn" onclick="lookupStudent()"><i class="ti ti-search"></i>Buscar</button>
                 </div>

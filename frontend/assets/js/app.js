@@ -9,6 +9,7 @@
 let currentUser = null; // { role:'admin'|'librarian', login, name, student? }
 let pendingLoan = { book:null, exemplar:null, student:null };
 let pendingDevolutionId = null;
+let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 
 // ── Auth: login tradicional (usuário/senha) ───────────────────────────
@@ -32,8 +33,12 @@ async function doLogin() {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      errEl.textContent = error.error || "Erro ao fazer login.";
+      const error = await response.json().catch(() => null);
+      if (response.status === 401) {
+        errEl.textContent = error?.error || "Usuário ou senha incorretos.";
+      } else {
+        errEl.textContent = error?.error || "Erro ao fazer login.";
+      }
       Utils.el("login-pass").value = "";
       return;
     }
@@ -276,7 +281,7 @@ function navigateTo(page) {
   if (page==="alunos")     renderStudents();
   if (page==="salas")      renderRooms();
   if (page==="generos")    renderGenres();
-  if (page==="emprestimo") { renderLoans(); resetLoanForm(); }
+  if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") Charts.init();
 }
 
@@ -287,31 +292,62 @@ function updateDueDate() {
   Utils.el("due-date-text").textContent = `Devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (em ${days} dias)`;
 }
 
+function normalizeQueryValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function setLoanStudent(student) {
+  if (!student) {
+    pendingLoan.student = null;
+    const infoEl = Utils.el("student-result");
+    if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Aluno não encontrado.</span>`;
+    return;
+  }
+
+  pendingLoan.student = student;
+  const infoEl = Utils.el("student-result");
+  if (!infoEl) return;
+
+  const loans  = Store.loans().filter(l => l.aluno_id === student.id && !l.devolvido_em);
+  const overdue= loans.filter(l => Utils.daysLeft(l.data_devolucao_prevista) < 0);
+  const status = overdue.length ? `<span class="badge badge-red">Irregular — ${overdue.length} atrasado(s)</span>`
+               : loans.length   ? `<span class="badge badge-amber">${loans.length} empréstimo(s) ativo(s)</span>`
+               : `<span class="badge badge-green">Regular</span>`;
+  infoEl.innerHTML = `<div><strong>${student.nome||student.name}</strong> — ${student.turma||student.class} ${status}</div>`;
+}
+
 function lookupBook() {
-  const q = Utils.el("isbn-input").value.trim().toLowerCase();
+  const q = normalizeQueryValue(Utils.el("isbn-input").value);
   if (!q) return;
   const books = Store.books();
   const found = books.find(b =>
-    (b.isbn||"").toLowerCase()===q ||
-    (b.id||"").toLowerCase().startsWith(q) ||
-    (b.titulo||b.title||"").toLowerCase().includes(q)
+    normalizeQueryValue(b.isbn) === q ||
+    normalizeQueryValue(b.id).startsWith(q) ||
+    normalizeQueryValue(b.titulo || b.title).includes(q)
   );
   const infoEl = Utils.el("book-result");
-  if (!found) { infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`; pendingLoan.book=null; return; }
+  if (!found) {
+    if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`;
+    pendingLoan.book = null;
+    return;
+  }
   const loans  = Store.loans();
-  const active = loans.filter(l=>l.livro_id===found.id && !l.devolvido_em);
+  const active = loans.filter(l => l.livro_id === found.id && !l.devolvido_em);
   const total  = found.exemplares||found.copies||1;
   const avail  = total - active.length;
-  const dispEx = Array.from({length:total},(_,i)=>String(i+1).padStart(3,"0")).filter(ex=>!active.find(l=>l.exemplar===ex));
+  const dispEx = Array.from({length: total}, (_, i) => String(i+1).padStart(3, "0")).filter(ex => !active.find(l => l.exemplar === ex));
   const genBadge = found.genero_nome ? `<span class="badge" style="background:${found.genero_cor||"#6366f1"}22;color:${found.genero_cor||"#6366f1"}">${found.genero_nome}</span>` : "";
-  infoEl.innerHTML = avail>0
+  infoEl.innerHTML = avail > 0
     ? `<div class="book-found"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author} ${genBadge}
        <br><small>${avail} de ${total} disponíveis</small>
        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-         ${dispEx.map(ex=>`<button class="btn btn-sm ${pendingLoan.exemplar===ex?"btn-primary":""}" onclick="selectExemplar('${found.id}','${ex}',this)">#${ex}</button>`).join("")}
+         ${dispEx.map(ex => `<button class="btn btn-sm ${pendingLoan.exemplar===ex?"btn-primary":""}" onclick="selectExemplar('${found.id}','${ex}',this)">#${ex}</button>`).join("")}
        </div></div>`
     : `<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> Todos os exemplares estão emprestados.</div>`;
-  if (avail>0) { pendingLoan.book=found; if (!pendingLoan.exemplar && dispEx.length) selectExemplar(found.id, dispEx[0]); }
+  if (avail > 0) {
+    pendingLoan.book = found;
+    if (!pendingLoan.exemplar && dispEx.length) selectExemplar(found.id, dispEx[0]);
+  }
 }
 
 function selectExemplar(bookId, ex, btn) {
@@ -322,23 +358,57 @@ function selectExemplar(bookId, ex, btn) {
 }
 
 function lookupStudent() {
-  const q = Utils.el("student-input").value.trim().toLowerCase();
+  const q = normalizeQueryValue(Utils.el("student-input").value);
   if (!q) return;
   const studs = Store.students();
-  const found = studs.find(s =>
-    (s.carteirinha||s.card||"").toLowerCase()===q ||
-    (s.id||"").toLowerCase().startsWith(q) ||
-    (s.nome||s.name||"").toLowerCase().includes(q)
-  );
-  const infoEl = Utils.el("student-result");
-  if (!found) { infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Aluno não encontrado.</span>`; pendingLoan.student=null; return; }
-  const loans  = Store.loans().filter(l=>l.aluno_id===found.id && !l.devolvido_em);
-  const overdue= loans.filter(l=>Utils.daysLeft(l.data_devolucao_prevista)<0);
-  const status = overdue.length ? `<span class="badge badge-red">Irregular — ${overdue.length} atrasado(s)</span>`
-               : loans.length   ? `<span class="badge badge-amber">${loans.length} empréstimo(s) ativo(s)</span>`
-               : `<span class="badge badge-green">Regular</span>`;
-  infoEl.innerHTML = `<div><strong>${found.nome||found.name}</strong> — ${found.turma||found.class} ${status}</div>`;
-  pendingLoan.student = found;
+  const found = studs.find(s => {
+    const id   = normalizeQueryValue(s.id);
+    const card = normalizeQueryValue(s.card || s.carteirinha);
+    const name = normalizeQueryValue(s.nome || s.name);
+    return id === q || card === q || id.startsWith(q) || name.includes(q);
+  });
+  if (!found) {
+    setLoanStudent(null);
+    return;
+  }
+  setLoanStudent(found);
+}
+
+async function scanLoanStudent() {
+  await QRScanner.start('student-input', async (res) => {
+    const code = (res?.primary || '').trim();
+    if (!code) {
+      Utils.toast('Não foi possível ler o código. Tente novamente.', 'error');
+      return;
+    }
+
+    const input = Utils.el('student-input');
+    if (input) input.value = code;
+
+    const scanned = await resolveQRCodeAsync(code);
+    if (scanned.type === 'student' && scanned.data?.id) {
+      const student = scanned.data;
+      if (!Store.studentById(student.id)) {
+        Store.setStudents([...Store.students(), student]);
+      }
+      if (input) input.value = student.carteirinha||student.card||student.id;
+      setLoanStudent(student);
+      Utils.toast(`Aluno identificado: ${student.nome||student.name}`, 'success');
+      return;
+    }
+
+    if (scanned.type === 'admin') {
+      Utils.toast('Este QR é de administrador. Use a tela de login por QR.', 'error');
+      return;
+    }
+
+    if (scanned.type === 'book') {
+      Utils.toast('Este QR é de livro. Escaneie a carteirinha do aluno.', 'error');
+      return;
+    }
+
+    setLoanStudent(null);
+  });
 }
 
 async function confirmLoan() {
@@ -361,6 +431,7 @@ async function confirmLoan() {
     resetLoanForm();
     await syncData();
     Charts.refresh();
+    renderLoanScanPanel();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
@@ -398,6 +469,7 @@ async function confirmDevolution() {
     pendingDevolutionId = null;
     await syncData(); Charts.refresh();
     _refreshOpenStudentHistory();
+    renderLoanScanPanel();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
@@ -436,6 +508,7 @@ async function confirmRenewal() {
     pendingRenewalId = null;
     await syncData(); Charts.refresh();
     _refreshOpenStudentHistory();
+    renderLoanScanPanel();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
@@ -444,6 +517,153 @@ function _refreshOpenStudentHistory() {
   if (Utils.el("modal-student-history")?.classList.contains("open") && _historyStudentId) {
     showStudentHistory(_historyStudentId);
   }
+}
+
+function resolveQRCode(code) {
+  if (!code || typeof code !== "string") return { type: "unknown", data: null };
+  const normalized = code.trim();
+  if (normalized.startsWith("ADMIN-")) {
+    return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
+  }
+  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
+  if (student) return { type: "student", data: student };
+  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized);
+  if (book) return { type: "book", data: book };
+  return { type: "unknown", data: null };
+}
+
+async function resolveQRCodeAsync(code) {
+  const normalized = (code || "").trim();
+  if (!normalized) return { type: "unknown", data: null };
+  const local = resolveQRCode(normalized);
+  if (local.type !== "unknown") return local;
+
+  if (normalized.startsWith("ADMIN-")) {
+    return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
+  }
+
+  try {
+    const student = await API.students.get(normalized);
+    if (student?.id) {
+      return { type: "student", data: student };
+    }
+  } catch (_err) {
+    // Não encontrou aluno no backend.
+  }
+
+  try {
+    const book = await API.books.get(normalized);
+    if (book?.id) {
+      return { type: "book", data: book };
+    }
+  } catch (_err) {
+    // Não encontrou livro no backend.
+  }
+
+  return { type: "unknown", data: null };
+}
+
+async function openLoanScanner() {
+  QRScanner.start(null, async (res) => {
+    const code = (res?.primary || "").trim();
+    if (!code) {
+      Utils.toast("Não foi possível ler o código. Tente novamente.", "error");
+      return;
+    }
+
+    const scanned = await resolveQRCodeAsync(code);
+    if (scanned.type === "student" && scanned.data?.id) {
+      scannedLoanStudentId = scanned.data.id;
+      if (!Store.studentById(scanned.data.id)) await syncData();
+      renderLoanScanPanel();
+      Utils.qs('#emp-tabs .tab-btn[data-tab="novo"]')?.click();
+      return;
+    }
+    if (scanned.type === "book" && scanned.data?.id) {
+      const total = scanned.data.exemplares||scanned.data.copies||1;
+      const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
+      Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
+      return;
+    }
+    if (scanned.type === "admin") {
+      Utils.toast("Cartão administrativo lido. Use-o na tela de login.", "info");
+      return;
+    }
+    Utils.toast("Código não reconhecido — tente outro QR ou digite manualmente.", "error");
+  });
+}
+
+function selectLoanStudent(studentId) {
+  const student = Store.studentById(studentId);
+  if (!student) return;
+  scannedLoanStudentId = studentId;
+  const studentInput = Utils.el("student-input");
+  if (studentInput) studentInput.value = student.card||student.carteirinha||student.id||"";
+  lookupStudent();
+}
+
+function clearLoanScanStudent() {
+  scannedLoanStudentId = null;
+  renderLoanScanPanel();
+}
+
+function renderLoanScanPanel() {
+  const panel = Utils.el("loan-scan-panel");
+  if (!panel) return;
+  if (!scannedLoanStudentId) {
+    panel.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+      <i class="ti ti-info-circle" style="font-size:1.3rem;color:var(--muted);"></i>
+      <span>Use o botão "Escanear aluno" para ler a carteirinha de um aluno e exibir suas informações e histórico.</span>
+    </div>`;
+    return;
+  }
+
+  const student = Store.studentById(scannedLoanStudentId);
+  if (!student) {
+    panel.innerHTML = `<div style="color:var(--red)">Aluno não encontrado. Atualize os dados e tente novamente.</div>`;
+    return;
+  }
+
+  const loans = Store.loans().filter(l => l.aluno_id === student.id).sort((a,b)=>b.data_emprestimo.localeCompare(a.data_emprestimo));
+  const active = loans.filter(l => !l.devolvido_em);
+  const overdue = active.filter(l => Utils.daysLeft(l.data_devolucao_prevista) < 0);
+  const room = Store.rooms().find(r => r.id === student.sala_id);
+  const status = overdue.length ? `Irregular — ${overdue.length} atraso(s)` : active.length ? `${active.length} empréstimo(s) ativo(s)` : `Regular`;
+  const badgeClass = overdue.length ? "badge-red" : active.length ? "badge-amber" : "badge-green";
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
+      <div style="min-width:240px;flex:1;">
+        <div style="padding:0.75rem;border:1px solid var(--border);border-radius:10px;">
+          <div style="font-weight:600;font-size:1rem;margin-bottom:0.25rem;">${student.nome||student.name||"—"}</div>
+          <div style="font-size:0.9rem;color:var(--muted);">${student.carteirinha||student.card||student.id.slice(0,8)} · ${student.turma||student.class||"Sem turma"}${room?` · ${room.nome}`:""}</div>
+          <div style="margin-top:0.75rem;"><span class="badge ${badgeClass}">${status}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" onclick="selectLoanStudent('${student.id}')"><i class="ti ti-plus"></i> Usar aluno</button>
+        <button class="btn btn-secondary" onclick="clearLoanScanStudent()"><i class="ti ti-x"></i> Limpar</button>
+      </div>
+    </div>
+    <div style="margin-top:1rem;">
+      <div style="font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;">Empréstimos ativos</div>
+      ${active.length ? active.map(l => {
+        const book = Store.bookById(l.livro_id);
+        const dl = Utils.daysLeft(l.data_devolucao_prevista);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+          <div style="min-width:0;">
+            <strong style="display:block;margin-bottom:0.2rem;">${book?.titulo||book?.title||"—"} #${l.exemplar}</strong>
+            <small style="color:var(--muted);">${Utils.fmtDate(l.data_devolucao_prevista)} · ${Utils.statusBadge(Store.loanStatus(l), dl)}</small>
+          </div>
+          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="openRenewal('${l.id}')"><i class="ti ti-rotate-clockwise"></i>Renovar</button>
+            <button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>
+          </div>
+        </div>`;
+      }).join("") : `<div class="empty-state" style="padding:1rem;">Nenhum empréstimo ativo para este aluno.</div>`}
+    </div>
+    <div style="margin-top:1rem;font-size:0.92rem;color:var(--muted);">Histórico total: ${loans.length} empréstimo(s). Último registro: ${loans.length ? Utils.fmtDate(loans[0].data_emprestimo) : "—"}.</div>
+  `;
 }
 
 
@@ -471,23 +691,50 @@ async function printAdminCard() {
 // ── Câmera global (topbar) — ler QR de carteirinha de aluno ────────────
 async function openGlobalScanner() {
   await QRScanner.start(null, async (res) => {
-    if (res.type === "student" && res.data?.id) {
-      if (!Store.studentById(res.data.id)) await syncData(); // garante que o aluno esteja no Store
-      showStudentHistory(res.data.id);
+    const scanned = await resolveQRCodeAsync(res.primary);
+    const currentPage = Utils.qs(".page.active")?.id;
+
+    if (scanned.type === "student" && scanned.data?.id) {
+      if (!Store.studentById(scanned.data.id)) await syncData();
+      const student = Store.studentById(scanned.data.id) || scanned.data;
+
+      if (currentPage === "page-emprestimo") {
+        const input = Utils.el("student-input");
+        if (input) input.value = student.carteirinha||student.card||student.id;
+        setLoanStudent(student);
+        Utils.toast(`Aluno registrado para empréstimo: ${student.nome||student.name}`, "success");
+        return;
+      }
+
+      showStudentHistory(student.id);
       return;
     }
-    if (res.type === "book" && res.data?.id) {
-      const total = res.data.exemplares||res.data.copies||1;
-      const active = Store.loans().filter(l=>l.livro_id===res.data.id && !l.devolvido_em).length;
-      Utils.toast(`📖 ${res.data.titulo||res.data.title} — ${total-active} de ${total} disponíveis`, "info");
+
+    if (scanned.type === "book" && scanned.data?.id) {
+      if (currentPage === "page-emprestimo") {
+        const input = Utils.el("isbn-input");
+        if (input) input.value = scanned.data.id;
+        lookupBook();
+        Utils.toast(`Livro registrado no formulário de empréstimo: ${scanned.data.titulo||scanned.data.title}`, "success");
+        return;
+      }
+      const total = scanned.data.exemplares||scanned.data.copies||1;
+      const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
+      Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
       return;
     }
-    if (res.type === "admin") {
+
+    if (scanned.type === "admin") {
       Utils.toast("Este é um cartão administrativo. Faça login com ele na tela inicial.","info");
       return;
     }
+
     Utils.toast("Código não reconhecido — não corresponde a um aluno ou livro cadastrado.","error");
   });
+}
+
+function decodeQrPayload(code) {
+  return resolveQRCode(code);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -496,7 +743,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!config) {
       const status = Utils.el("cloud-status");
       if (status && !status.textContent.includes("Offline")) {
-        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Configuração Supabase indisponível — usando fallback local</span>`;
+        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-cloud-off"></i> Conexão Supabase não disponível — usando dados locais</span>`;
       }
     }
   });

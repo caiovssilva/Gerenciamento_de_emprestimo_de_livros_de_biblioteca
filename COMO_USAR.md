@@ -53,11 +53,11 @@
 2️⃣ FAZER LOGIN
    Opção 1 - Login com usuário/senha:
    └─ Usuário: admin
-   └─ Senha: ifes2024
+   └─ Senha: narceu2026
    
    Opção 2 - Login com usuário alternativo:
    └─ Usuário: biblioteca
-   └─ Senha: ifes2024
+   └─ Senha: narceu2026
 
 3️⃣ NAVEGAR PELA APLICAÇÃO
    Após login, você terá acesso a:
@@ -115,7 +115,7 @@ SAÚDE:
 1. Fazer login:
    curl -X POST http://localhost:5000/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"login": "admin", "password": "ifes2024"}'
+     -d '{"login": "admin", "password": "narceu2026"}'
 
 2. Listar livros:
    curl http://localhost:5000/api/books/

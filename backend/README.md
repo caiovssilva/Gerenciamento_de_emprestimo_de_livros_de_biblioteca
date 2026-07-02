@@ -1,4 +1,4 @@
-# Biblioteca IFES — Campus Aracruz
+# Biblioteca narceu de paiva filho — Campus Aracruz
 
 Sistema completo de gerenciamento de biblioteca escolar com empréstimos, acervo, alunos, QR Code e relatórios.
 
@@ -73,7 +73,7 @@ pip install -r backend/requirements.txt
 
 ### 4. Configure as variáveis de ambiente
 
-O arquivo `backend/.env` já está incluído com as credenciais do projeto IFES, então **não é necessário configurar nada** para rodar localmente.
+O arquivo `backend/.env` já está incluído com as credenciais do projeto narceu de paiva filho, então **não é necessário configurar nada** para rodar localmente.
 
 Se quiser usar seu próprio banco Supabase:
 ```bash
@@ -93,13 +93,13 @@ python backend/app.py
 
 Você verá no terminal:
 ```
-🚀 Biblioteca IFES v3 — http://localhost:5000
+🚀 Biblioteca narceu de paiva filho v3 — http://localhost:5000
 [supabase] ✅ Conectado com sucesso.
 ```
 
 **ou** (se o Supabase não estiver disponível):
 ```
-🚀 Biblioteca IFES v3 — http://localhost:5000
+🚀 Biblioteca narceu de paiva filho v3 — http://localhost:5000
 [supabase] ⚠️  Falha: ... — usando dados locais (JSON).
 ```
 
@@ -117,8 +117,8 @@ O sistema possui **dois jeitos de entrar**:
 
 | Usuário | Senha | Papel |
 |---------|-------|-------|
-| `admin` | `ifes2024` | Administrador (acesso total) |
-| `biblioteca` | `ifes2024` | Bibliotecária (acesso total) |
+| `admin` | `narceu2026` | Administrador (acesso total) |
+| `biblioteca` | `narceu2026` | Bibliotecária (acesso total) |
 
 Esses são os usuários "reais" do sistema. Em **Configurações → Minha carteirinha de acesso**, qualquer um deles pode gerar uma **carteirinha PNG** com seu nome, usuário, senha e um **QR Code** que permite entrar direto na tela de login sem digitar nada (botão "Entrar com carteirinha").
 
@@ -362,7 +362,7 @@ FLASK_PORT=5001
 ```
 
 **Tela em branco no navegador**
-Aguarde 2–3 segundos e recarregue. O Flask pode demorar um pouco para iniciar. Verifique também se o terminal mostra `🚀 Biblioteca IFES v3`.
+Aguarde 2–3 segundos e recarregue. O Flask pode demorar um pouco para iniciar. Verifique também se o terminal mostra `🚀 Biblioteca narceu de paiva filho v3`.
 
 **`[supabase] ⚠️ Falha`** no terminal
 Normal para ambiente sem internet. O sistema usa os dados locais automaticamente. Nenhuma ação necessária.
@@ -375,4 +375,4 @@ Verifique se o arquivo usa `;` ou `,` como separador e se tem as colunas `nome`,
 
 ---
 
-*Projeto acadêmico — IFES Campus Aracruz*
+*Projeto acadêmico — narceu de paiva filho Campus Aracruz*

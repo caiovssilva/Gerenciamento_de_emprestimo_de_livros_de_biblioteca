@@ -3,12 +3,14 @@ utils/supabase_client.py
 Conexão ao Supabase. Se falhar, entra em modo offline — dados dos JSONs locais.
 """
 import os
+import time
 
 _URL  = os.getenv("SUPABASE_URL", "")
 _KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or ""
 
-_client  = None
-_offline = False
+_client      = None
+_offline     = False
+_last_attempt = 0
 
 _NETWORK_ERROR_TOKENS = (
     "name or service not known",
@@ -80,20 +82,34 @@ class SupabaseClient:
         return SupabaseTable(self._c, name)
 
 
+def _now_seconds():
+    return int(time.time())
+
+
 def get_client():
-    global _client, _offline
+    global _client, _offline, _last_attempt
+
+    if _client is not None and not _offline:
+        return _client
+
     if _offline:
-        return _OfflineClient()
-    if _client is None:
-        try:
-            if not _URL or not _KEY:
-                raise ValueError("SUPABASE_URL / SUPABASE_KEY não configurados")
-            _client = SupabaseClient(_URL, _KEY)
-            print("[supabase] ✅ Conectado com sucesso.")
-        except Exception as e:
-            print(f"[supabase] ⚠️  Falha: {e} — usando dados locais (JSON).")
-            _offline = True
+        now = _now_seconds()
+        if now - _last_attempt < 60:
             return _OfflineClient()
+
+    _last_attempt = _now_seconds()
+    try:
+        if not _URL or not _KEY:
+            raise ValueError("SUPABASE_URL / SUPABASE_KEY não configurados")
+        _client = SupabaseClient(_URL, _KEY)
+        _offline = False
+        print("[supabase] ✅ Conectado com sucesso.")
+    except Exception as e:
+        print(f"[supabase] ⚠️  Falha: {e} — usando dados locais (JSON).")
+        _offline = True
+        _client = None
+        return _OfflineClient()
+
     return _client
 
 

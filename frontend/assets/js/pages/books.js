@@ -202,7 +202,7 @@ function _showPrintCard(imgSrc, filename) {
   // Abre em nova aba para impressão direta
   const w = window.open("","_blank","width=700,height=350");
   w.document.write(`<!DOCTYPE html>
-<html><head><title>Impressão — Biblioteca IFES</title>
+<html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
   body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;}
   .card-wrap{background:#fff;padding:16px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
@@ -215,7 +215,7 @@ function _showPrintCard(imgSrc, filename) {
 </style></head>
 <body>
 <div class="card-wrap">
-  <img src="${imgSrc}" alt="Cartão Biblioteca IFES">
+  <img src="${imgSrc}" alt="Cartão Biblioteca narceu de paiva filho">
   <div class="actions">
     <button class="print-btn" onclick="window.print()">🖨️ Imprimir</button>
     <a class="dl-btn" href="${imgSrc}" download="${filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>

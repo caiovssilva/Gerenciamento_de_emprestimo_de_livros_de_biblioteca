@@ -11,12 +11,59 @@ BOOKS_FILE  = DATA_DIR / "livros.json"
 ALUNOS_FILE = DATA_DIR / "alunos.json"
 
 
-def _available_copies(sb, book_id, total):
+def _available_copies(sb, book_id, total, exemplar_ids=None):
     try:
-        usados = {r["exemplar"] for r in sb_exec(sb.table("emprestimos").select("exemplar").eq("livro_id",book_id).is_("devolvido_em","null"))}
+        rows = sb_exec(sb.table("emprestimos").select("exemplar","exemplar_id").eq("livro_id",book_id).is_("devolvido_em","null"))
     except:
-        usados = {l["exemplar"] for l in read_json(LOANS_FILE) if l.get("livro_id")==book_id and not l.get("devolvido_em")}
-    return [str(i+1).zfill(3) for i in range(total) if str(i+1).zfill(3) not in usados]
+        rows = [l for l in read_json(LOANS_FILE) if l.get("livro_id")==book_id and not l.get("devolvido_em")]
+
+    usados_codigos = {str(r.get("exemplar", "")).strip() for r in rows if str(r.get("exemplar", "")).strip()}
+    usados_ids = {str(r.get("exemplar_id", "")).strip() for r in rows if str(r.get("exemplar_id", "")).strip()}
+
+    if exemplar_ids:
+        return [
+            {"code": str(idx + 1).zfill(3), "id": exemplar_id}
+            for idx, exemplar_id in enumerate(exemplar_ids)
+            if str(exemplar_id) not in usados_ids and str(idx + 1).zfill(3) not in usados_codigos
+        ]
+
+    return [
+        {"code": str(i + 1).zfill(3), "id": f"{book_id}-{str(i + 1).zfill(3)}"}
+        for i in range(max(1, int(total)))
+        if str(i + 1).zfill(3) not in usados_codigos
+    ]
+
+
+def _find_student_by_ref(sb, student_ref):
+    if not student_ref:
+        return None
+    student_ref = str(student_ref).strip()
+    if not student_ref:
+        return None
+
+    try:
+        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("id", student_ref))
+        if rows:
+            return rows[0]
+    except Exception:
+        rows = []
+
+    try:
+        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("carteirinha", student_ref))
+        if rows:
+            return rows[0]
+    except Exception:
+        rows = []
+
+    try:
+        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("qr_id", student_ref))
+        if rows:
+            return rows[0]
+    except Exception:
+        rows = []
+
+    local_students = [s for s in read_json(ALUNOS_FILE) if str(s.get("id", "")) == student_ref or str(s.get("carteirinha", "")) == student_ref or str(s.get("qr_id", "")) == student_ref]
+    return local_students[0] if local_students else None
 
 
 @loans_bp.route("/", methods=["GET"])
@@ -51,13 +98,14 @@ def create_loan():
     try:    books = sb_exec(sb.table("livros").select("*").eq("id",book_id))
     except: books = [b for b in read_json(BOOKS_FILE) if b.get("id")==book_id]
     if not books: return jsonify({"error":"Livro não encontrado"}),404
-    avail = _available_copies(sb, book_id, books[0]["exemplares"])
+    avail = _available_copies(sb, book_id, books[0].get("exemplares", 1), books[0].get("exemplares_ids"))
     if not avail: return jsonify({"error":"Nenhum exemplar disponível no momento"}),409
     try:    aluno = sb_exec(sb.table("alunos").select("id").eq("id",student_id))
     except: aluno = [a for a in read_json(ALUNOS_FILE) if a.get("id")==student_id]
     if not aluno: return jsonify({"error":"Aluno não encontrado"}),404
     dt = body.get("data_emprestimo") or today_str()
-    payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":avail[0],
+    exemplar_info = avail[0]
+    payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":exemplar_info["code"],"exemplar_id":exemplar_info["id"],
                "data_emprestimo":dt,"data_devolucao_prevista":add_days(dt,days),
                "devolvido_em":None,"observacao":body.get("observacao",""),"criado_por":body.get("criado_por","system")}
     try:    rows = sb_exec(sb.table("emprestimos").insert(payload))
@@ -111,6 +159,15 @@ def return_loan(loan_id):
     except: loans = [l for l in read_json(LOANS_FILE) if l.get("id")==loan_id]
     if not loans: return jsonify({"error":"Empréstimo não encontrado"}),404
     if loans[0].get("devolvido_em"): return jsonify({"error":"Empréstimo já foi devolvido"}),409
+
+    student_ref = body.get("student_id") or body.get("student_qr") or body.get("student_card") or body.get("carteirinha")
+    if student_ref:
+        student = _find_student_by_ref(sb, student_ref)
+        if not student:
+            return jsonify({"error":"Aluno não encontrado"}),404
+        if str(student.get("id", "")) != str(loans[0].get("aluno_id", "")):
+            return jsonify({"error":"Este exemplar pertence a outro aluno."}),403
+
     upd = {"devolvido_em": body.get("devolvido_em") or today_str(), "observacao": body.get("observacao","") or ""}
     try:    rows = sb_exec(sb.table("emprestimos").update(upd).eq("id",loan_id))
     except Exception as e:

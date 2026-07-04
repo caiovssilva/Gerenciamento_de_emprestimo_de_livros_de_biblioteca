@@ -5,65 +5,28 @@ on:
     - cron: '0 12 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ping na API REST do Supabase
+      - name: Verificar segredos e acordar o Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
 
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "SUPABASE_URL ou SUPABASE_ANON_KEY não configurados."
-            exit 1
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "Segredos do Supabase não configurados. Pulando execução."
+            exit 0
           fi
 
-          curl -fsS \
+          echo "Acordando o Supabase..."
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             "$SUPABASE_URL/rest/v1/livros?select=id&limit=1"
-
-  verificar-resposta:
-    runs-on: ubuntu-latest
-    needs: ping-supabase
-    if: always()
-
-    steps:
-      - name: Tentar acordar e verificar o Supabase
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "SUPABASE_URL ou SUPABASE_ANON_KEY não configurados."
-            exit 1
-          fi
-
-          echo "Tentando acordar o Supabase..."
-
-          if curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-            "$SUPABASE_URL/rest/v1/"; then
-            echo "Supabase respondeu ao endpoint base."
-            exit 0
-          fi
-
-          echo "Endpoint base falhou, tentando uma consulta leve na API REST..."
-
-          if curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-            "$SUPABASE_URL/rest/v1/livros?select=id&limit=1"; then
-            echo "Supabase respondeu na consulta leve."
-            exit 0
-          fi
-
-          echo "Supabase não respondeu após as tentativas de wake-up."
-          exit 1

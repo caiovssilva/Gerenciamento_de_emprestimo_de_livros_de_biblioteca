@@ -34,5 +34,11 @@
     "nome": "romance",
     "icone": "ti-book",
     "cor": "#6366f1"
+  },
+  {
+    "id": "c56f4dbb-3f41-4026-a5d6-11e0c3b0f624",
+    "nome": "cogumelen",
+    "icone": "ti-book",
+    "cor": "#6366f1"
   }
 ]

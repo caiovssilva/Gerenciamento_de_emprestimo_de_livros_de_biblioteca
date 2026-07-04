@@ -9,6 +9,8 @@
 let currentUser = null; // { role:'admin'|'librarian', login, name, student? }
 let pendingLoan = { book:null, exemplar:null, student:null };
 let pendingDevolutionId = null;
+let pendingDevolutionStudentId = null;
+let pendingReturnLoanId = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 
@@ -65,12 +67,14 @@ async function startQRLogin() {
     try {
       const r = await API.qr.login(code);
       if (r.access === "admin") {
-        const found = USERS.find(u => u.login === r.data.login) || USERS[0];
+        const adminData = r.data || {};
+        const login = adminData.login || "admin";
+        const name = login === "biblioteca" ? "Bibliotecária" : "Administrador";
         _showQRLoginResult({
           icon:"ti-shield-check", color:"var(--brand)",
-          title:`Bem-vindo, ${found.name}`,
+          title:`Bem-vindo, ${name}`,
           sub:"Acesso administrativo confirmado.",
-          action:() => _finishLogin({ role:"admin", login:found.login, name:found.name }),
+          action:() => _finishLogin({ role:"admin", login, name }),
         });
       } else if (r.access === "librarian") {
         const student = r.data;
@@ -296,6 +300,15 @@ function normalizeQueryValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function parseExemplarCode(code) {
+  const normalized = String(code || "").trim();
+  const match = normalized.match(/^EXEMPLAR-(.+)-(.+)-(.+)$/i);
+  if (match) return { bookId: match[1], exemplar: match[2], exemplarId: match[3] };
+  const legacy = normalized.match(/^EXEMPLAR-(.+)-(.+)$/i);
+  if (!legacy) return null;
+  return { bookId: legacy[1], exemplar: legacy[2], exemplarId: legacy[2] };
+}
+
 function setLoanStudent(student) {
   if (!student) {
     pendingLoan.student = null;
@@ -446,12 +459,13 @@ function resetLoanForm() {
 }
 
 // ── Devolução ─────────────────────────────────────────────────────────
-function openDevolution(loanId) {
+function openDevolution(loanId, studentId = null) {
   const loan = Store.loanById(loanId);
   if (!loan) return;
   const book = Store.bookById(loan.livro_id);
   const stud = Store.studentById(loan.aluno_id);
   pendingDevolutionId = loanId;
+  pendingDevolutionStudentId = studentId || null;
   Utils.el("dev-info").innerHTML = `
     <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
     <br><small>Exemplar #${loan.exemplar} · Previsto: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
@@ -463,10 +477,14 @@ async function confirmDevolution() {
   if (!pendingDevolutionId) return;
   const obs = Utils.el("dev-obs").value.trim();
   try {
-    await API.loans.return(pendingDevolutionId, { observacao: obs });
+    await API.loans.return(pendingDevolutionId, {
+      observacao: obs,
+      student_id: pendingDevolutionStudentId || null,
+    });
     Utils.toast("Devolução registrada!", "success");
     Utils.closeModal("modal-devolution");
     pendingDevolutionId = null;
+    pendingDevolutionStudentId = null;
     await syncData(); Charts.refresh();
     _refreshOpenStudentHistory();
     renderLoanScanPanel();
@@ -525,7 +543,12 @@ function resolveQRCode(code) {
   if (normalized.startsWith("ADMIN-")) {
     return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
   }
-  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
+  const parsedExemplar = parseExemplarCode(normalized);
+  if (parsedExemplar) {
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+  }
+  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized || s.qr_id === normalized);
   if (student) return { type: "student", data: student };
   const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized);
   if (book) return { type: "book", data: book };
@@ -540,6 +563,12 @@ async function resolveQRCodeAsync(code) {
 
   if (normalized.startsWith("ADMIN-")) {
     return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
+  }
+
+  const parsedExemplar = parseExemplarCode(normalized);
+  if (parsedExemplar) {
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
 
   try {
@@ -573,6 +602,21 @@ async function openLoanScanner() {
 
     const scanned = await resolveQRCodeAsync(code);
     if (scanned.type === "student" && scanned.data?.id) {
+      if (pendingReturnLoanId) {
+        const loan = Store.loanById(pendingReturnLoanId);
+        if (loan && !loan.devolvido_em && String(loan.aluno_id) === String(scanned.data.id)) {
+          await API.loans.return(pendingReturnLoanId, { student_id: scanned.data.id, observacao: "" });
+          Utils.toast(`Devolução registrada para ${scanned.data.nome||scanned.data.name}.`, "success");
+          pendingReturnLoanId = null;
+          await syncData(); Charts.refresh(); _refreshOpenStudentHistory(); renderLoanScanPanel();
+          return;
+        }
+        if (loan && !loan.devolvido_em) {
+          const borrower = Store.studentById(loan.aluno_id);
+          Utils.toast(`Este exemplar pertence a ${borrower?.nome||borrower?.name||"outro aluno"}.`, "error");
+          return;
+        }
+      }
       scannedLoanStudentId = scanned.data.id;
       if (!Store.studentById(scanned.data.id)) await syncData();
       renderLoanScanPanel();
@@ -580,6 +624,23 @@ async function openLoanScanner() {
       return;
     }
     if (scanned.type === "book" && scanned.data?.id) {
+      const targetExemplar = scanned.data.exemplar || null;
+      const targetExemplarId = scanned.data.exemplarId || null;
+      const activeLoan = Store.loans().find((loan) => {
+        if (loan.livro_id !== scanned.data.id || loan.devolvido_em) return false;
+        if (targetExemplar && String(loan.exemplar) !== String(targetExemplar)) return false;
+        if (targetExemplarId && String(loan.exemplar_id || "") !== String(targetExemplarId)) return false;
+        return true;
+      });
+      if (activeLoan) {
+        const borrower = Store.studentById(activeLoan.aluno_id);
+        pendingReturnLoanId = activeLoan.id;
+        scannedLoanStudentId = activeLoan.aluno_id;
+        renderLoanScanPanel();
+        Utils.toast(`📖 Exemplar emprestado para ${borrower?.nome||borrower?.name||"o aluno responsável"}. Leia a carteirinha do aluno para devolver.`, "info");
+        return;
+      }
+      pendingReturnLoanId = null;
       const total = scanned.data.exemplares||scanned.data.copies||1;
       const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
       Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
@@ -604,6 +665,7 @@ function selectLoanStudent(studentId) {
 
 function clearLoanScanStudent() {
   scannedLoanStudentId = null;
+  pendingReturnLoanId = null;
   renderLoanScanPanel();
 }
 
@@ -624,6 +686,8 @@ function renderLoanScanPanel() {
     return;
   }
 
+  const lockLoan = pendingReturnLoanId ? Store.loanById(pendingReturnLoanId) : null;
+  const lockStudent = lockLoan ? Store.studentById(lockLoan.aluno_id) : null;
   const loans = Store.loans().filter(l => l.aluno_id === student.id).sort((a,b)=>b.data_emprestimo.localeCompare(a.data_emprestimo));
   const active = loans.filter(l => !l.devolvido_em);
   const overdue = active.filter(l => Utils.daysLeft(l.data_devolucao_prevista) < 0);
@@ -631,9 +695,18 @@ function renderLoanScanPanel() {
   const status = overdue.length ? `Irregular — ${overdue.length} atraso(s)` : active.length ? `${active.length} empréstimo(s) ativo(s)` : `Regular`;
   const badgeClass = overdue.length ? "badge-red" : active.length ? "badge-amber" : "badge-green";
 
+  const lockBlock = lockLoan && !lockLoan.devolvido_em
+    ? `<div style="margin-bottom:0.9rem;padding:0.8rem;border:1px solid var(--amber);background:rgba(245,158,11,0.12);border-radius:10px;">
+        <div style="font-weight:700;color:var(--amber);margin-bottom:0.25rem;"><i class="ti ti-lock"></i> Exemplar travado para devolução</div>
+        <div><strong>${lockStudent?.nome||lockStudent?.name||"—"}</strong> está com este exemplar.</div>
+        <div style="font-size:0.9rem;color:var(--muted);margin-top:0.2rem;">Leia a carteirinha do aluno para registrar a devolução.</div>
+      </div>`
+    : "";
+
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
       <div style="min-width:240px;flex:1;">
+        ${lockBlock}
         <div style="padding:0.75rem;border:1px solid var(--border);border-radius:10px;">
           <div style="font-weight:600;font-size:1rem;margin-bottom:0.25rem;">${student.nome||student.name||"—"}</div>
           <div style="font-size:0.9rem;color:var(--muted);">${student.carteirinha||student.card||student.id.slice(0,8)} · ${student.turma||student.class||"Sem turma"}${room?` · ${room.nome}`:""}</div>
@@ -711,6 +784,14 @@ async function openGlobalScanner() {
     }
 
     if (scanned.type === "book" && scanned.data?.id) {
+      const targetExemplar = scanned.data.exemplar || null;
+      const activeLoan = Store.loans().find((loan) => loan.livro_id === scanned.data.id && !loan.devolvido_em && (!targetExemplar || loan.exemplar === targetExemplar));
+      if (activeLoan) {
+        const student = Store.studentById(activeLoan.aluno_id);
+        Utils.toast(`Este exemplar já está emprestado. Use o histórico do aluno para devolver ou renovar.`, "info");
+        if (student) showStudentHistory(student.id);
+        return;
+      }
       if (currentPage === "page-emprestimo") {
         const input = Utils.el("isbn-input");
         if (input) input.value = scanned.data.id;

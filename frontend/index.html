@@ -16,7 +16,7 @@
   <div class="login-card" id="login-card-form">
     <div class="login-head">
       <div class="logo-icon"><i class="ti ti-books"></i></div>
-      <h1>Biblioteca IFES</h1><p>Acesso Restrito — Campus Aracruz</p>
+      <h1>Biblioteca Narceu de Paiva Filho</h1><p>Acesso Restrito — Campus Aracruz</p>
     </div>
     <div class="form-field"><label>Usuário</label><input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username"></div>
     <div class="form-field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"></div>
@@ -24,7 +24,7 @@
     <p class="login-err" id="login-err"></p>
     <div class="login-divider">ou</div>
     <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
-    <p class="login-hint">Padrão: <strong>admin</strong> / <strong>ifes2024</strong></p>
+    <p class="login-hint">Padrão: <strong>admin</strong> / <strong>narceu2026</strong></p>
   </div>
 
   <!-- Resultado do login por QR -->
@@ -38,7 +38,7 @@
 <div id="app">
   <div class="layout">
     <nav class="sidebar">
-      <div class="sb-logo"><span class="name">📚 Biblioteca</span><span class="sub">IFES Campus Aracruz</span></div>
+      <div class="sb-logo"><span class="name">📚 Biblioteca</span><span class="sub">Narceu de Paiva Filho</span></div>
       <div class="sb-nav">
         <div class="sb-section">Principal</div>
         <button class="nav-btn active" data-page="dashboard"><i class="ti ti-layout-dashboard"></i>Painel</button>
@@ -73,6 +73,7 @@
         <!-- DASHBOARD -->
         <div class="page active" id="page-dashboard">
           <div class="metrics" id="metrics-row"></div>
+          <div id="dashboard-priority-students"></div>
           <div class="card">
             <div class="card-header"><h2><i class="ti ti-clock-exclamation" style="vertical-align:-2px;margin-right:5px;color:var(--amber);"></i>Devoluções pendentes</h2>
               <button class="btn btn-sm" onclick="syncData()"><i class="ti ti-refresh"></i>Atualizar</button></div>
@@ -234,10 +235,11 @@
             </div>
           </div>
           <div style="margin-top:.25rem;"><div class="report-grid">
-            <div class="report-card"><div class="report-icon red"><i class="ti ti-clock-exclamation"></i></div><div><div class="report-title">Empréstimos atrasados</div><div class="report-desc">Alunos com devolução vencida</div><a class="btn btn-sm" href="http://localhost:5000/api/reports/export/overdue" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon blue"><i class="ti ti-transfer"></i></div><div><div class="report-title">Histórico completo</div><div class="report-desc">Todos os empréstimos</div><a class="btn btn-sm" href="http://localhost:5000/api/reports/export/all" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon green"><i class="ti ti-book"></i></div><div><div class="report-title">Livros mais emprestados</div><div class="report-desc">Ranking por demanda</div><a class="btn btn-sm" href="http://localhost:5000/api/reports/export/books" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon amber"><i class="ti ti-users"></i></div><div><div class="report-title">Por turma</div><div class="report-desc">Agrupado por turma</div><a class="btn btn-sm" href="http://localhost:5000/api/reports/export/by-class" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
+            <div class="report-card"><div class="report-icon red"><i class="ti ti-clock-exclamation"></i></div><div><div class="report-title">Empréstimos atrasados</div><div class="report-desc">Alunos com devolução vencida</div><a class="btn btn-sm" href="/api/reports/export/overdue" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
+            <div class="report-card"><div class="report-icon blue"><i class="ti ti-transfer"></i></div><div><div class="report-title">Histórico completo</div><div class="report-desc">Todos os empréstimos</div><a class="btn btn-sm" href="/api/reports/export/all" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
+            <div class="report-card"><div class="report-icon green"><i class="ti ti-book"></i></div><div><div class="report-title">Livros mais emprestados</div><div class="report-desc">Ranking por demanda</div><a class="btn btn-sm" href="/api/reports/export/books" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
+            <div class="report-card"><div class="report-icon amber"><i class="ti ti-users"></i></div><div><div class="report-title">Por turma</div><div class="report-desc">Agrupado por turma</div><a class="btn btn-sm" href="/api/reports/export/by-class" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
+            <div class="report-card"><div class="report-icon purple"><i class="ti ti-user-check"></i></div><div><div class="report-title">Status de alunos</div><div class="report-desc">Quem pegou, quem está devendo e quem devolveu</div><a class="btn btn-sm" href="/api/reports/export/student-status" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
           </div></div>
         </div>
 

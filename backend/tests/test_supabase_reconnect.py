@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import backend.utils.supabase_client as sb
+import utils.supabase_client as sb
 
 
 def test_get_client_retries_after_60_seconds(monkeypatch):

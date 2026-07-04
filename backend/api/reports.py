@@ -121,3 +121,61 @@ def export_all():
         rows.append([s.get("nome",""),s.get("turma",""),b.get("titulo",""),l.get("exemplar",""),
                      l.get("data_emprestimo",""),l.get("data_devolucao_prevista",""),l.get("devolvido_em","") or "",loan_status(l)])
     return _csv_resp(rows,"historico-completo.csv")
+
+
+@reports_bp.route("/export/books", methods=["GET"])
+def export_books():
+    books, _, loans = _fetch_all(get_client())
+    counts = {}
+    for loan in loans:
+        counts[loan["livro_id"]] = counts.get(loan["livro_id"], 0) + 1
+
+    bmap = {book["id"]: book for book in books}
+    rows = [["Título", "Autor", "Gênero", "Total de empréstimos"]]
+    for book_id, total in sorted(counts.items(), key=lambda item: item[1], reverse=True):
+        book = bmap.get(book_id, {})
+        rows.append([book.get("titulo", ""), book.get("autor", ""), book.get("genero", ""), total])
+
+    return _csv_resp(rows, "livros-mais-emprestados.csv")
+
+
+@reports_bp.route("/export/by-class", methods=["GET"])
+def export_by_class():
+    _, students, loans = _fetch_all(get_client())
+    smap = {student["id"]: student.get("turma", "?") for student in students}
+    counts = {}
+
+    for loan in loans:
+        cls = smap.get(loan["aluno_id"], "?")
+        counts[cls] = counts.get(cls, 0) + 1
+
+    rows = [["Turma", "Total de empréstimos"]]
+    for cls, total in sorted(counts.items()):
+        rows.append([cls, total])
+
+    return _csv_resp(rows, "emprestimos-por-turma.csv")
+
+
+@reports_bp.route("/export/student-status", methods=["GET"])
+def export_student_status():
+    books, students, loans = _fetch_all(get_client())
+    bmap = {book["id"]: book for book in books}
+    smap = {student["id"]: student for student in students}
+    rows = [["Aluno", "Turma", "Livro", "Exemplar", "Status", "Emprestado em", "Vencimento", "Devolvido em"]]
+
+    for loan in loans:
+        student = smap.get(loan.get("aluno_id"), {})
+        book = bmap.get(loan.get("livro_id"), {})
+        status = "devolvido" if loan.get("devolvido_em") else ("emprestado" if loan_status(loan) == "active" else "atrasado")
+        rows.append([
+            student.get("nome", ""),
+            student.get("turma", ""),
+            book.get("titulo", ""),
+            loan.get("exemplar", ""),
+            status,
+            loan.get("data_emprestimo", ""),
+            loan.get("data_devolucao_prevista", ""),
+            loan.get("devolvido_em", "") or "",
+        ])
+
+    return _csv_resp(rows, "status-alunos-emprestimos.csv")

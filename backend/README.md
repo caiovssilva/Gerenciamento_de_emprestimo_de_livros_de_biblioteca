@@ -117,10 +117,10 @@ O sistema possui **dois jeitos de entrar**:
 
 | Usuário | Senha | Papel |
 |---------|-------|-------|
-| `admin` | `narceu2026` | Administrador (acesso total) |
-| `biblioteca` | `narceu2026` | Bibliotecária (acesso total) |
+| `admin` | `senha configurada no backend` | Administrador (acesso total) |
+| `biblioteca` | `senha configurada no backend` | Bibliotecária (acesso total) |
 
-Esses são os usuários "reais" do sistema. Em **Configurações → Minha carteirinha de acesso**, qualquer um deles pode gerar uma **carteirinha PNG** com seu nome, usuário, senha e um **QR Code** que permite entrar direto na tela de login sem digitar nada (botão "Entrar com carteirinha").
+Esses são os usuários "reais" do sistema. Em **Configurações → Minha carteirinha de acesso**, qualquer um deles pode gerar uma **carteirinha PNG** com seu nome, usuário e um **QR Code** que permite entrar direto na tela de login sem digitar nada (botão "Entrar com carteirinha").
 
 ### 2. Carteirinha com QR Code (Bibliotecário)
 

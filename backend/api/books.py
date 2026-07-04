@@ -11,6 +11,19 @@ GENR_FILE  = DATA_DIR / "generos.json"
 LOAN_FILE  = DATA_DIR / "emprestimos.json"
 
 
+def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:
+    copies = []
+    for idx in range(max(1, int(total))):
+        code = str(idx + 1).zfill(3)
+        exemplar_id = f"{book_id}-EX-{code}-{new_id()}"
+        copies.append({
+            "id": exemplar_id,
+            "code": code,
+            "qr_data": f"EXEMPLAR-{book_id}-{code}-{exemplar_id}",
+        })
+    return copies
+
+
 @books_bp.route("/", methods=["GET"])
 def list_books():
     q     = request.args.get("q", "").strip().lower()
@@ -64,8 +77,13 @@ def create_book():
     sb = get_client()
     try: copies = max(1, int(body.get("exemplares", 1)))
     except: copies = 1
-    payload = {"id": new_id(), "isbn": body.get("isbn",""), "titulo": body["titulo"].strip(),
+    book_id = new_id()
+    payload = {"id": book_id, "isbn": body.get("isbn",""), "titulo": body["titulo"].strip(),
                "autor": body["autor"].strip(), "area": body.get("area","Geral"), "exemplares": copies}
+    exemplar_meta = _build_exemplar_meta(book_id, copies)
+    payload["exemplares_ids"] = [item["id"] for item in exemplar_meta]
+    payload["exemplares_meta"] = exemplar_meta
+    payload["qr_id"] = f"BOOK-{book_id}-{new_id()}"
     gid = body.get("genero_id") or None
     if gid:
         try:
@@ -86,7 +104,7 @@ def create_book():
     try:
         import qrcode as ql, base64; from io import BytesIO
         qr = ql.QRCode(version=1, box_size=6, border=2)
-        qr.add_data(payload["id"]); qr.make(fit=True)
+        qr.add_data(payload["qr_id"]); qr.make(fit=True)
         img = qr.make_image(fill_color="#1a4f8a", back_color="white")
         buf = BytesIO(); img.save(buf, format="PNG")
         result["qr_code"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

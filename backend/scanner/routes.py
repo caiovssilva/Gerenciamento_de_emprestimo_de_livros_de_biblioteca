@@ -8,6 +8,7 @@ QR Code: geração, decodificação e geração de cartão imprimível (PDF-like
 """
 
 import base64
+import re
 import threading
 import time
 from io import BytesIO
@@ -139,7 +140,7 @@ ADMIN_LOGIN_DEFAULT = "admin"
 
 
 def _resolve_qr(code: str) -> dict:
-    """Tenta encontrar o código como ID/ISBN de livro, carteirinha de aluno ou cartão de admin."""
+    """Tenta encontrar o código como ID/ISBN de livro, carteirinha de aluno, QR único por exemplar ou cartão de admin."""
     from pathlib import Path
     from api._helpers import read_json
     DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
@@ -148,29 +149,44 @@ def _resolve_qr(code: str) -> dict:
 
     code = (code or "").strip()
 
-    # Cartão de administrador (gerado pelo próprio sistema, não está no banco)
     if code.startswith(ADMIN_CARD_PREFIX):
         login = code[len(ADMIN_CARD_PREFIX):] or ADMIN_LOGIN_DEFAULT
         return {"type": "admin", "data": {"login": login}}
+
+    book_ref = code
+    exemplar_code = None
+    exemplar_id = None
+    match = re.match(r"^EXEMPLAR-(.+)-(.+)-(.+)$", code)
+    if match:
+        book_ref = match[1]
+        exemplar_code = match[2]
+        exemplar_id = match[3]
 
     try:
         from utils import get_client, sb_exec
         sb = get_client()
 
-        # Tenta como livro
         try:
-            books = sb_exec(sb.table("livros").select("*").eq("id", code))
+            books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
         except Exception:
             books = []
         if not books:
             try:
-                books = sb_exec(sb.table("livros").select("*").eq("isbn", code))
+                books = sb_exec(sb.table("livros").select("*").eq("isbn", book_ref))
+            except Exception:
+                books = []
+        if not books:
+            try:
+                books = sb_exec(sb.table("livros").select("*").eq("qr_id", book_ref))
             except Exception:
                 books = []
         if books:
-            return {"type": "book", "data": books[0]}
+            data = dict(books[0])
+            if exemplar_code or exemplar_id:
+                data["exemplar_code"] = exemplar_code
+                data["exemplar_id"] = exemplar_id
+            return {"type": "book", "data": data}
 
-        # Tenta como aluno
         try:
             students = sb_exec(sb.table("alunos").select("*").eq("id", code))
         except Exception:
@@ -180,18 +196,26 @@ def _resolve_qr(code: str) -> dict:
                 students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
             except Exception:
                 students = []
+        if not students:
+            try:
+                students = sb_exec(sb.table("alunos").select("*").eq("qr_id", code))
+            except Exception:
+                students = []
         if students:
             students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}
     except Exception:
         pass
 
-    # Fallback: arquivos JSON locais
     try:
-        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == code or b.get("isbn") == code]
+        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == book_ref or b.get("isbn") == book_ref or b.get("qr_id") == book_ref]
         if books:
-            return {"type": "book", "data": books[0]}
-        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code]
+            data = dict(books[0])
+            if exemplar_code or exemplar_id:
+                data["exemplar_code"] = exemplar_code
+                data["exemplar_id"] = exemplar_id
+            return {"type": "book", "data": data}
+        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code or s.get("qr_id") == code]
         if students:
             students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}
@@ -337,7 +361,7 @@ def book_card(book_id):
             field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
             field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
             field3      = f"Exemplares: {book.get('exemplares', 1)}",
-            qr_data     = book["id"],
+            qr_data     = book.get("qr_id") or f"BOOK-{book['id']}",
             badge       = book.get("genero_nome", ""),
             color       = "#1a4f8a",
         )
@@ -390,7 +414,7 @@ def student_card(student_id):
             field1      = f"Sala: {sala_nome}",
             field2      = f"Carteirinha: {student.get('carteirinha', '') or 'N/A'}",
             field3      = f"ID: {student['id'][:8].upper()}",
-            qr_data     = student["id"],
+            qr_data     = student.get("qr_id") or f"STUDENT-{student['id']}",
             badge       = "BIBLIOTECÁRIO" if student.get("is_librarian") else student.get("turma", ""),
             color       = "#166534",
         )
@@ -431,7 +455,7 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
 
     # Header
     draw.rounded_rectangle([14, 14, W-14, 72], radius=16, fill=header_color)
-    draw.text((28, 24), "BIBLIOTECA narceu de paiva filho", fill=(255, 255, 255), font=_load_font(18, bold=True))
+    draw.text((28, 24), "BIBLIOTECA NARCEU DE PAIVA FILHO", fill=(255, 255, 255), font=_load_font(18, bold=True))
     header_label = "CARTEIRINHA" if entity_type == "aluno" else "CARTÃO DE LIVRO"
     draw.text((28, 46), header_label, fill=(255, 255, 255), font=_load_font(12, bold=True))
     draw.rectangle([14, 72, W-14, 76], fill=(255, 255, 255))
@@ -510,7 +534,7 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     footer_y = details_y + details_h + 18
     id_short = qr_data[:8].upper() if len(qr_data) >= 8 else qr_data
     draw.text((34, footer_y), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
-    draw.text((34, footer_y + 21), "Biblioteca narceu de paiva filho — Carteirinha", fill=text_muted, font=_load_font(10))
+    draw.text((34, footer_y + 21), "Biblioteca Narceu de Paiva Filho — Carteirinha", fill=text_muted, font=_load_font(10))
 
     # Barra inferior contrastante
     draw.rectangle([0, H - 10, W, H], fill=header_color)

@@ -49,11 +49,12 @@ def get_student(student_id):
         try:
             rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("id", student_id))
             if not rows: rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("carteirinha", student_id))
+            if not rows: rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("qr_id", student_id))
         except:
             rows = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
     if not rows:
         all_s = read_json(ALUNOS_FILE)
-        rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id]
+        rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id or s.get("qr_id")==student_id]
     if not rows: return jsonify({"error": "Aluno não encontrado"}), 404
     s = rows[0]; sala_data = s.pop("salas",None) or {}
     rmap = {r["id"]:r for r in read_json(ROOMS_FILE)}
@@ -85,14 +86,31 @@ def create_student():
         try: rows = sb_exec(sb.table("alunos").insert(payload))
         except Exception as e:
             m = str(e).lower()
-            if "sala_id" in m and "could not find" in m: payload.pop("sala_id",None); rows=sb_exec(sb.table("alunos").insert(payload))
-            elif "duplicate key" in m or "unique constraint" in m: return jsonify({"error":"Carteirinha já cadastrada."}),409
-            elif is_offline_error(e): s=read_json(ALUNOS_FILE); s.append(payload); write_json(ALUNOS_FILE,s); rows=[payload]
-            else: raise
+            if "sala_id" in m and "could not find" in m:
+                payload.pop("sala_id", None)
+                rows = sb_exec(sb.table("alunos").insert(payload))
+            elif "duplicate key" in m or "unique constraint" in m:
+                existing = [s for s in read_json(ALUNOS_FILE) if s.get("carteirinha") == card]
+                if existing:
+                    rows = [existing[0]]
+                else:
+                    return jsonify({"error":"Carteirinha já cadastrada."}),409
+            elif is_offline_error(e):
+                s = read_json(ALUNOS_FILE)
+                s.append(payload)
+                write_json(ALUNOS_FILE, s)
+                rows = [payload]
+            else:
+                raise
     else:
-        all_s=read_json(ALUNOS_FILE)
-        if any(s.get("carteirinha")==card for s in all_s): return jsonify({"error":"Carteirinha já cadastrada."}),409
-        all_s.append(payload); write_json(ALUNOS_FILE,all_s); rows=[payload]
+        all_s = read_json(ALUNOS_FILE)
+        existing = [s for s in all_s if s.get("carteirinha") == card]
+        if existing:
+            rows = [existing[0]]
+        else:
+            all_s.append(payload)
+            write_json(ALUNOS_FILE, all_s)
+            rows = [payload]
 
     result = rows[0] if rows else payload
     try:

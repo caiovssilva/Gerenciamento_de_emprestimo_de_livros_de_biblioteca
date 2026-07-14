@@ -60,9 +60,10 @@ def get_book(book_id):
     try:
         rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("id", book_id))
         if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("isbn", book_id))
+        if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("qr_id", book_id))
     except:
         all_b = read_json(BOOKS_FILE)
-        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id]
+        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id or b.get("qr_id")==book_id]
     if not rows: return jsonify({"error": "Livro não encontrado"}), 404
     b = rows[0]; g = b.pop("generos", None) or {}
     b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")

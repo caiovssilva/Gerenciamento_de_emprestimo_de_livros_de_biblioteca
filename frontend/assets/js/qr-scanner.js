@@ -293,11 +293,14 @@ const QRScanner = (() => {
       document.addEventListener("keydown", _escHandler);
 
       try {
+        if (_statusEl) _statusEl.textContent = "Solicitando permissão da câmera...";
         await _startWithPreferredCamera();
         await refreshCameras();
         if (_statusEl) _statusEl.textContent = "Procurando código...";
+        clearInterval(_timer);
         _timer = setInterval(_capture, 600);
       } catch (error) {
+        if (_statusEl) _statusEl.textContent = "Câmera indisponível.";
         Utils.toast("Câmera indisponível: " + error.message, "error");
         stop();
       }

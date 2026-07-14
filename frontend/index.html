@@ -2,7 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0">
+<meta name="theme-color" content="#1a4f8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Biblioteca IFES — Campus Aracruz</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -10,6 +12,7 @@
 <link rel="stylesheet" href="assets/css/main.css">
 </head>
 <body>
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleMobileSidebar(false)"></div>
 
 <!-- LOGIN -->
 <div id="login-screen">
@@ -37,20 +40,26 @@
 <!-- APP -->
 <div id="app">
   <div class="layout">
-    <nav class="sidebar">
-      <div class="sb-logo"><span class="name">📚 Biblioteca</span><span class="sub">Narceu de Paiva Filho</span></div>
+    <nav class="sidebar" aria-label="Menu principal">
+      <div class="sb-logo">
+        <div class="sb-logo-main">
+          <span class="name">📚 Biblioteca</span>
+          <span class="sub">Narceu de Paiva Filho</span>
+        </div>
+        <button class="sidebar-close-btn" onclick="toggleMobileSidebar(false)" aria-label="Fechar menu"><i class="ti ti-x"></i></button>
+      </div>
       <div class="sb-nav">
         <div class="sb-section">Principal</div>
         <button class="nav-btn active" data-page="dashboard"><i class="ti ti-layout-dashboard"></i>Painel</button>
         <button class="nav-btn" data-page="emprestimo"><i class="ti ti-transfer"></i>Empréstimos</button>
         <div class="sb-section">Cadastros</div>
-        <button class="nav-btn" data-page="livros"><i class="ti ti-book"></i>Acervo</button>
+        <button class="nav-btn" data-page="livros" data-role="admin"><i class="ti ti-book"></i>Acervo</button>
         <button class="nav-btn" data-page="generos" data-role="admin"><i class="ti ti-tag"></i>Gêneros</button>
         <button class="nav-btn" data-page="alunos" data-role="admin"><i class="ti ti-users"></i>Alunos</button>
         <button class="nav-btn" data-page="salas" data-role="admin"><i class="ti ti-door"></i>Salas</button>
         <div class="sb-section" data-role="admin">Outros</div>
         <button class="nav-btn" data-page="relatorios" data-role="admin"><i class="ti ti-chart-bar"></i>Relatórios</button>
-        <button class="nav-btn" data-page="config" data-role="admin"><i class="ti ti-settings"></i>Configurações</button>
+        <button class="nav-btn" data-page="config"><i class="ti ti-settings"></i>Configurações</button>
       </div>
       <div class="sb-footer">
         <div class="sb-avatar" id="sb-avatar-initials">AD</div>
@@ -64,7 +73,13 @@
 
     <div class="main-area">
       <div class="topbar">
-        <div><div class="topbar-title" id="topbar-title">Painel</div><div class="topbar-sub" id="topbar-sub">Visão geral</div></div>
+        <div class="topbar-left">
+          <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" onclick="toggleMobileSidebar()" aria-label="Abrir menu"><i class="ti ti-menu-2"></i></button>
+          <div>
+            <div class="topbar-title" id="topbar-title">Painel</div>
+            <div class="topbar-sub" id="topbar-sub">Visão geral</div>
+          </div>
+        </div>
         <div class="topbar-actions" id="topbar-actions"></div>
         <button class="topbar-cam-btn" title="Escanear carteirinha de aluno" onclick="openGlobalScanner()"><i class="ti ti-camera"></i></button>
       </div>
@@ -233,6 +248,12 @@
               </div>
               <div class="chart-body" style="height:300px;"><canvas id="chart-byclass"></canvas></div>
             </div>
+            <div class="chart-card full-width">
+              <div class="chart-card-header">
+                <h3><i class="ti ti-chart-dots-3" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Resumo em colunas para exportações</h3>
+              </div>
+              <div class="chart-body" style="height:280px;"><canvas id="chart-exports"></canvas></div>
+            </div>
           </div>
           <div style="margin-top:.25rem;"><div class="report-grid">
             <div class="report-card"><div class="report-icon red"><i class="ti ti-clock-exclamation"></i></div><div><div class="report-title">Empréstimos atrasados</div><div class="report-desc">Alunos com devolução vencida</div><a class="btn btn-sm" href="/api/reports/export/overdue" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
@@ -245,6 +266,19 @@
 
         <!-- CONFIG -->
         <div class="page" id="page-config">
+          <div class="card" style="max-width:760px;">
+            <div class="card-header"><h2><i class="ti ti-book" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Tutorial de uso</h2></div>
+            <div class="card-body">
+              <div class="alert alert-blue" style="margin-bottom:1rem;"><i class="ti ti-info-circle"></i><span>Este espaço reúne os passos principais para usar a biblioteca com rapidez, tanto no computador quanto no celular.</span></div>
+              <div style="display:grid;gap:0.8rem;">
+                <div class="dev-info"><strong>1. Fazer empréstimos</strong><br><small>Abra a página <b>Empréstimos</b>, escaneie o livro e a carteirinha do aluno e confirme o empréstimo.</small></div>
+                <div class="dev-info"><strong>2. Registrar devoluções</strong><br><small>Na lista de empréstimos, use o botão <b>Devolver</b> para encerrar o movimento e atualizar o status.</small></div>
+                <div class="dev-info"><strong>3. Consultar acervo</strong><br><small>Na página <b>Acervo</b> você encontra livros, exemplares disponíveis e informações rápidas para localizar cada item.</small></div>
+                <div class="dev-info"><strong>4. Ver relatórios</strong><br><small>Se estiver logado como administrador, a página <b>Relatórios</b> mostra gráficos e exportações para análise.</small></div>
+              </div>
+            </div>
+          </div>
+
           <div class="card" style="max-width:520px;">
             <div class="card-header"><h2>Status da Conexão</h2></div>
             <div class="card-body">
@@ -260,7 +294,7 @@
             </div>
           </div>
 
-          <div class="card" style="max-width:520px;">
+          <div class="card" style="max-width:520px;" data-role="admin">
             <div class="card-header"><h2><i class="ti ti-id-badge2" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Minha carteirinha de acesso</h2></div>
             <div class="card-body">
               <p style="font-size:13px;color:var(--muted);margin-bottom:1rem;">

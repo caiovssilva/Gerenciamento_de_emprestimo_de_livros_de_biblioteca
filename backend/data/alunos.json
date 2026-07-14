@@ -4,7 +4,8 @@
     "nome": "Ana Paula Souza",
     "turma": "INFO3A",
     "carteirinha": "2024001",
-    "sala_id": "s1"
+    "sala_id": "s1",
+    "is_librarian": true
   },
   {
     "id": "1e3b0a1f-f10f-4ed0-80e0-a00d0066db5f",
@@ -76,5 +77,33 @@
     "nome": "caio",
     "turma": "2",
     "carteirinha": "185548.1.32021194"
+  },
+  {
+    "id": "e36ff547-eb73-486d-a8cc-80f75f2a3b0d",
+    "nome": "Aluno QR",
+    "turma": "INF3A",
+    "carteirinha": "ALUQR001",
+    "qr_id": "STUDENT-e36ff547-eb73-486d-a8cc-80f75f2a3b0d-ecf1367f-bce6-4efd-ae66-47ffd6669006"
+  },
+  {
+    "id": "6f3fa176-3f3d-4b77-adef-36fa43706acd",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR002",
+    "qr_id": "STUDENT-6f3fa176-3f3d-4b77-adef-36fa43706acd-4908b37e-9dd7-42be-a1c0-ff7004cac1b8"
+  },
+  {
+    "id": "00ef7b96-121e-42e3-b0a9-0dddd18bccaf",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR777",
+    "qr_id": "STUDENT-00ef7b96-121e-42e3-b0a9-0dddd18bccaf-969442ae-ac72-44d8-9223-a568e6a13a8f"
+  },
+  {
+    "id": "9d912f3e-f0ca-4be7-93ea-cb883ec1a286",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR888",
+    "qr_id": "STUDENT-9d912f3e-f0ca-4be7-93ea-cb883ec1a286-49851ad9-eb27-4d39-9a0a-bdce744fc5a9"
   }
 ]

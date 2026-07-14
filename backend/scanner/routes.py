@@ -13,6 +13,13 @@ import threading
 import time
 from io import BytesIO
 
+try:
+    import cv2
+    import numpy as np
+except Exception:  # pragma: no cover - optional in some environments
+    cv2 = None
+    np = None
+
 from flask import Blueprint, jsonify, request, send_file
 
 qr_bp = Blueprint("qr", __name__)
@@ -98,9 +105,7 @@ def decode_image():
     Retorna: { primary, type: 'book'|'student'|'unknown', data: {...} }
     """
     try:
-        import cv2, numpy as np
         from PIL import Image
-        from pyzbar import pyzbar
     except ImportError as e:
         return jsonify({"error": f"Dependência faltando: {e}"}), 500
 
@@ -115,15 +120,33 @@ def decode_image():
             img_bytes = base64.b64decode(b64_data)
 
         pil_img = Image.open(BytesIO(img_bytes)).convert("RGB")
-        frame   = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-        decoded = pyzbar.decode(frame)
+
+        decoded = []
+        try:
+            if cv2 is not None and np is not None:
+                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                from pyzbar import pyzbar
+                decoded = pyzbar.decode(frame)
+        except Exception:
+            decoded = []
+
+        if not decoded:
+            try:
+                import cv2
+                import numpy as np
+                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                detector = cv2.QRCodeDetector()
+                value, _, _ = detector.detectAndDecode(frame)
+                if value:
+                    decoded = [type("Decoded", (), {"data": value.encode("utf-8")})()]
+            except Exception:
+                decoded = []
 
         if not decoded:
             return jsonify({"codes": [], "primary": None, "type": "unknown"})
 
         primary = decoded[0].data.decode("utf-8", errors="replace")
 
-        # Resolve contra o banco
         resolved = _resolve_qr(primary)
         return jsonify({
             "codes":   [d.data.decode("utf-8", errors="replace") for d in decoded],
@@ -167,17 +190,17 @@ def _resolve_qr(code: str) -> dict:
         sb = get_client()
 
         try:
-            books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
+            books = sb_exec(sb.table("livros").select("*").eq("qr_id", book_ref))
         except Exception:
             books = []
         if not books:
             try:
-                books = sb_exec(sb.table("livros").select("*").eq("isbn", book_ref))
+                books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
             except Exception:
                 books = []
         if not books:
             try:
-                books = sb_exec(sb.table("livros").select("*").eq("qr_id", book_ref))
+                books = sb_exec(sb.table("livros").select("*").eq("isbn", book_ref))
             except Exception:
                 books = []
         if books:
@@ -188,17 +211,17 @@ def _resolve_qr(code: str) -> dict:
             return {"type": "book", "data": data}
 
         try:
-            students = sb_exec(sb.table("alunos").select("*").eq("id", code))
+            students = sb_exec(sb.table("alunos").select("*").eq("qr_id", code))
         except Exception:
             students = []
         if not students:
             try:
-                students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
+                students = sb_exec(sb.table("alunos").select("*").eq("id", code))
             except Exception:
                 students = []
         if not students:
             try:
-                students = sb_exec(sb.table("alunos").select("*").eq("qr_id", code))
+                students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
             except Exception:
                 students = []
         if students:
@@ -208,14 +231,14 @@ def _resolve_qr(code: str) -> dict:
         pass
 
     try:
-        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == book_ref or b.get("isbn") == book_ref or b.get("qr_id") == book_ref]
+        books = [b for b in read_json(BOOKS_FILE) if b.get("qr_id") == book_ref or b.get("id") == book_ref or b.get("isbn") == book_ref]
         if books:
             data = dict(books[0])
             if exemplar_code or exemplar_id:
                 data["exemplar_code"] = exemplar_code
                 data["exemplar_id"] = exemplar_id
             return {"type": "book", "data": data}
-        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code or s.get("qr_id") == code]
+        students = [s for s in read_json(ALUNOS_FILE) if s.get("qr_id") == code or s.get("id") == code or s.get("carteirinha") == code]
         if students:
             students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}

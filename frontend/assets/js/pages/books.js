@@ -176,8 +176,9 @@ async function showEntityQR(type, id) {
     const color = type==="book" ? "#1a4f8a" : "#166534";
     const res   = await API.qr.generate(id, color);
     const entity = type==="book" ? Store.bookById(id) : Store.studentById(id);
-    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||id.slice(0,8)) : id.slice(0,8);
-    _showQRResult(res.image, `QR Code — ${name}`, id, type);
+    const entityId = entity?.qr_id || entity?.id || id;
+    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||entityId.slice(0,8)) : entityId.slice(0,8);
+    _showQRResult(res.image, `QR Code — ${name}`, entityId, type);
   } catch(e) { Utils.toast("Erro ao gerar QR: "+e.message,"error"); }
 }
 
@@ -192,8 +193,8 @@ async function printCard(type, id) {
 function _showQRResult(imgSrc, label, entityId, type) {
   Utils.el("qr-result-img").src     = imgSrc;
   Utils.el("qr-result-label").textContent = label;
-  Utils.el("qr-result-id").textContent    = `ID: ${entityId.slice(0,8).toUpperCase()}`;
-  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.slice(0,8)}.png`);
+  Utils.el("qr-result-id").textContent    = `ID: ${entityId}`;
+  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.replace(/[^a-zA-Z0-9]/g, "")}.png`);
   Utils.el("qr-print-card-btn").onclick   = () => printCard(type, entityId);
   Utils.openModal("modal-qr-result");
 }

@@ -45,8 +45,8 @@ function renderStudents() {
       ? `<span class="badge badge-librarian" title="Possui acesso ao painel como Bibliotecário"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
       : "";
     const accessBtn = s.is_librarian
-      ? `<button class="btn btn-sm btn-danger" title="Revogar acesso de bibliotecário" onclick="toggleLibrarianAccess('${s.id}', false)"><i class="ti ti-id-badge-off"></i></button>`
-      : `<button class="btn btn-sm" title="Permitir acesso (tornar Bibliotecário)" onclick="toggleLibrarianAccess('${s.id}', true)"><i class="ti ti-id-badge2"></i></button>`;
+      ? `<button class="btn btn-sm btn-librarian-revoke" title="Revogar acesso de bibliotecário" onclick="toggleLibrarianAccess('${s.id}', false)"><i class="ti ti-id-badge-off"></i>Remover</button>`
+      : `<button class="btn btn-sm btn-librarian" title="Permitir acesso (tornar Bibliotecário)" onclick="toggleLibrarianAccess('${s.id}', true)"><i class="ti ti-id-badge2"></i>Bibliotecário</button>`;
     return `<tr>
       <td class="td-mono">${s.carteirinha||s.card||s.id.slice(0,8)}</td>
       <td><strong>${s.nome||s.name}</strong> ${libBadge}</td>
@@ -137,7 +137,8 @@ async function saveStudent() {
       Utils.closeModal("modal-student");
       // Mostra QR gerado automaticamente
       if (result.qr_code) {
-        _showQRResult(result.qr_code, `QR Code de ${nome}`, result.id, "student");
+        const entityId = result.qr_id || result.id;
+        _showQRResult(result.qr_code, `QR Code de ${nome}`, entityId, "student");
       }
       Utils.toast("Aluno cadastrado! QR Code gerado.","success");
     }
@@ -310,6 +311,7 @@ function lookupHistoryBook() {
   const books = Store.books();
   const found = books.find(b =>
     (b.isbn||"").toLowerCase()===q ||
+    (b.qr_id||"").toLowerCase()===q ||
     (b.id||"").toLowerCase().startsWith(q) ||
     (b.titulo||b.title||"").toLowerCase().includes(q)
   );

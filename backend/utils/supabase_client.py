@@ -11,6 +11,7 @@ _KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or ""
 _client      = None
 _offline     = False
 _last_attempt = 0
+_retry_after_seconds = 60
 
 _NETWORK_ERROR_TOKENS = (
     "name or service not known",
@@ -86,6 +87,13 @@ def _now_seconds():
     return int(time.time())
 
 
+def reset_client_state():
+    global _client, _offline, _last_attempt
+    _client = None
+    _offline = False
+    _last_attempt = 0
+
+
 def get_client():
     global _client, _offline, _last_attempt
 
@@ -94,7 +102,7 @@ def get_client():
 
     if _offline:
         now = _now_seconds()
-        if now - _last_attempt < 60:
+        if now - _last_attempt < _retry_after_seconds:
             return _OfflineClient()
 
     _last_attempt = _now_seconds()

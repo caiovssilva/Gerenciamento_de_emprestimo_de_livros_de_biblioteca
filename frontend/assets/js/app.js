@@ -46,8 +46,10 @@ async function doLogin() {
     }
 
     const result = await response.json();
-    if (result.access === "admin") {
+      if (result.access === "admin") {
       _finishLogin({ role: "admin", login: result.login, name: result.name });
+    } else if (result.access === "librarian") {
+      _finishLogin({ role: "librarian", login: result.login, name: result.name });
     } else {
       errEl.textContent = "Nome ou senha incorretos.";
       Utils.el("login-pass").value = "";
@@ -152,11 +154,11 @@ function _finishLogin(user, showRoleToast) {
 function _applyRolePermissions() {
   const isLibrarian = currentUser?.role === "librarian";
   Utils.qsa('[data-role="admin"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
+  Utils.qsa('[data-role="librarian-hide"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
   document.body.classList.toggle("role-librarian", isLibrarian);
-  // Se a página atual ficou indisponível para o bibliotecário, redireciona
   if (isLibrarian) {
     const active = Utils.qs(".page.active");
-    const adminOnlyPages = ["alunos","salas","generos","relatorios","config"];
+    const adminOnlyPages = ["alunos","salas","generos","relatorios","livros"];
     if (active && adminOnlyPages.includes(active.id.replace("page-",""))) navigateTo("emprestimo");
   }
 }
@@ -175,8 +177,13 @@ function doLogout() {
   cancelQRLoginResult();
   Utils.qsa('[data-role="admin"]').forEach(el => el.classList.remove("lib-hidden"));
   document.body.classList.remove("role-librarian");
+  toggleMobileSidebar(false);
 }
 
+function toggleMobileSidebar(force) {
+  const shouldOpen = typeof force === "boolean" ? force : !document.body.classList.contains("sidebar-open");
+  document.body.classList.toggle("sidebar-open", shouldOpen);
+}
 
 function setupNavigationBindings() {
   Utils.qsa(".nav-btn[data-page]").forEach((btn) => {
@@ -184,6 +191,7 @@ function setupNavigationBindings() {
       const page = btn.dataset.page;
       if (!page) return;
       navigateTo(page);
+      toggleMobileSidebar(false);
     });
   });
 
@@ -271,6 +279,7 @@ const PAGE_META = {
 };
 
 function navigateTo(page) {
+  toggleMobileSidebar(false);
   Utils.qsa(".page").forEach(p => p.classList.remove("active"));
   Utils.qsa(".nav-btn[data-page]").forEach(b => b.classList.remove("active"));
   Utils.el("page-"+page)?.classList.add("active");
@@ -287,6 +296,9 @@ function navigateTo(page) {
   if (page==="generos")    renderGenres();
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") Charts.init();
+  if (page==="config" && isLibrarian()) {
+    Utils.el("topbar-actions").innerHTML = "";
+  }
 }
 
 // ── Empréstimo ────────────────────────────────────────────────────────
@@ -335,6 +347,7 @@ function lookupBook() {
   const books = Store.books();
   const found = books.find(b =>
     normalizeQueryValue(b.isbn) === q ||
+    normalizeQueryValue(b.qr_id) === q ||
     normalizeQueryValue(b.id).startsWith(q) ||
     normalizeQueryValue(b.titulo || b.title).includes(q)
   );
@@ -375,10 +388,11 @@ function lookupStudent() {
   if (!q) return;
   const studs = Store.students();
   const found = studs.find(s => {
-    const id   = normalizeQueryValue(s.id);
-    const card = normalizeQueryValue(s.card || s.carteirinha);
-    const name = normalizeQueryValue(s.nome || s.name);
-    return id === q || card === q || id.startsWith(q) || name.includes(q);
+    const id    = normalizeQueryValue(s.id);
+    const card  = normalizeQueryValue(s.card || s.carteirinha);
+    const qrId  = normalizeQueryValue(s.qr_id);
+    const name  = normalizeQueryValue(s.nome || s.name);
+    return id === q || card === q || qrId === q || id.startsWith(q) || name.includes(q);
   });
   if (!found) {
     setLoanStudent(null);
@@ -406,6 +420,7 @@ async function scanLoanStudent() {
       }
       if (input) input.value = student.carteirinha||student.card||student.id;
       setLoanStudent(student);
+      showStudentHistory(student.id);
       Utils.toast(`Aluno identificado: ${student.nome||student.name}`, 'success');
       return;
     }
@@ -545,12 +560,12 @@ function resolveQRCode(code) {
   }
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId || (b.qr_id||"") === parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
-  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized || s.qr_id === normalized);
+  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized || (s.qr_id||"") === normalized);
   if (student) return { type: "student", data: student };
-  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized);
+  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized || (b.qr_id||"") === normalized);
   if (book) return { type: "book", data: book };
   return { type: "unknown", data: null };
 }
@@ -567,7 +582,7 @@ async function resolveQRCodeAsync(code) {
 
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId || (b.qr_id||"") === parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
 
@@ -775,6 +790,7 @@ async function openGlobalScanner() {
         const input = Utils.el("student-input");
         if (input) input.value = student.carteirinha||student.card||student.id;
         setLoanStudent(student);
+        showStudentHistory(student.id);
         Utils.toast(`Aluno registrado para empréstimo: ${student.nome||student.name}`, "success");
         return;
       }
@@ -840,6 +856,11 @@ document.addEventListener("DOMContentLoaded", () => {
   Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);
   Utils.el("app")?.querySelector(".logout-btn")?.addEventListener("click", doLogout);
   Utils.el("app")?.querySelector(".topbar-cam-btn")?.addEventListener("click", openGlobalScanner);
+  Utils.el("mobile-nav-toggle")?.addEventListener("click", () => toggleMobileSidebar());
+  Utils.el("sidebar-backdrop")?.addEventListener("click", () => toggleMobileSidebar(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") toggleMobileSidebar(false);
+  });
 
   setupNavigationBindings();
   improveFormAccessibility();

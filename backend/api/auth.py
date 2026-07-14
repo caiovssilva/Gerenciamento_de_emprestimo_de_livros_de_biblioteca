@@ -85,8 +85,9 @@ def login():
             current_app.logger.warning(f"Falha de login para '{login_str}'")
             return jsonify({"error": "Usuário ou senha incorretos"}), 401
         
+        access = "librarian" if user["login"].lower() == "biblioteca" else "admin"
         return jsonify({
-            "access": "admin",
+            "access": access,
             "id": user["id"],
             "login": user["login"],
             "name": user["name"]

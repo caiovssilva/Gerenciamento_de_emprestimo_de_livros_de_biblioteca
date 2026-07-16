@@ -161,7 +161,7 @@ def export_student_status():
     books, students, loans = _fetch_all(get_client())
     bmap = {book["id"]: book for book in books}
     smap = {student["id"]: student for student in students}
-    rows = [["Aluno", "Turma", "Livro", "Exemplar", "Status", "Emprestado em", "Vencimento", "Devolvido em"]]
+    rows = [["Aluno", "Turma", "Livro", "Exemplar", "Situação", "Emprestado em", "Vencimento", "Devolvido em"]]
 
     for loan in loans:
         student = smap.get(loan.get("aluno_id"), {})

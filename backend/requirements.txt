@@ -6,4 +6,5 @@ Pillow==10.4.0
 opencv-python-headless==4.10.0.84
 pyzbar==0.1.9
 numpy==1.26.4
-supabase==2.31.0
+supabase==2.31.0 
+gunicorn==22.0.0

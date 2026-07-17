@@ -111,7 +111,7 @@ def serve_frontend(path):
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 if __name__ == "__main__":
-    port  = int(os.getenv("FLASK_PORT", 5000))
+    port  = int(os.getenv("PORT", os.getenv("FLASK_PORT", 5000)))
     debug = os.getenv("FLASK_ENV", "development") == "development"
     print(f"\n🚀 Biblioteca narceu de paiva filho v3 — http://localhost:{port}\n")
     print(f"📝 DEBUG mode: {debug}")

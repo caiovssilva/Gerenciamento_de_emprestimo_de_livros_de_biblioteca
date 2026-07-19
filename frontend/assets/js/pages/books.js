@@ -176,7 +176,7 @@ async function showEntityQR(type, id) {
     const color = type==="book" ? "#1a4f8a" : "#166534";
     const res   = await API.qr.generate(id, color);
     const entity = type==="book" ? Store.bookById(id) : Store.studentById(id);
-    const entityId = entity?.qr_id || entity?.id || id;
+    const entityId = entity?.id || id;
     const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||entityId.slice(0,8)) : entityId.slice(0,8);
     _showQRResult(res.image, `QR Code — ${name}`, entityId, type);
   } catch(e) { Utils.toast("Erro ao gerar QR: "+e.message,"error"); }

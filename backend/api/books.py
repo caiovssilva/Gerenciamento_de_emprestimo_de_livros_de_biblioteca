@@ -60,10 +60,9 @@ def get_book(book_id):
     try:
         rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("id", book_id))
         if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("isbn", book_id))
-        if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("qr_id", book_id))
     except:
         all_b = read_json(BOOKS_FILE)
-        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id or b.get("qr_id")==book_id]
+        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id]
     if not rows: return jsonify({"error": "Livro não encontrado"}), 404
     b = rows[0]; g = b.pop("generos", None) or {}
     b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")
@@ -84,7 +83,6 @@ def create_book():
     exemplar_meta = _build_exemplar_meta(book_id, copies)
     payload["exemplares_ids"] = [item["id"] for item in exemplar_meta]
     payload["exemplares_meta"] = exemplar_meta
-    payload["qr_id"] = f"BOOK-{book_id}-{new_id()}"
     gid = body.get("genero_id") or None
     if gid:
         try:
@@ -105,7 +103,7 @@ def create_book():
     try:
         import qrcode as ql, base64; from io import BytesIO
         qr = ql.QRCode(version=1, box_size=6, border=2)
-        qr.add_data(payload["qr_id"]); qr.make(fit=True)
+        qr.add_data(payload["id"]); qr.make(fit=True)
         img = qr.make_image(fill_color="#1a4f8a", back_color="white")
         buf = BytesIO(); img.save(buf, format="PNG")
         result["qr_code"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

@@ -16,9 +16,11 @@ from io import BytesIO
 try:
     import cv2
     import numpy as np
+    from pyzbar import pyzbar
 except Exception:  # pragma: no cover - optional in some environments
     cv2 = None
     np = None
+    pyzbar = None
 
 from flask import Blueprint, jsonify, request, send_file
 
@@ -123,9 +125,8 @@ def decode_image():
 
         decoded = []
         try:
-            if cv2 is not None and np is not None:
+            if cv2 is not None and np is not None and pyzbar is not None:
                 frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                from pyzbar import pyzbar
                 decoded = pyzbar.decode(frame)
         except Exception:
             decoded = []
@@ -190,14 +191,9 @@ def _resolve_qr(code: str) -> dict:
         sb = get_client()
 
         try:
-            books = sb_exec(sb.table("livros").select("*").eq("qr_id", book_ref))
+            books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
         except Exception:
             books = []
-        if not books:
-            try:
-                books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
-            except Exception:
-                books = []
         if not books:
             try:
                 books = sb_exec(sb.table("livros").select("*").eq("isbn", book_ref))
@@ -211,14 +207,9 @@ def _resolve_qr(code: str) -> dict:
             return {"type": "book", "data": data}
 
         try:
-            students = sb_exec(sb.table("alunos").select("*").eq("qr_id", code))
+            students = sb_exec(sb.table("alunos").select("*").eq("id", code))
         except Exception:
             students = []
-        if not students:
-            try:
-                students = sb_exec(sb.table("alunos").select("*").eq("id", code))
-            except Exception:
-                students = []
         if not students:
             try:
                 students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
@@ -231,14 +222,14 @@ def _resolve_qr(code: str) -> dict:
         pass
 
     try:
-        books = [b for b in read_json(BOOKS_FILE) if b.get("qr_id") == book_ref or b.get("id") == book_ref or b.get("isbn") == book_ref]
+        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == book_ref or b.get("isbn") == book_ref]
         if books:
             data = dict(books[0])
             if exemplar_code or exemplar_id:
                 data["exemplar_code"] = exemplar_code
                 data["exemplar_id"] = exemplar_id
             return {"type": "book", "data": data}
-        students = [s for s in read_json(ALUNOS_FILE) if s.get("qr_id") == code or s.get("id") == code or s.get("carteirinha") == code]
+        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code]
         if students:
             students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}
@@ -384,7 +375,7 @@ def book_card(book_id):
             field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
             field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
             field3      = f"Exemplares: {book.get('exemplares', 1)}",
-            qr_data     = book.get("qr_id") or f"BOOK-{book['id']}",
+            qr_data     = book["id"],
             badge       = book.get("genero_nome", ""),
             color       = "#1a4f8a",
         )
@@ -437,7 +428,7 @@ def student_card(student_id):
             field1      = f"Sala: {sala_nome}",
             field2      = f"Carteirinha: {student.get('carteirinha', '') or 'N/A'}",
             field3      = f"ID: {student['id'][:8].upper()}",
-            qr_data     = student.get("qr_id") or f"STUDENT-{student['id']}",
+            qr_data     = student["id"],
             badge       = "BIBLIOTECÁRIO" if student.get("is_librarian") else student.get("turma", ""),
             color       = "#166534",
         )

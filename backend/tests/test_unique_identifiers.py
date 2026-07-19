@@ -38,5 +38,4 @@ def test_create_book_generates_distinct_ids_and_qr_codes_for_same_title(monkeypa
     second_data = second.get_json()
 
     assert first_data["id"] != second_data["id"]
-    assert first_data["qr_id"] != second_data["qr_id"]
     assert first_data["exemplares_ids"][0] != second_data["exemplares_ids"][0]

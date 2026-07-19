@@ -42,27 +42,20 @@ def _find_student_by_ref(sb, student_ref):
         return None
 
     try:
-        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("id", student_ref))
+        rows = sb_exec(sb.table("alunos").select("id,carteirinha").eq("id", student_ref))
         if rows:
             return rows[0]
     except Exception:
         rows = []
 
     try:
-        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("carteirinha", student_ref))
+        rows = sb_exec(sb.table("alunos").select("id,carteirinha").eq("carteirinha", student_ref))
         if rows:
             return rows[0]
     except Exception:
         rows = []
 
-    try:
-        rows = sb_exec(sb.table("alunos").select("id,carteirinha,qr_id").eq("qr_id", student_ref))
-        if rows:
-            return rows[0]
-    except Exception:
-        rows = []
-
-    local_students = [s for s in read_json(ALUNOS_FILE) if str(s.get("id", "")) == student_ref or str(s.get("carteirinha", "")) == student_ref or str(s.get("qr_id", "")) == student_ref]
+    local_students = [s for s in read_json(ALUNOS_FILE) if str(s.get("id", "")) == student_ref or str(s.get("carteirinha", "")) == student_ref]
     return local_students[0] if local_students else None
 
 

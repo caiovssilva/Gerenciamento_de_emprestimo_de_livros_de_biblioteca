@@ -137,7 +137,7 @@ async function saveStudent() {
       Utils.closeModal("modal-student");
       // Mostra QR gerado automaticamente
       if (result.qr_code) {
-        const entityId = result.qr_id || result.id;
+        const entityId = result.id;
         _showQRResult(result.qr_code, `QR Code de ${nome}`, entityId, "student");
       }
       Utils.toast("Aluno cadastrado! QR Code gerado.","success");
@@ -311,7 +311,6 @@ function lookupHistoryBook() {
   const books = Store.books();
   const found = books.find(b =>
     (b.isbn||"").toLowerCase()===q ||
-    (b.qr_id||"").toLowerCase()===q ||
     (b.id||"").toLowerCase().startsWith(q) ||
     (b.titulo||b.title||"").toLowerCase().includes(q)
   );

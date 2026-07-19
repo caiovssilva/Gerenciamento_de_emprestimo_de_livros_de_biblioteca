@@ -119,8 +119,7 @@
         "code": "001",
         "qr_data": "EXEMPLAR-68184284-a9fe-49f7-95f2-5a620b194c52-001-68184284-a9fe-49f7-95f2-5a620b194c52-EX-001-5257f613-00c6-4298-86e2-c54523ccedfa"
       }
-    ],
-    "qr_id": "BOOK-68184284-a9fe-49f7-95f2-5a620b194c52-4b0b2c84-6b68-44a1-9c49-364cd96cd573"
+    ]
   },
   {
     "id": "756fa77c-ce0f-461f-bfbd-87dba123a1b9",
@@ -138,8 +137,7 @@
         "code": "001",
         "qr_data": "EXEMPLAR-756fa77c-ce0f-461f-bfbd-87dba123a1b9-001-756fa77c-ce0f-461f-bfbd-87dba123a1b9-EX-001-e98f65ca-dc3e-4e67-8885-e5978ce0ad44"
       }
-    ],
-    "qr_id": "BOOK-756fa77c-ce0f-461f-bfbd-87dba123a1b9-397f50f7-d6ab-41fe-b417-c37d9264f07e"
+    ]
   },
   {
     "id": "dd226310-b93a-49b2-9bb0-4ae987f2b450",
@@ -157,8 +155,7 @@
         "code": "001",
         "qr_data": "EXEMPLAR-dd226310-b93a-49b2-9bb0-4ae987f2b450-001-dd226310-b93a-49b2-9bb0-4ae987f2b450-EX-001-288a6b4f-6220-4e45-b8f9-27b90f066733"
       }
-    ],
-    "qr_id": "BOOK-dd226310-b93a-49b2-9bb0-4ae987f2b450-7072f93c-7747-41b8-8a6c-2987ff9593b0"
+    ]
   },
   {
     "id": "f83e65aa-7fd0-4abe-ba3e-fdbb4cd0c54b",
@@ -176,64 +173,114 @@
         "code": "001",
         "qr_data": "EXEMPLAR-f83e65aa-7fd0-4abe-ba3e-fdbb4cd0c54b-001-f83e65aa-7fd0-4abe-ba3e-fdbb4cd0c54b-EX-001-fc86a7ce-2424-4a61-90ad-8dfd4bf25ccb"
       }
-    ],
-    "qr_id": "BOOK-f83e65aa-7fd0-4abe-ba3e-fdbb4cd0c54b-e059bcba-9acd-44ab-bcab-4480b7318eef"
+    ]
   },
   {
-    "id": "3a06eb85-0043-4e69-810d-eba3f3333530",
+    "id": "be968e3b-2509-4a4a-bbc4-3c943ba47840",
     "isbn": "",
     "titulo": "Livro QR Teste",
     "autor": "Autor Teste",
     "area": "Geral",
     "exemplares": 1,
     "exemplares_ids": [
-      "3a06eb85-0043-4e69-810d-eba3f3333530-EX-001-cd6fec1e-bf26-426e-a2f3-c4f7b073bec1"
+      "be968e3b-2509-4a4a-bbc4-3c943ba47840-EX-001-0696e8d3-a531-43d3-a4ac-0486c16dcd28"
     ],
     "exemplares_meta": [
       {
-        "id": "3a06eb85-0043-4e69-810d-eba3f3333530-EX-001-cd6fec1e-bf26-426e-a2f3-c4f7b073bec1",
+        "id": "be968e3b-2509-4a4a-bbc4-3c943ba47840-EX-001-0696e8d3-a531-43d3-a4ac-0486c16dcd28",
         "code": "001",
-        "qr_data": "EXEMPLAR-3a06eb85-0043-4e69-810d-eba3f3333530-001-3a06eb85-0043-4e69-810d-eba3f3333530-EX-001-cd6fec1e-bf26-426e-a2f3-c4f7b073bec1"
+        "qr_data": "EXEMPLAR-be968e3b-2509-4a4a-bbc4-3c943ba47840-001-be968e3b-2509-4a4a-bbc4-3c943ba47840-EX-001-0696e8d3-a531-43d3-a4ac-0486c16dcd28"
       }
-    ],
-    "qr_id": "BOOK-3a06eb85-0043-4e69-810d-eba3f3333530-58f0ae56-4bbe-4fb8-9d77-97ab392dbb5c"
+    ]
   },
   {
-    "id": "e728453b-7fb7-4757-9af4-3f33c52d52aa",
+    "id": "d494c2f2-b8af-4322-80e4-549a8ad98726",
     "isbn": "",
     "titulo": "Livro QR Teste",
     "autor": "Autor Teste",
     "area": "Geral",
     "exemplares": 1,
     "exemplares_ids": [
-      "e728453b-7fb7-4757-9af4-3f33c52d52aa-EX-001-843a420d-1311-4523-b672-9435f8a66918"
+      "d494c2f2-b8af-4322-80e4-549a8ad98726-EX-001-7588e2e1-8054-4096-82c6-49cc0e7b4096"
     ],
     "exemplares_meta": [
       {
-        "id": "e728453b-7fb7-4757-9af4-3f33c52d52aa-EX-001-843a420d-1311-4523-b672-9435f8a66918",
+        "id": "d494c2f2-b8af-4322-80e4-549a8ad98726-EX-001-7588e2e1-8054-4096-82c6-49cc0e7b4096",
         "code": "001",
-        "qr_data": "EXEMPLAR-e728453b-7fb7-4757-9af4-3f33c52d52aa-001-e728453b-7fb7-4757-9af4-3f33c52d52aa-EX-001-843a420d-1311-4523-b672-9435f8a66918"
+        "qr_data": "EXEMPLAR-d494c2f2-b8af-4322-80e4-549a8ad98726-001-d494c2f2-b8af-4322-80e4-549a8ad98726-EX-001-7588e2e1-8054-4096-82c6-49cc0e7b4096"
       }
-    ],
-    "qr_id": "BOOK-e728453b-7fb7-4757-9af4-3f33c52d52aa-1dbb5d44-8b29-41a7-995e-628b49093c3f"
+    ]
   },
   {
-    "id": "251ddaa4-62b4-4087-8639-63b5693c5382",
+    "id": "2213e43f-a151-4df1-a984-6cf2c2b08199",
     "isbn": "",
     "titulo": "Livro QR Teste",
     "autor": "Autor Teste",
     "area": "Geral",
     "exemplares": 1,
     "exemplares_ids": [
-      "251ddaa4-62b4-4087-8639-63b5693c5382-EX-001-d76e3472-d022-434b-a531-99dd5c494198"
+      "2213e43f-a151-4df1-a984-6cf2c2b08199-EX-001-1e46dc17-29e0-47c7-a454-d97e1953e519"
     ],
     "exemplares_meta": [
       {
-        "id": "251ddaa4-62b4-4087-8639-63b5693c5382-EX-001-d76e3472-d022-434b-a531-99dd5c494198",
+        "id": "2213e43f-a151-4df1-a984-6cf2c2b08199-EX-001-1e46dc17-29e0-47c7-a454-d97e1953e519",
         "code": "001",
-        "qr_data": "EXEMPLAR-251ddaa4-62b4-4087-8639-63b5693c5382-001-251ddaa4-62b4-4087-8639-63b5693c5382-EX-001-d76e3472-d022-434b-a531-99dd5c494198"
+        "qr_data": "EXEMPLAR-2213e43f-a151-4df1-a984-6cf2c2b08199-001-2213e43f-a151-4df1-a984-6cf2c2b08199-EX-001-1e46dc17-29e0-47c7-a454-d97e1953e519"
       }
+    ]
+  },
+  {
+    "id": "8062883f-416f-44f3-9e24-78520fbdc7a6",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "8062883f-416f-44f3-9e24-78520fbdc7a6-EX-001-6dc0916a-322e-4827-aa43-08337cf85b6d"
     ],
-    "qr_id": "BOOK-251ddaa4-62b4-4087-8639-63b5693c5382-46b6da3f-3f81-49f4-861b-9aba640ac9ad"
+    "exemplares_meta": [
+      {
+        "id": "8062883f-416f-44f3-9e24-78520fbdc7a6-EX-001-6dc0916a-322e-4827-aa43-08337cf85b6d",
+        "code": "001",
+        "qr_data": "EXEMPLAR-8062883f-416f-44f3-9e24-78520fbdc7a6-001-8062883f-416f-44f3-9e24-78520fbdc7a6-EX-001-6dc0916a-322e-4827-aa43-08337cf85b6d"
+      }
+    ]
+  },
+  {
+    "id": "8afda051-63a0-4e20-995e-8140cd6245ad",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "8afda051-63a0-4e20-995e-8140cd6245ad-EX-001-fc381369-9e93-4189-b0d2-bfdc6b3eafcb"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "8afda051-63a0-4e20-995e-8140cd6245ad-EX-001-fc381369-9e93-4189-b0d2-bfdc6b3eafcb",
+        "code": "001",
+        "qr_data": "EXEMPLAR-8afda051-63a0-4e20-995e-8140cd6245ad-001-8afda051-63a0-4e20-995e-8140cd6245ad-EX-001-fc381369-9e93-4189-b0d2-bfdc6b3eafcb"
+      }
+    ]
+  },
+  {
+    "id": "1fb62195-309a-4d33-ae90-0859b3afd861",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "1fb62195-309a-4d33-ae90-0859b3afd861-EX-001-3f669d30-df9d-4c7c-83cb-7c40c25f2711"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "1fb62195-309a-4d33-ae90-0859b3afd861-EX-001-3f669d30-df9d-4c7c-83cb-7c40c25f2711",
+        "code": "001",
+        "qr_data": "EXEMPLAR-1fb62195-309a-4d33-ae90-0859b3afd861-001-1fb62195-309a-4d33-ae90-0859b3afd861-EX-001-3f669d30-df9d-4c7c-83cb-7c40c25f2711"
+      }
+    ]
   }
 ]

@@ -49,12 +49,11 @@ def get_student(student_id):
         try:
             rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("id", student_id))
             if not rows: rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("carteirinha", student_id))
-            if not rows: rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("qr_id", student_id))
         except:
             rows = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
     if not rows:
         all_s = read_json(ALUNOS_FILE)
-        rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id or s.get("qr_id")==student_id]
+        rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id]
     if not rows: return jsonify({"error": "Aluno não encontrado"}), 404
     s = rows[0]; sala_data = s.pop("salas",None) or {}
     rmap = {r["id"]:r for r in read_json(ROOMS_FILE)}
@@ -78,8 +77,7 @@ def create_student():
         except:
             if not any(r.get("id")==sala for r in read_json(ROOMS_FILE)): sala=None
     card = (body.get("carteirinha") or "").strip() or sid[:8]
-    qr_id = f"STUDENT-{sid}-{new_id()}"
-    payload = {"id":sid,"nome":body["nome"].strip(),"turma":body["turma"].strip().upper(),"carteirinha":card,"qr_id":qr_id}
+    payload = {"id":sid,"nome":body["nome"].strip(),"turma":body["turma"].strip().upper(),"carteirinha":card}
     if sala: payload["sala_id"] = sala
 
     if table_ok(sb, "alunos"):
@@ -115,7 +113,7 @@ def create_student():
     result = rows[0] if rows else payload
     try:
         import qrcode as ql, base64; from io import BytesIO
-        qr=ql.QRCode(version=1,box_size=6,border=2); qr.add_data(qr_id); qr.make(fit=True)
+        qr=ql.QRCode(version=1,box_size=6,border=2); qr.add_data(sid); qr.make(fit=True)
         img=qr.make_image(fill_color="#166534",back_color="white")
         buf=BytesIO(); img.save(buf,format="PNG")
         result["qr_code"]="data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode()

@@ -347,7 +347,6 @@ function lookupBook() {
   const books = Store.books();
   const found = books.find(b =>
     normalizeQueryValue(b.isbn) === q ||
-    normalizeQueryValue(b.qr_id) === q ||
     normalizeQueryValue(b.id).startsWith(q) ||
     normalizeQueryValue(b.titulo || b.title).includes(q)
   );
@@ -390,9 +389,8 @@ function lookupStudent() {
   const found = studs.find(s => {
     const id    = normalizeQueryValue(s.id);
     const card  = normalizeQueryValue(s.card || s.carteirinha);
-    const qrId  = normalizeQueryValue(s.qr_id);
     const name  = normalizeQueryValue(s.nome || s.name);
-    return id === q || card === q || qrId === q || id.startsWith(q) || name.includes(q);
+    return id === q || card === q || id.startsWith(q) || name.includes(q);
   });
   if (!found) {
     setLoanStudent(null);
@@ -560,12 +558,12 @@ function resolveQRCode(code) {
   }
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId || (b.qr_id||"") === parsedExemplar.bookId);
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
-  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized || (s.qr_id||"") === normalized);
+  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
   if (student) return { type: "student", data: student };
-  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized || (b.qr_id||"") === normalized);
+  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized);
   if (book) return { type: "book", data: book };
   return { type: "unknown", data: null };
 }
@@ -582,7 +580,7 @@ async function resolveQRCodeAsync(code) {
 
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId || (b.qr_id||"") === parsedExemplar.bookId);
+    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
 

@@ -45,10 +45,19 @@ def write_json(path: Path, data: list) -> bool:
         return False
 
 
+_table_ok_cache = {}
+
 def table_ok(sb, table: str) -> bool:
-    """Verifica se a tabela Supabase existe e está acessível."""
+    """Verifica se a tabela Supabase existe e está acessível.
+    Respostas positivas ficam em cache (a tabela não deixa de existir
+    durante a execução do app). Respostas negativas nunca ficam em
+    cache, para o sistema continuar tentando se reconectar sozinho
+    quando o Supabase estiver temporariamente fora do ar."""
+    if _table_ok_cache.get(table):
+        return True
     try:
         sb_exec(sb.table(table).select("id").limit(1))
+        _table_ok_cache[table] = True
         return True
     except Exception as e:
         error_msg = str(e).lower()
@@ -58,14 +67,23 @@ def table_ok(sb, table: str) -> bool:
         return False
 
 
+_deleted_at_cache = {}
+
 def has_deleted_at(sb, table: str) -> bool:
-    """Verifica se a tabela tem coluna 'deleted_at' (soft delete)."""
+    """Verifica se a tabela tem coluna 'deleted_at' (soft delete).
+    Isso é uma característica fixa do esquema do banco (não muda com
+    o app rodando), então o resultado fica em cache dos dois jeitos,
+    assim que confirmado."""
+    if table in _deleted_at_cache:
+        return _deleted_at_cache[table]
     try:
         sb_exec(sb.table(table).select("deleted_at").limit(1))
+        _deleted_at_cache[table] = True
         return True
     except Exception as e:
         error_msg = str(e).lower()
         if any(msg in error_msg for msg in ["could not find the 'deleted_at' column", "column deleted_at does not exist"]):
+            _deleted_at_cache[table] = False
             return False
         logger.debug(f"Erro ao verificar coluna deleted_at: {e}")
         return False

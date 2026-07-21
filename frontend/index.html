@@ -19,24 +19,46 @@
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-card" id="login-card-form">
-    <div class="login-head">
-      <div class="logo-icon"><i class="ti ti-books"></i></div>
-      <h1>Biblioteca Narceu de Paiva Filho</h1><p>Acesso Restrito — todos direitos a caio vitor</p>
+  <!-- Painel de marca (herói) -->
+  <aside class="login-hero" aria-hidden="true">
+    <div class="login-hero-glow"></div>
+    <div class="login-hero-content">
+      <div class="login-hero-brand">
+        <span class="login-hero-mark"><i class="ti ti-books"></i></span>
+        <span>Biblioteca</span>
+      </div>
+      <h2 class="login-hero-title">Conhecimento organizado, ao seu alcance.</h2>
+      <p class="login-hero-text">Gerencie o acervo, empréstimos e leitores com uma experiência moderna, rápida e confortável.</p>
+      <ul class="login-hero-list">
+        <li><i class="ti ti-circle-check"></i> Controle completo de empréstimos e devoluções</li>
+        <li><i class="ti ti-circle-check"></i> Acervo e leitores sempre atualizados</li>
+        <li><i class="ti ti-circle-check"></i> Relatórios e indicadores em tempo real</li>
+      </ul>
     </div>
-    <div class="form-field"><label>Usuário</label><input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username"></div>
-    <div class="form-field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"></div>
-      <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
-    <p class="login-err" id="login-err"></p>
-    <div class="login-divider">ou</div>
-    <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
-    <p class="login-hint">Padrão: <strong>admin</strong> / <strong>narceu2026</strong></p>
-  </div>
+    <div class="login-hero-foot">Narceu de Paiva Filho</div>
+  </aside>
 
-  <!-- Resultado do login por QR -->
-  <div class="login-card" id="login-card-qr-result" style="display:none;">
-    <div id="login-qr-result-body"></div>
-    <button type="button" class="btn" style="width:100%;margin-top:1rem;" onclick="cancelQRLoginResult()"><i class="ti ti-arrow-left"></i> Voltar</button>
+  <!-- Coluna de formulário -->
+  <div class="login-panel">
+    <div class="login-card" id="login-card-form">
+      <div class="login-head">
+        <div class="logo-icon"><i class="ti ti-books"></i></div>
+        <h1>Bem-vindo de volta</h1><p>Biblioteca Narceu de Paiva Filho — acesso restrito</p>
+      </div>
+      <div class="form-field"><label>Usuário</label><input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username"></div>
+      <div class="form-field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"></div>
+        <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
+      <p class="login-err" id="login-err"></p>
+      <div class="login-divider">ou</div>
+      <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
+      <p class="login-hint">Padrão: <strong>admin</strong> / <strong>narceu2026</strong></p>
+    </div>
+
+    <!-- Resultado do login por QR -->
+    <div class="login-card" id="login-card-qr-result" style="display:none;">
+      <div id="login-qr-result-body"></div>
+      <button type="button" class="btn" style="width:100%;margin-top:1rem;" onclick="cancelQRLoginResult()"><i class="ti ti-arrow-left"></i> Voltar</button>
+    </div>
   </div>
 </div>
 

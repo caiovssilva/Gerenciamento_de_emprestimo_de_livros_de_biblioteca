@@ -9,8 +9,12 @@
  */
 
 const Charts = (() => {
-  let _charts   = { summary: null, topbooks: null, byclass: null };
+  let _charts   = { summary: null, topbooks: null, byclass: null, exports: null };
   let _pollTimer = null;
+  let _summarySeq = 0;
+  let _topBooksSeq = 0;
+  let _byClassSeq = 0;
+  let _exportSeq = 0;
 
   // ── Paleta ────────────────────────────────────────────────────
   const PALETTE = {
@@ -78,12 +82,14 @@ const Charts = (() => {
 
   // ── Gráfico 1: Resumo (emprestados / atrasados / devolvidos) ──
   async function _buildSummary(rawType = "bar") {
+    const seq = ++_summarySeq;
     const ctx = Utils.el("chart-summary");
     if (!ctx) return;
     _destroy("summary");
 
     let data;
     try { data = await API.reports.chartSummary(); } catch { return; }
+    if (seq !== _summarySeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
     const bgColors = [
@@ -121,6 +127,7 @@ const Charts = (() => {
 
   // ── Gráfico 2: Top livros ─────────────────────────────────────
   async function _buildTopBooks(rawType = "bar") {
+    const seq = ++_topBooksSeq;
     const ctx = Utils.el("chart-topbooks");
     if (!ctx) return;
     _destroy("topbooks");
@@ -128,6 +135,7 @@ const Charts = (() => {
     let data;
     try { data = await API.reports.topBooks(8); } catch { return; }
     if (!data?.length) return;
+    if (seq !== _topBooksSeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
     const labels  = data.map(d => d.titulo.length > 22 ? d.titulo.slice(0,22) + "…" : d.titulo);
@@ -152,6 +160,7 @@ const Charts = (() => {
 
   // ── Gráfico 3: Por turma ──────────────────────────────────────
   async function _buildByClass(rawType = "bar") {
+    const seq = ++_byClassSeq;
     const ctx = Utils.el("chart-byclass");
     if (!ctx) return;
     _destroy("byclass");
@@ -159,6 +168,7 @@ const Charts = (() => {
     let data;
     try { data = await API.reports.byClass(); } catch { return; }
     if (!data?.labels?.length) return;
+    if (seq !== _byClassSeq) return;
 
     const isRound = ["pie","doughnut","polarArea"].includes(rawType);
 
@@ -201,6 +211,35 @@ const Charts = (() => {
     });
   }
 
+  // ── Gráfico 4: Resumo em colunas para exportações ─────────────
+  async function _buildExportColumns() {
+    const seq = ++_exportSeq;
+    const ctx = Utils.el("chart-exports");
+    if (!ctx) return;
+    _destroy("exports");
+
+    let data;
+    try { data = await API.reports.chartSummary(); } catch { return; }
+    if (!data?.labels?.length) return;
+    if (seq !== _exportSeq) return;
+
+    _charts.exports = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: "Quantidade",
+          data: data.values,
+          backgroundColor: [PALETTE.emprestados.bg, PALETTE.atrasados.bg, PALETTE.devolvidos.bg],
+          borderColor: [PALETTE.emprestados.border, PALETTE.atrasados.border, PALETTE.devolvidos.border],
+          borderWidth: 2,
+          borderRadius: 6,
+        }],
+      },
+      options: _opts("bar"),
+    });
+  }
+
   // ── Polling ───────────────────────────────────────────────────
   function _startPolling(ms = 15000) {
     _stopPolling();
@@ -208,6 +247,7 @@ const Charts = (() => {
       await _buildSummary( Utils.el("chart-type-summary")?.value  || "bar");
       await _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar");
       await _buildByClass( Utils.el("chart-type-byclass")?.value  || "bar");
+      await _buildExportColumns();
     }, ms);
   }
   function _stopPolling() { clearInterval(_pollTimer); _pollTimer = null; }
@@ -215,10 +255,12 @@ const Charts = (() => {
   // ── API pública ───────────────────────────────────────────────
   return {
     async init() {
+      this.destroy();
       await Promise.all([
         _buildSummary( Utils.el("chart-type-summary")?.value  || "bar"),
         _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar"),
         _buildByClass( Utils.el("chart-type-byclass")?.value  || "bar"),
+        _buildExportColumns(),
       ]);
       _startPolling(15000);
     },
@@ -232,11 +274,16 @@ const Charts = (() => {
         _buildSummary( Utils.el("chart-type-summary")?.value  || "bar"),
         _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar"),
         _buildByClass( Utils.el("chart-type-byclass")?.value  || "bar"),
+        _buildExportColumns(),
       ]);
     },
 
     destroy() {
       _stopPolling();
+      _summarySeq += 1;
+      _topBooksSeq += 1;
+      _byClassSeq += 1;
+      _exportSeq += 1;
       Object.keys(_charts).forEach(_destroy);
     },
   };

@@ -1,20 +1,19 @@
 /**
- * assets/js/store.js  — v3
- * Estado global com suporte a salas e gêneros.
+ * assets/js/store.js — Estado global da aplicação.
  */
 const Store = (() => {
   const LS = {
     get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-    set: (k,v) => localStorage.setItem(k, JSON.stringify(v)),
+    set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
 
   let _books=[], _students=[], _loans=[], _rooms=[], _genres=[];
 
   function _normBook(b) {
-    return { ...b, title:b.titulo||b.title||"", author:b.autor||b.author||"", copies:b.exemplares||b.copies||1 };
+    return { ...b, title: b.titulo||b.title||"", author: b.autor||b.author||"", copies: b.exemplares||b.copies||1 };
   }
   function _normStudent(s) {
-    return { ...s, name:s.nome||s.name||"", class:s.turma||s.class||"", card:s.carteirinha||s.card||"" };
+    return { ...s, name: s.nome||s.name||"", class: s.turma||s.class||"", card: s.carteirinha||s.card||"" };
   }
 
   return {
@@ -33,23 +32,23 @@ const Store = (() => {
     loadLocal() {
       _books    = (LS.get("lib_books")    ||[]).map(_normBook);
       _students = (LS.get("lib_students") ||[]).map(_normStudent);
-      _loans    = LS.get("lib_loans")    ||[];
-      _rooms    = LS.get("lib_rooms")    ||[];
-      _genres   = LS.get("lib_genres")   ||[];
+      _loans    = LS.get("lib_loans")    || [];
+      _rooms    = LS.get("lib_rooms")    || [];
+      _genres   = LS.get("lib_genres")   || [];
     },
 
-    bookById:    id => _books.find(b=>b.id===id),
-    studentById: id => _students.find(s=>s.id===id),
-    loanById:    id => _loans.find(l=>l.id===id),
-    roomById:    id => _rooms.find(r=>r.id===id),
-    genreById:   id => _genres.find(g=>g.id===id),
+    bookById:    id => _books.find(b => b.id===id),
+    studentById: id => _students.find(s => s.id===id),
+    loanById:    id => _loans.find(l => l.id===id),
+    roomById:    id => _rooms.find(r => r.id===id),
+    genreById:   id => _genres.find(g => g.id===id),
 
     loanStatus(loan) {
       if (loan.devolvido_em) return "returned";
       return Utils.daysLeft(loan.data_devolucao_prevista) < 0 ? "overdue" : "active";
     },
-    activeLoans:  () => _loans.filter(l=>!l.devolvido_em),
-    overdueLoans: () => _loans.filter(l=>!l.devolvido_em && Utils.daysLeft(l.data_devolucao_prevista)<0),
-    classes:      () => [...new Set(_students.map(s=>s.turma||s.class||""))].filter(Boolean).sort(),
+    activeLoans:  () => _loans.filter(l => !l.devolvido_em),
+    overdueLoans: () => _loans.filter(l => !l.devolvido_em && Utils.daysLeft(l.data_devolucao_prevista) < 0),
+    classes:      () => [...new Set(_students.map(s => s.turma||s.class||""))].filter(Boolean).sort(),
   };
 })();

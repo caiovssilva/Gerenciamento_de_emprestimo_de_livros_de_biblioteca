@@ -37,6 +37,9 @@ function renderBooks() {
       ? `<span class="badge" style="${genreStyle}"><i class="ti ${b.genero_icone||'ti-book'}"></i>${b.genero_nome}</span>`
       : `<span class="badge badge-gray">Sem gênero</span>`;
 
+    const manageBtns = isLibrarian() ? "" : `
+          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>`;
     return `<tr>
       <td class="td-mono">${b.isbn||b.id.slice(0,8)}</td>
       <td><strong>${b.titulo||b.title}</strong></td>
@@ -49,9 +52,7 @@ function renderBooks() {
         <div style="display:flex;gap:4px;flex-wrap:wrap;">
           <button class="btn btn-sm" title="Ver exemplares"  onclick="showExemplares('${b.id}')"><i class="ti ti-list-details"></i></button>
           <button class="btn btn-sm" title="QR Code"         onclick="showEntityQR('book','${b.id}')"><i class="ti ti-qrcode"></i></button>
-          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>
-          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>
+          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>${manageBtns}
         </div>
       </td>
     </tr>`;
@@ -175,8 +176,9 @@ async function showEntityQR(type, id) {
     const color = type==="book" ? "#1a4f8a" : "#166534";
     const res   = await API.qr.generate(id, color);
     const entity = type==="book" ? Store.bookById(id) : Store.studentById(id);
-    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||id.slice(0,8)) : id.slice(0,8);
-    _showQRResult(res.image, `QR Code — ${name}`, id, type);
+    const entityId = entity?.id || id;
+    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||entityId.slice(0,8)) : entityId.slice(0,8);
+    _showQRResult(res.image, `QR Code — ${name}`, entityId, type);
   } catch(e) { Utils.toast("Erro ao gerar QR: "+e.message,"error"); }
 }
 
@@ -191,8 +193,8 @@ async function printCard(type, id) {
 function _showQRResult(imgSrc, label, entityId, type) {
   Utils.el("qr-result-img").src     = imgSrc;
   Utils.el("qr-result-label").textContent = label;
-  Utils.el("qr-result-id").textContent    = `ID: ${entityId.slice(0,8).toUpperCase()}`;
-  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.slice(0,8)}.png`);
+  Utils.el("qr-result-id").textContent    = `ID: ${entityId}`;
+  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.replace(/[^a-zA-Z0-9]/g, "")}.png`);
   Utils.el("qr-print-card-btn").onclick   = () => printCard(type, entityId);
   Utils.openModal("modal-qr-result");
 }
@@ -201,7 +203,7 @@ function _showPrintCard(imgSrc, filename) {
   // Abre em nova aba para impressão direta
   const w = window.open("","_blank","width=700,height=350");
   w.document.write(`<!DOCTYPE html>
-<html><head><title>Impressão — Biblioteca IFES</title>
+<html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
   body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;}
   .card-wrap{background:#fff;padding:16px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
@@ -214,7 +216,7 @@ function _showPrintCard(imgSrc, filename) {
 </style></head>
 <body>
 <div class="card-wrap">
-  <img src="${imgSrc}" alt="Cartão Biblioteca IFES">
+  <img src="${imgSrc}" alt="Cartão Biblioteca narceu de paiva filho">
   <div class="actions">
     <button class="print-btn" onclick="window.print()">🖨️ Imprimir</button>
     <a class="dl-btn" href="${imgSrc}" download="${filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>

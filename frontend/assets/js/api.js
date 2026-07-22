@@ -3,9 +3,12 @@
  * Comunicação com o backend Flask.
  */
 
-const SUPABASE_URL = "https://jwncagbmqipbzoeldlet.supabase.co";
-const SUPABASE_KEY = "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX";
-const API_BASE     = "http://localhost:5000/api";
+// Supabase config is provided by assets/js/lib/supabase-config.js when needed.
+const API_BASE = (() => {
+  const origin = window.location.origin;
+  if (origin && origin !== "null") return `${origin}/api`;
+  return "http://localhost:5000/api";
+})();
 
 async function apiFetch(path, options = {}) {
   try {
@@ -14,11 +17,21 @@ async function apiFetch(path, options = {}) {
       ...options,
     });
     if (res.status === 204) return {};
-    const data = await res.json();
+
+    const rawText = await res.text();
+    let data = {};
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = { error: rawText };
+      }
+    }
+
     if (!res.ok) throw new Error(data.error || `Erro HTTP ${res.status}`);
     return data;
   } catch (err) {
-    console.error("[API]", path, err.message);
+    console.error("[API]", path, err.message || err);
     throw err;
   }
 }
@@ -38,12 +51,14 @@ const API = {
     update:    (id,body)             => apiFetch(`/students/${id}`, { method:"PUT",    body:JSON.stringify(body) }),
     delete:    id                    => apiFetch(`/students/${id}`, { method:"DELETE" }),
     importCSV: text                  => apiFetch("/students/import/csv", { method:"POST", headers:{"Content-Type":"text/plain"}, body:text }),
+    toggleAccess: (id, isLibrarian)  => apiFetch(`/students/${id}/access`, { method:"PATCH", body:JSON.stringify({ is_librarian: isLibrarian }) }),
   },
   loans: {
     list:   (status="") => apiFetch(`/loans/?status=${status}`),
     get:    id           => apiFetch(`/loans/${id}`),
     create: body         => apiFetch("/loans/",              { method:"POST", body:JSON.stringify(body) }),
     return: (id,body)    => apiFetch(`/loans/${id}/return`,  { method:"POST", body:JSON.stringify(body) }),
+    renew:  (id,body={}) => apiFetch(`/loans/${id}/renew`,   { method:"POST", body:JSON.stringify(body) }),
   },
   reports: {
     chartSummary:    ()          => apiFetch("/reports/chart-summary"),
@@ -71,6 +86,8 @@ const API = {
     generate:      (data,col) => apiFetch("/qr/generate",           { method:"POST", body:JSON.stringify({ data, color:col }) }),
     cardBook:      id         => apiFetch(`/qr/card/book/${id}`),
     cardStudent:   id         => apiFetch(`/qr/card/student/${id}`),
+    cardAdmin:     login      => apiFetch(`/qr/card/admin/${login}`),
+    login:         code       => apiFetch("/qr/login",              { method:"POST", body:JSON.stringify({ code }) }),
     start:         ()         => apiFetch("/qr/start",              { method:"POST", body:"{}" }),
     stop:          ()         => apiFetch("/qr/stop",               { method:"POST", body:"{}" }),
     result:        ()         => apiFetch("/qr/result"),

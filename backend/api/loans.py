@@ -93,11 +93,18 @@ def create_loan():
     if not books: return jsonify({"error":"Livro não encontrado"}),404
     avail = _available_copies(sb, book_id, books[0].get("exemplares", 1), books[0].get("exemplares_ids"))
     if not avail: return jsonify({"error":"Nenhum exemplar disponível no momento"}),409
+    exemplar_escolhido = str(body.get("exemplar","")).strip()
+    if exemplar_escolhido:
+        match = next((a for a in avail if a["code"] == exemplar_escolhido), None)
+        if not match:
+            return jsonify({"error": f"Exemplar {exemplar_escolhido} não está disponível"}), 409
+        exemplar_info = match
+    else:
+        exemplar_info = avail[0]
     try:    aluno = sb_exec(sb.table("alunos").select("id").eq("id",student_id))
     except: aluno = [a for a in read_json(ALUNOS_FILE) if a.get("id")==student_id]
     if not aluno: return jsonify({"error":"Aluno não encontrado"}),404
     dt = body.get("data_emprestimo") or today_str()
-    exemplar_info = avail[0]
     payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":exemplar_info["code"],"exemplar_id":exemplar_info["id"],
                "data_emprestimo":dt,"data_devolucao_prevista":add_days(dt,days),
                "devolvido_em":None,"observacao":body.get("observacao",""),"criado_por":body.get("criado_por","system")}

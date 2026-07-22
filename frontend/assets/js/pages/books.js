@@ -186,7 +186,8 @@ async function printCard(type, id) {
   Utils.toast("Gerando cartão...","info");
   try {
     const res = type==="book" ? await API.qr.cardBook(id) : await API.qr.cardStudent(id);
-    _showPrintCard(res.image, res.filename);
+    const cards = res.cards || [{ image: res.image, filename: res.filename, exemplar: "" }];
+    _showPrintCard(cards);
   } catch(e) { Utils.toast("Erro ao gerar cartão: "+e.message,"error"); }
 }
 
@@ -199,29 +200,35 @@ function _showQRResult(imgSrc, label, entityId, type) {
   Utils.openModal("modal-qr-result");
 }
 
-function _showPrintCard(imgSrc, filename) {
-  // Abre em nova aba para impressão direta
+function _showPrintCard(cards) {
+  // Abre em nova aba para impressão direta — um bloco por exemplar
   const w = window.open("","_blank","width=700,height=350");
+  const blocks = cards.map(c => `
+<div class="card-wrap">
+  ${c.exemplar ? `<div class="exemplar-label">Exemplar ${c.exemplar}</div>` : ""}
+  <img src="${c.image}" alt="Cartão Biblioteca narceu de paiva filho">
+  <div class="actions">
+    <a class="dl-btn" href="${c.image}" download="${c.filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>
+  </div>
+</div>`).join("\n");
+
   w.document.write(`<!DOCTYPE html>
 <html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
-  body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;}
+  body{margin:0;padding:24px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;justify-content:center;min-height:100vh;background:#f1f5f9;}
   .card-wrap{background:#fff;padding:16px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
-  img{display:block;max-width:600px;width:100%;}
+  .exemplar-label{font-weight:700;text-align:center;margin-bottom:8px;color:#1a4f8a;}
+  img{display:block;max-width:400px;width:100%;}
   .actions{display:flex;gap:8px;margin-top:12px;justify-content:center;}
   button{padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;}
   .print-btn{background:#1a4f8a;color:#fff;}
   .dl-btn{background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;}
-  @media print{.actions{display:none;}body{background:#fff;}}
+  .top-actions{width:100%;display:flex;justify-content:center;margin-bottom:8px;}
+  @media print{.actions,.top-actions{display:none;}body{background:#fff;}}
 </style></head>
 <body>
-<div class="card-wrap">
-  <img src="${imgSrc}" alt="Cartão Biblioteca narceu de paiva filho">
-  <div class="actions">
-    <button class="print-btn" onclick="window.print()">🖨️ Imprimir</button>
-    <a class="dl-btn" href="${imgSrc}" download="${filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>
-  </div>
-</div>
+<div class="top-actions"><button class="print-btn" onclick="window.print()">🖨️ Imprimir ${cards.length > 1 ? `todos (${cards.length})` : ""}</button></div>
+${blocks}
 </body></html>`);
   w.document.close();
 }

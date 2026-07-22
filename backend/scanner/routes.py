@@ -180,11 +180,15 @@ def _resolve_qr(code: str) -> dict:
     book_ref = code
     exemplar_code = None
     exemplar_id = None
-    match = re.match(r"^EXEMPLAR-(.+)-(.+)-(.+)$", code)
-    if match:
-        book_ref = match[1]
-        exemplar_code = match[2]
-        exemplar_id = match[3]
+    if code.startswith("EXEMPLAR-"):
+        rest = code[len("EXEMPLAR-"):]
+        if "-EX-" in rest:
+            book_part, tail = rest.split("-EX-", 1)
+            tail_parts = tail.split("-", 1)
+            if len(tail_parts) == 2:
+                book_ref = book_part
+                exemplar_code = tail_parts[0]
+                exemplar_id = rest
 
     try:
         from utils import get_client, sb_exec
@@ -368,19 +372,44 @@ def book_card(book_id):
         genero = genres.get(book.get("genero_id"), {})
         book["genero_nome"] = book.get("genero_nome") or genero.get("nome", "")
 
-        img_b64 = _build_card(
-            entity_type = "livro",
-            title       = book.get("titulo", ""),
-            subtitle    = f"Autor: {book.get('autor', '')}",
-            field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
-            field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
-            field3      = f"Exemplares: {book.get('exemplares', 1)}",
-            qr_data     = book["id"],
-            badge       = book.get("genero_nome", ""),
-            color       = "#1a4f8a",
-        )
+        exemplares_meta = book.get("exemplares_meta") or []
+        total_exemplares = book.get("exemplares", 1)
 
-        return jsonify({"image": img_b64, "filename": f"cartao-livro-{book_id[:8]}.png"})
+        cards = []
+        if exemplares_meta:
+            for item in exemplares_meta:
+                img_b64 = _build_card(
+                    entity_type = "livro",
+                    title       = book.get("titulo", ""),
+                    subtitle    = f"Autor: {book.get('autor', '')}",
+                    field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
+                    field2      = f"Exemplar: {item.get('code','')} de {total_exemplares}",
+                    field3      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
+                    qr_data     = item.get("qr_data") or item.get("id", book["id"]),
+                    badge       = book.get("genero_nome", ""),
+                    color       = "#1a4f8a",
+                )
+                cards.append({
+                    "image": img_b64,
+                    "filename": f"cartao-livro-{book_id[:8]}-ex{item.get('code','001')}.png",
+                    "exemplar": item.get("code", ""),
+                })
+        else:
+            # Livro antigo, sem exemplares_meta ainda — gera um único cartão com o id do livro.
+            img_b64 = _build_card(
+                entity_type = "livro",
+                title       = book.get("titulo", ""),
+                subtitle    = f"Autor: {book.get('autor', '')}",
+                field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
+                field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
+                field3      = f"Exemplares: {total_exemplares}",
+                qr_data     = book["id"],
+                badge       = book.get("genero_nome", ""),
+                color       = "#1a4f8a",
+            )
+            cards.append({"image": img_b64, "filename": f"cartao-livro-{book_id[:8]}.png", "exemplar": ""})
+
+        return jsonify({"cards": cards, "image": cards[0]["image"], "filename": cards[0]["filename"]})
     except ImportError as e:
         return jsonify({"error": f"Pillow não instalado: {e}"}), 500
     except Exception as e:

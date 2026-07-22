@@ -314,11 +314,16 @@ function normalizeQueryValue(value) {
 
 function parseExemplarCode(code) {
   const normalized = String(code || "").trim();
-  const match = normalized.match(/^EXEMPLAR-(.+)-(.+)-(.+)$/i);
-  if (match) return { bookId: match[1], exemplar: match[2], exemplarId: match[3] };
-  const legacy = normalized.match(/^EXEMPLAR-(.+)-(.+)$/i);
-  if (!legacy) return null;
-  return { bookId: legacy[1], exemplar: legacy[2], exemplarId: legacy[2] };
+  if (!normalized.toUpperCase().startsWith("EXEMPLAR-")) return null;
+  const rest = normalized.slice("EXEMPLAR-".length);
+  const exIdx = rest.indexOf("-EX-");
+  if (exIdx === -1) return null;
+  const bookId = rest.slice(0, exIdx);
+  const tail = rest.slice(exIdx + 4); // após "-EX-"
+  const dashIdx = tail.indexOf("-");
+  if (dashIdx === -1) return null;
+  const exemplar = tail.slice(0, dashIdx);
+  return { bookId, exemplar, exemplarId: rest };
 }
 
 function setLoanStudent(student) {

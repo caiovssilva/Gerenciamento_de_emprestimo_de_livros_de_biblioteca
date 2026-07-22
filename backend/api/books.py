@@ -19,7 +19,7 @@ def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:
         copies.append({
             "id": exemplar_id,
             "code": code,
-            "qr_data": f"EXEMPLAR-{book_id}-{code}-{exemplar_id}",
+            "qr_data": f"EXEMPLAR-{exemplar_id}",
         })
     return copies
 
@@ -60,9 +60,10 @@ def get_book(book_id):
     try:
         rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("id", book_id))
         if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").eq("isbn", book_id))
+        if not rows: rows = sb_exec(sb.table("livros").select("*, generos(nome,cor,icone)").contains("exemplares_ids", [book_id]))
     except:
         all_b = read_json(BOOKS_FILE)
-        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id]
+        rows  = [b for b in all_b if b.get("id")==book_id or b.get("isbn")==book_id or book_id in (b.get("exemplares_ids") or [])]
     if not rows: return jsonify({"error": "Livro não encontrado"}), 404
     b = rows[0]; g = b.pop("generos", None) or {}
     b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")

@@ -238,15 +238,17 @@ const QRScanner = (() => {
   }
 
   function _onFound(result) {
+    const callback = _callback;
+    const inputId = _inputId;
     stop();
-    if (_inputId) {
-      const el = document.getElementById(_inputId);
+    if (inputId) {
+      const el = document.getElementById(inputId);
       if (el) {
         el.value = result.primary;
         el.dispatchEvent(new Event("input"));
       }
     }
-    if (typeof _callback === "function") _callback(result);
+    if (typeof callback === "function") callback(result);
     Utils.toast(`✅ Código lido — tipo: ${result.type || "desconhecido"}`, "success");
   }
 

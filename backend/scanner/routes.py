@@ -292,7 +292,7 @@ def admin_card(login):
     try:
         users = {
             "admin":      {"name": "Administrador", "role": "Sistema"},
-            "biblioteca": {"name": "Bibliotecária",  "role": "Sistema"},
+            "bibliotecario": {"name": "Bibliotecário",  "role": "Sistema"},
         }
         info = users.get(login, {"name": login.capitalize(), "role": "Usuário"})
         qr_data = f"{ADMIN_CARD_PREFIX}{login}"

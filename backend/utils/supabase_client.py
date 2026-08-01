@@ -32,6 +32,22 @@ def _looks_like_offline_error(exc: Exception) -> bool:
     return any(token in message for token in _NETWORK_ERROR_TOKENS) or isinstance(exc, (ConnectionError, TimeoutError, OSError))
 
 
+def _normalize_supabase_url(url: str) -> str:
+    normalized = (url or "").strip()
+    if normalized.endswith("/rest/v1/"):
+        normalized = normalized[:-len("/rest/v1/")]
+    elif normalized.endswith("/rest/v1"):
+        normalized = normalized[:-len("/rest/v1")]
+    return normalized.rstrip("/")
+
+
+def _get_env_config():
+    global _URL, _KEY
+    _URL = os.getenv("SUPABASE_URL", _URL)
+    _KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or _KEY
+    return _normalize_supabase_url(_URL), _KEY
+
+
 class _OfflineQuery:
     """Stub que imita a interface do supabase-py mas sempre levanta exceção controlada."""
     def select(self, *a, **kw): return self
@@ -107,9 +123,10 @@ def get_client():
 
     _last_attempt = _now_seconds()
     try:
-        if not _URL or not _KEY:
+        url, key = _get_env_config()
+        if not url or not key:
             raise ValueError("SUPABASE_URL / SUPABASE_KEY não configurados")
-        _client = SupabaseClient(_URL, _KEY)
+        _client = SupabaseClient(url, key)
         _offline = False
         print("[supabase] ✅ Conectado com sucesso.")
     except Exception as e:

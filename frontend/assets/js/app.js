@@ -13,6 +13,37 @@ let pendingDevolutionStudentId = null;
 let pendingReturnLoanId = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
+const THEME_STORAGE_KEY = "biblioteca-theme";
+
+function getPreferredTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "dark" || stored === "light") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const selectedTheme = theme === "dark" ? "dark" : "light";
+  document.body.classList.toggle("theme-dark", selectedTheme === "dark");
+  document.documentElement.setAttribute("data-theme", selectedTheme);
+  document.body.dataset.theme = selectedTheme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", selectedTheme === "dark" ? "#04030a" : "#1a4f8a");
+
+  const button = Utils.el("theme-toggle-btn");
+  if (button) {
+    button.innerHTML = selectedTheme === "dark"
+      ? `<i class="ti ti-sun-high"></i><span class="theme-toggle-text">Usar modo claro</span>`
+      : `<i class="ti ti-moon"></i><span class="theme-toggle-text">Ativar modo escuro</span>`;
+  }
+
+  localStorage.setItem(THEME_STORAGE_KEY, selectedTheme);
+}
+
+function toggleTheme() {
+  const nextTheme = document.body.classList.contains("theme-dark") ? "light" : "dark";
+  applyTheme(nextTheme);
+  Utils.toast(nextTheme === "dark" ? "Modo escuro ativado." : "Modo claro ativado.", "info");
+}
 
 // ── Auth: login tradicional (usuário/senha) ───────────────────────────
 async function doLogin() {
@@ -71,7 +102,7 @@ async function startQRLogin() {
       if (r.access === "admin") {
         const adminData = r.data || {};
         const login = adminData.login || "admin";
-        const name = login === "biblioteca" ? "Bibliotecária" : "Administrador";
+        const name = login === "bibliotecario" ? "Bibliotecário" : "Administrador";
         _showQRLoginResult({
           icon:"ti-shield-check", color:"var(--brand)",
           title:`Bem-vindo, ${name}`,
@@ -119,7 +150,7 @@ function cancelQRLoginResult() {
 }
 
 // ── Finaliza login (qualquer origem) e aplica permissões ──────────────
-function _finishLogin(user, showRoleToast) {
+async function _finishLogin(user, showRoleToast) {
   currentUser = user;
   Utils.el("login-screen").style.display = "none";
   Utils.el("login-card-qr-result").style.display = "none";
@@ -130,7 +161,6 @@ function _finishLogin(user, showRoleToast) {
   const ini = user.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
   Utils.el("sb-avatar-initials").textContent = ini;
   Utils.el("sb-user-name").textContent = user.name;
-
   const roleBadge = Utils.el("sb-role-badge");
   roleBadge.innerHTML = user.role === "librarian"
     ? `<span class="role-badge role-librarian"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
@@ -138,8 +168,7 @@ function _finishLogin(user, showRoleToast) {
 
   _applyRolePermissions();
 
-  Store.loadLocal();
-  syncAll();
+  await syncAll();
   navigateTo(user.role === "librarian" ? "emprestimo" : "dashboard");
 
   if (showRoleToast) {
@@ -789,16 +818,9 @@ async function openGlobalScanner() {
       if (!Store.studentById(scanned.data.id)) await syncData();
       const student = Store.studentById(scanned.data.id) || scanned.data;
 
-      if (currentPage === "page-emprestimo") {
-        const input = Utils.el("student-input");
-        if (input) input.value = student.carteirinha||student.card||student.id;
-        setLoanStudent(student);
-        showStudentHistory(student.id);
-        Utils.toast(`Aluno registrado para empréstimo: ${student.nome||student.name}`, "success");
-        return;
-      }
-
+      if (currentPage !== "dashboard") navigateTo("dashboard");
       showStudentHistory(student.id);
+      Utils.toast(`Histórico aberto para ${student.nome||student.name}.`, "success");
       return;
     }
 
@@ -811,16 +833,7 @@ async function openGlobalScanner() {
         if (student) showStudentHistory(student.id);
         return;
       }
-      if (currentPage === "page-emprestimo") {
-        const input = Utils.el("isbn-input");
-        if (input) input.value = scanned.data.id;
-        lookupBook();
-        Utils.toast(`Livro registrado no formulário de empréstimo: ${scanned.data.titulo||scanned.data.title}`, "success");
-        return;
-      }
-      const total = scanned.data.exemplares||scanned.data.copies||1;
-      const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
-      Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
+      Utils.toast(`Livro lido: ${scanned.data.titulo||scanned.data.title} — ${Math.max((scanned.data.exemplares||scanned.data.copies||1) - Store.loans().filter((loan) => loan.livro_id === scanned.data.id && !loan.devolvido_em).length, 0)} disponível(is).`, "info");
       return;
     }
 
@@ -867,6 +880,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setupNavigationBindings();
   improveFormAccessibility();
+  applyTheme(getPreferredTheme());
 
   // Atualiza prévia da nova data ao trocar o prazo de renovação
   Utils.el("renew-days")?.addEventListener("change", _updateRenewalPreview);

@@ -1,58 +1,39 @@
-"""api/auth.py — Autenticação segura com hash de senhas."""
+"""api/auth.py — Autenticação via tabela usuarios do Supabase."""
 from flask import Blueprint, request, jsonify, current_app
 import os
-import hashlib
-import secrets
-from functools import wraps
+import crypt as unix_crypt
+
+from utils import get_client, sb_exec
 
 auth_bp = Blueprint("auth", __name__)
 
 
-# ── Configuração de usuários com hash (bcrypt não disponível, usando SHA-256 + salt) ──
-def hash_password(password: str, salt: str = None) -> tuple:
-    """
-    Hash seguro de senha usando SHA-256 com salt.
-    Retorna (hashed_password, salt)
-    """
-    if salt is None:
-        salt = secrets.token_hex(16)  # 32 caracteres aleatórios
-    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
-    return hashed, salt
+def _normalize_supabase_url(url: str) -> str:
+    normalized = (url or "").strip()
+    if normalized.endswith("/rest/v1/"):
+        normalized = normalized[:-len("/rest/v1/")]
+    elif normalized.endswith("/rest/v1"):
+        normalized = normalized[:-len("/rest/v1")]
+    return normalized.rstrip("/")
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """Compara a senha informada com o hash bcrypt/pgcrypto armazenado no banco."""
+    if not password or not stored_hash:
+        return False
+
+    try:
+        return unix_crypt.crypt(password, stored_hash) == stored_hash
+    except Exception:
+        return False
 
 
-def verify_password(password: str, hashed: str, salt: str) -> bool:
-    """Verifica se a senha corresponde ao hash armazenado."""
-    computed_hash, _ = hash_password(password, salt)
-    return computed_hash == hashed
-
-
-# ── Credenciais padrão (devem ser substituídas via .env em produção) ──
-def get_default_users():
-    """
-    Retorna lista de usuários com credenciais hash.
-    Em produção, isso deve vir de um banco de dados seguro.
-    """
-    # Hashes pré-computados de "narceu2026"
-    # Para regenerar: hash_password("narceu2026")
-    admin_hash = "d0c6835868ebc523d38a57f92a4966fe4eea96f6b732e512ec2f853e1724bf5f"
-    admin_salt = "100c3c34b730606bd01adf1960aa9ffe"
-    
-    return [
-        {
-            "id": "usr_admin",
-            "login": "admin",
-            "name": "Administrador",
-            "password_hash": admin_hash,
-            "salt": admin_salt,
-        },
-        {
-            "id": "usr_biblioteca",
-            "login": "biblioteca",
-            "name": "Bibliotecária",
-            "password_hash": admin_hash,
-            "salt": admin_salt,
-        }
-    ]
+def _get_user_by_login(login_str: str):
+    sb = get_client()
+    rows = sb_exec(
+        sb.table("usuarios")
+        .select("id,nome,login,senha")
+        .eq("login", login_str)
+    )
+    return rows[0] if rows else None
 
 
 # ── Endpoint: Login ──────────────────────────────────────────────────
@@ -78,19 +59,18 @@ def login():
         return jsonify({"error": "Login e senha são obrigatórios"}), 400
     
     try:
-        users = get_default_users()
-        user = next((u for u in users if u["login"].lower() == login_str), None)
-        
-        if not user or not verify_password(password, user["password_hash"], user["salt"]):
+        user = _get_user_by_login(login_str)
+
+        if not user or not _verify_password(password, user.get("senha", "")):
             current_app.logger.warning(f"Falha de login para '{login_str}'")
             return jsonify({"error": "Usuário ou senha incorretos"}), 401
         
-        access = "librarian" if user["login"].lower() == "biblioteca" else "admin"
+        access = "librarian" if user["login"].lower() == "bibliotecario" else "admin"
         return jsonify({
             "access": access,
             "id": user["id"],
             "login": user["login"],
-            "name": user["name"]
+            "name": user.get("nome") or user.get("name")
         }), 200
     
     except Exception as e:
@@ -111,8 +91,8 @@ def get_supabase_config():
     3. Podem ser diferentes por ambiente
     """
     try:
-        url = os.getenv("SUPABASE_URL", "")
-        key = os.getenv("SUPABASE_KEY", "")
+        url = _normalize_supabase_url(os.getenv("SUPABASE_URL", ""))
+        key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY") or ""
         
         if not url or not key:
             current_app.logger.info("Supabase não configurado: usando fallback local")

@@ -3,6 +3,7 @@ app.py — Biblioteca narceu de paiva filho Campus Aracruz (v3)
 Servidor Flask que serve o backend (API) e o frontend (SPA) juntos.
 """
 import os, sys
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from flask import Flask, jsonify, send_from_directory
@@ -11,9 +12,18 @@ from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
 import logging
 
-load_dotenv()
+BACKEND_DIR = Path(__file__).resolve().parent
 
-FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
+def load_environment():
+    dotenv_path = BACKEND_DIR / ".env"
+    load_dotenv(dotenv_path=dotenv_path, override=False)
+    return dotenv_path
+
+
+load_environment()
+
+FRONTEND_DIR = os.path.abspath(os.path.join(BACKEND_DIR, "..", "frontend"))
 
 from api.books    import books_bp
 from api.students import students_bp

@@ -27,7 +27,7 @@
     <p class="login-err" id="login-err"></p>
     <div class="login-divider">ou</div>
     <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
-    <p class="login-hint">Padrão: <strong>admin</strong> / <strong>narceu2026</strong></p>
+    <p class="login-hint">Logins do banco: <strong>admin</strong> e <strong>bibliotecario</strong></p>
   </div>
 
   <!-- Resultado do login por QR -->
@@ -275,6 +275,16 @@
                 <div class="dev-info"><strong>2. Registrar devoluções</strong><br><small>Na lista de empréstimos, use o botão <b>Devolver</b> para encerrar o movimento e atualizar o status.</small></div>
                 <div class="dev-info"><strong>3. Consultar acervo</strong><br><small>Na página <b>Acervo</b> você encontra livros, exemplares disponíveis e informações rápidas para localizar cada item.</small></div>
                 <div class="dev-info"><strong>4. Ver relatórios</strong><br><small>Se estiver logado como administrador, a página <b>Relatórios</b> mostra gráficos e exportações para análise.</small></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="max-width:520px;">
+            <div class="card-header"><h2><i class="ti ti-moon" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Aparência</h2></div>
+            <div class="card-body">
+              <div class="theme-preview-card" style="margin-bottom:1rem;">
+                <p style="font-size:13px;color:var(--muted);margin-bottom:.75rem;">Escolha um tema confortável para celular, tablet e computador. O modo escuro usa preto, roxo e branco.</p>
+                <button id="theme-toggle-btn" class="btn btn-primary" type="button" onclick="toggleTheme()"><i class="ti ti-moon"></i><span class="theme-toggle-text">Ativar modo escuro</span></button>
               </div>
             </div>
           </div>

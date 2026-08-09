@@ -2,8 +2,8 @@
 from flask import Blueprint, request, jsonify, current_app
 import os
 
-# Prefer passlib for portable password verification. Fallback to the system
-# `crypt` module if passlib is not available or cannot verify the stored hash.
+# Prefer passlib for portable password verification.
+# Add explicit bcrypt support in case the system lacks passlib backends.
 try:
     from passlib.context import CryptContext
     _pwd_ctx = CryptContext(
@@ -12,6 +12,11 @@ try:
     )
 except Exception:
     _pwd_ctx = None
+
+try:
+    import bcrypt
+except Exception:
+    bcrypt = None
 
 try:
     import crypt as unix_crypt  # type: ignore
@@ -39,12 +44,13 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     """Compara a senha informada com o hash bcrypt/pgcrypto armazenado no banco."""
     if not password or not stored_hash:
         return False
-    # If passlib is available, let it identify and verify the scheme.
+    # If passlib is available and the scheme is not bcrypt/2y/2b,
+    # let it identify and verify the scheme.
     try:
-        if _pwd_ctx is not None:
+        if _pwd_ctx is not None and not (isinstance(stored_hash, str) and stored_hash.startswith("$2")):
             return _pwd_ctx.verify(password, stored_hash)
     except Exception:
-        # Verification via passlib failed; fall back to unix crypt if available
+        # Verification via passlib failed; fall back to bcrypt/unix crypt if available
         pass
 
     # If the stored value doesn't look like a hashed string, treat it
@@ -59,6 +65,12 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     if 'unix_crypt' in globals() and unix_crypt is not None:
         try:
             return unix_crypt.crypt(password, stored_hash) == stored_hash
+        except Exception:
+            return False
+
+    if bcrypt is not None and isinstance(stored_hash, str) and stored_hash.startswith('$2'):
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
         except Exception:
             return False
 

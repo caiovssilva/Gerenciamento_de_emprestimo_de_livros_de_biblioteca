@@ -38,6 +38,15 @@ def _verify_password(password: str, stored_hash: str) -> bool:
         # Verification via passlib failed; fall back to unix crypt if available
         pass
 
+    # If the stored value doesn't look like a hashed string, treat it
+    # as a legacy plain-text password (created by earlier DB seeds).
+    # Accept equality and let the caller re-hash the password for safety.
+    try:
+        if isinstance(stored_hash, str) and "$" not in stored_hash:
+            return password == stored_hash
+    except Exception:
+        pass
+
     if 'unix_crypt' in globals() and unix_crypt is not None:
         try:
             return unix_crypt.crypt(password, stored_hash) == stored_hash
@@ -49,12 +58,32 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 def _get_user_by_login(login_str: str):
     sb = get_client()
-    rows = sb_exec(
-        sb.table("usuarios")
-        .select("id,nome,login,senha")
-        .eq("login", login_str)
-    )
-    return rows[0] if rows else None
+    # Try exact match first (fast). If no result, fallback to reading
+    # all users and matching case-insensitively to tolerate different
+    # capitalization in the stored `login` values.
+    try:
+        rows = sb_exec(
+            sb.table("usuarios")
+            .select("id,nome,login,senha")
+            .eq("login", login_str)
+        )
+    except Exception:
+        rows = []
+
+    if rows:
+        return rows[0]
+
+    # Fallback: try case-insensitive match by fetching all users (small table).
+    try:
+        all_rows = sb_exec(sb.table("usuarios").select("id,nome,login,senha"))
+        if all_rows:
+            for r in all_rows:
+                if (r.get("login") or "").strip().lower() == (login_str or "").strip().lower():
+                    return r
+    except Exception:
+        pass
+
+    return None
 
 
 # ── Endpoint: Login ──────────────────────────────────────────────────
@@ -97,7 +126,31 @@ def login():
             else:
                 current_app.logger.warning(f"Falha de login para '{login_str}'")
             return jsonify({"error": "Usuário ou senha incorretos"}), 401
-        
+        # If login succeeded but the stored senha looks like plain-text,
+        # re-hash it using passlib and update the Supabase record to a
+        # secure scheme. This makes future verifications reliable.
+        stored = user.get("senha") or ""
+        try:
+            looks_hashed = isinstance(stored, str) and "$" in stored
+            if _pwd_ctx is not None and not looks_hashed:
+                try:
+                    new_hash = _pwd_ctx.hash(password)
+                    sb = get_client()
+                    # update the user's senha in the DB; ignore errors
+                    try:
+                        sb_exec(sb.table("usuarios").update({"senha": new_hash}).eq("id", user["id"]))
+                        if auth_debug:
+                            current_app.logger.info(f"Rehashed senha para usuário '{login_str}' (id={user.get('id')})")
+                    except Exception:
+                        if auth_debug:
+                            current_app.logger.warning(f"Falha ao atualizar hash da senha para '{login_str}'")
+                except Exception:
+                    # If hashing fails, continue without blocking login.
+                    if auth_debug:
+                        current_app.logger.info(f"Não foi possível re-hash da senha para '{login_str}'")
+        except Exception:
+            pass
+
         access = "librarian" if user["login"].lower() == "bibliotecario" else "admin"
         return jsonify({
             "access": access,

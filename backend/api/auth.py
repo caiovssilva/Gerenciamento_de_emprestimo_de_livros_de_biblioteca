@@ -1,7 +1,18 @@
 """api/auth.py — Autenticação via tabela usuarios do Supabase."""
 from flask import Blueprint, request, jsonify, current_app
 import os
-import crypt as unix_crypt
+
+# Prefer passlib for portable password verification. Fallback to the system
+# `crypt` module only if passlib is not available.
+try:
+    from passlib.context import CryptContext
+    _pwd_ctx = CryptContext(schemes=["bcrypt", "sha512_crypt", "sha256_crypt", "des_crypt"], deprecated="auto")
+except Exception:
+    _pwd_ctx = None
+    try:
+        import crypt as unix_crypt  # type: ignore
+    except Exception:
+        unix_crypt = None
 
 from utils import get_client, sb_exec
 
@@ -19,11 +30,21 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     """Compara a senha informada com o hash bcrypt/pgcrypto armazenado no banco."""
     if not password or not stored_hash:
         return False
-
+    # If passlib is available, let it identify and verify the scheme.
     try:
-        return unix_crypt.crypt(password, stored_hash) == stored_hash
+        if _pwd_ctx is not None:
+            return _pwd_ctx.verify(password, stored_hash)
     except Exception:
-        return False
+        # Verification via passlib failed; fall back to unix crypt if available
+        pass
+
+    if 'unix_crypt' in globals() and unix_crypt is not None:
+        try:
+            return unix_crypt.crypt(password, stored_hash) == stored_hash
+        except Exception:
+            return False
+
+    return False
 
 
 def _get_user_by_login(login_str: str):

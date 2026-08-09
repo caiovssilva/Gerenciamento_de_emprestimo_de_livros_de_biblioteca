@@ -8,4 +8,4 @@ pyzbar==0.1.9
 numpy==1.26.4
 supabase==2.31.0 
 gunicorn==22.0.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4

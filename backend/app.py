@@ -120,6 +120,15 @@ def serve_frontend(path):
         return send_from_directory(FRONTEND_DIR, path)
     return send_from_directory(FRONTEND_DIR, "index.html")
 
+
+@app.route('/favicon.ico')
+def favicon():
+    # Serve a favicon if present, otherwise return empty 204 to avoid 404 noise.
+    fav_path = os.path.join(FRONTEND_DIR, 'favicon.ico')
+    if os.path.exists(fav_path):
+        return send_from_directory(FRONTEND_DIR, 'favicon.ico')
+    return ('', 204)
+
 if __name__ == "__main__":
     port  = int(os.getenv("PORT", os.getenv("FLASK_PORT", 5000)))
     debug = os.getenv("FLASK_ENV", "development") == "development"

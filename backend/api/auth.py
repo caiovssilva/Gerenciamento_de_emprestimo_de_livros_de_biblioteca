@@ -82,8 +82,20 @@ def login():
     try:
         user = _get_user_by_login(login_str)
 
-        if not user or not _verify_password(password, user.get("senha", "")):
-            current_app.logger.warning(f"Falha de login para '{login_str}'")
+        auth_debug = os.getenv("AUTH_DEBUG", "").lower() in ("1","true","yes")
+
+        if not user:
+            if auth_debug:
+                current_app.logger.info(f"Login falhou: usuário '{login_str}' não encontrado")
+            else:
+                current_app.logger.warning(f"Falha de login para '{login_str}'")
+            return jsonify({"error": "Usuário ou senha incorretos"}), 401
+
+        if not _verify_password(password, user.get("senha", "")):
+            if auth_debug:
+                current_app.logger.info(f"Login falhou para '{login_str}': senha inválida. Stored hash startswith: '{(user.get('senha') or '')[:10]}'")
+            else:
+                current_app.logger.warning(f"Falha de login para '{login_str}'")
             return jsonify({"error": "Usuário ou senha incorretos"}), 401
         
         access = "librarian" if user["login"].lower() == "bibliotecario" else "admin"

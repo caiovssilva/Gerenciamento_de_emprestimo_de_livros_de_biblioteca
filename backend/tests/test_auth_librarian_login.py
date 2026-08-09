@@ -63,18 +63,35 @@ def test_login_as_admin_returns_admin_access(client, monkeypatch):
     assert payload["login"] == "admin"
 
 
-def test_login_as_bibliotecario_returns_librarian_access(client, monkeypatch):
+def test_login_as_biblioteca_alias_returns_librarian_access(client, monkeypatch):
     users = {
-        "bibliotecario": [_user_row("bibliotecario", "Bibliotecário", unix_crypt.crypt("biblioteca123", unix_crypt.mksalt()))],
+        "biblioteca": [_user_row("biblioteca", "Bibliotecária", "narceu2026")],
     }
     monkeypatch.setattr(auth_module, "get_client", lambda: _make_fake_client(users))
 
     response = client.post(
         "/api/auth/login",
-        json={"login": "bibliotecario", "password": "biblioteca123"},
+        json={"login": "bibliotecario", "password": "narceu2026"},
     )
 
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["access"] == "librarian"
-    assert payload["login"] == "bibliotecario"
+    assert payload["login"] == "biblioteca"
+
+
+def test_login_with_plain_text_password(client, monkeypatch):
+    users = {
+        "admin": [_user_row("admin", "Administrador", "narceu2026")],
+    }
+    monkeypatch.setattr(auth_module, "get_client", lambda: _make_fake_client(users))
+
+    response = client.post(
+        "/api/auth/login",
+        json={"login": "admin", "password": "narceu2026"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["access"] == "admin"
+    assert payload["login"] == "admin"

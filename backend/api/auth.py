@@ -3,20 +3,29 @@ from flask import Blueprint, request, jsonify, current_app
 import os
 
 # Prefer passlib for portable password verification. Fallback to the system
-# `crypt` module only if passlib is not available.
+# `crypt` module if passlib is not available or cannot verify the stored hash.
 try:
     from passlib.context import CryptContext
-    _pwd_ctx = CryptContext(schemes=["bcrypt", "sha512_crypt", "sha256_crypt", "des_crypt"], deprecated="auto")
+    _pwd_ctx = CryptContext(
+        schemes=["bcrypt", "pbkdf2_sha256", "sha512_crypt", "sha256_crypt", "des_crypt"],
+        deprecated="auto"
+    )
 except Exception:
     _pwd_ctx = None
-    try:
-        import crypt as unix_crypt  # type: ignore
-    except Exception:
-        unix_crypt = None
+
+try:
+    import crypt as unix_crypt  # type: ignore
+except Exception:
+    unix_crypt = None
 
 from utils import get_client, sb_exec
 
 auth_bp = Blueprint("auth", __name__)
+
+LOGIN_ALIASES = {
+    "bibliotecario": "biblioteca",
+    "bibliotecaria": "biblioteca",
+}
 
 
 def _normalize_supabase_url(url: str) -> str:
@@ -58,6 +67,7 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 def _get_user_by_login(login_str: str):
     sb = get_client()
+    canonical_login = LOGIN_ALIASES.get((login_str or "").strip().lower(), login_str)
     # Try exact match first (fast). If no result, fallback to reading
     # all users and matching case-insensitively to tolerate different
     # capitalization in the stored `login` values.
@@ -65,7 +75,7 @@ def _get_user_by_login(login_str: str):
         rows = sb_exec(
             sb.table("usuarios")
             .select("id,nome,login,senha")
-            .eq("login", login_str)
+            .eq("login", canonical_login)
         )
     except Exception:
         rows = []
@@ -78,7 +88,7 @@ def _get_user_by_login(login_str: str):
         all_rows = sb_exec(sb.table("usuarios").select("id,nome,login,senha"))
         if all_rows:
             for r in all_rows:
-                if (r.get("login") or "").strip().lower() == (login_str or "").strip().lower():
+                if (r.get("login") or "").strip().lower() == (canonical_login or "").strip().lower():
                     return r
     except Exception:
         pass
@@ -151,7 +161,8 @@ def login():
         except Exception:
             pass
 
-        access = "librarian" if user["login"].lower() == "bibliotecario" else "admin"
+        normalized_login = (user["login"] or "").strip().lower()
+        access = "librarian" if normalized_login in ("bibliotecario", "biblioteca") else "admin"
         return jsonify({
             "access": access,
             "id": user["id"],

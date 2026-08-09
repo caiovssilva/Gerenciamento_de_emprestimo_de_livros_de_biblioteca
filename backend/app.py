@@ -17,7 +17,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 
 def load_environment():
     dotenv_path = BACKEND_DIR / ".env"
-    load_dotenv(dotenv_path=dotenv_path, override=False)
+    load_dotenv(dotenv_path=dotenv_path, override=True)
     return dotenv_path
 
 

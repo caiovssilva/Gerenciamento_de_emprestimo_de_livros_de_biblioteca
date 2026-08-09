@@ -206,9 +206,13 @@ function _showQRResult(imgSrc, label, entityId, type) {
   Utils.openModal("modal-qr-result");
 }
 
-function _showPrintCard(cards) {
+function _showPrintCard(cards, w = null) {
   // Abre em nova aba para impressão direta — um bloco por exemplar
-  const w = window.open("","_blank","width=700,height=350");
+  const win = w || window.open("","_blank","width=700,height=350");
+  if (!win) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
   const blocks = cards.map(c => `
 <div class="card-wrap">
   ${c.exemplar ? `<div class="exemplar-label">Exemplar ${c.exemplar}</div>` : ""}
@@ -218,7 +222,7 @@ function _showPrintCard(cards) {
   </div>
 </div>`).join("\n");
 
-  w.document.write(`<!DOCTYPE html>
+  win.document.write(`<!DOCTYPE html>
 <html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
   body{margin:0;padding:24px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;justify-content:center;min-height:100vh;background:#f1f5f9;}

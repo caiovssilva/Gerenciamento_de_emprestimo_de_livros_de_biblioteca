@@ -30,10 +30,18 @@ function applyTheme(theme) {
   if (meta) meta.setAttribute("content", selectedTheme === "dark" ? "#04030a" : "#1a4f8a");
 
   const button = Utils.el("theme-toggle-btn");
+  const topbarButton = Utils.el("theme-toggle-topbar-btn");
+
+  const buttonContent = selectedTheme === "dark"
+    ? `<i class="ti ti-sun-high"></i><span class="theme-toggle-text">Usar modo claro</span>`
+    : `<i class="ti ti-moon"></i><span class="theme-toggle-text">Ativar modo escuro</span>`;
+
   if (button) {
-    button.innerHTML = selectedTheme === "dark"
-      ? `<i class="ti ti-sun-high"></i><span class="theme-toggle-text">Usar modo claro</span>`
-      : `<i class="ti ti-moon"></i><span class="theme-toggle-text">Ativar modo escuro</span>`;
+    button.innerHTML = buttonContent;
+  }
+  if (topbarButton) {
+    topbarButton.innerHTML = selectedTheme === "dark" ? `<i class="ti ti-sun-high"></i>` : `<i class="ti ti-moon"></i>`;
+    topbarButton.title = selectedTheme === "dark" ? "Usar modo claro" : "Ativar modo escuro";
   }
 
   localStorage.setItem(THEME_STORAGE_KEY, selectedTheme);
@@ -802,10 +810,20 @@ async function testConnection() {
 async function printAdminCard() {
   if (!currentUser?.login) return;
   Utils.toast("Gerando carteirinha...","info");
+  const w = window.open("","_blank","width=700,height=350");
+  if (!w) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
   try {
+    w.document.write(`<!DOCTYPE html><html><head><title>Gerando carteirinha...</title></head><body><p style="font-family:Arial,sans-serif;padding:24px;">Gerando carteirinha...</p></body></html>`);
+    w.document.close();
     const res = await API.qr.cardAdmin(currentUser.login);
-    _showPrintCard(res.image, res.filename);
-  } catch(e) { Utils.toast("Erro ao gerar carteirinha: "+e.message,"error"); }
+    _showPrintCard([{ image: res.image, filename: res.filename }], w);
+  } catch(e) {
+    Utils.toast("Erro ao gerar carteirinha: "+e.message,"error");
+    if (!w.closed) w.close();
+  }
 }
 
 // ── Câmera global (topbar) — ler QR de carteirinha de aluno ────────────

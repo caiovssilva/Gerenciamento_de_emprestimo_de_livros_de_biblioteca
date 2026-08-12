@@ -105,7 +105,9 @@ def create_loan():
     except: aluno = [a for a in read_json(ALUNOS_FILE) if a.get("id")==student_id]
     if not aluno: return jsonify({"error":"Aluno não encontrado"}),404
     dt = body.get("data_emprestimo") or today_str()
-    payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":exemplar_info["code"],"exemplar_id":exemplar_info["id"],
+    exemplar_id_override = body.get("exemplar_id", "").strip()
+    payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":exemplar_info["code"],
+               "exemplar_id": exemplar_id_override or exemplar_info["id"],
                "data_emprestimo":dt,"data_devolucao_prevista":add_days(dt,days),
                "devolvido_em":None,"observacao":body.get("observacao",""),"criado_por":body.get("criado_por","system")}
     try:    rows = sb_exec(sb.table("emprestimos").insert(payload))

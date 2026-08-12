@@ -7,7 +7,7 @@
 // Credenciais padrão para desenvolvimento são carregadas do backend de forma segura.
 
 let currentUser = null; // { role:'admin'|'librarian', login, name, student? }
-let pendingLoan = { book:null, exemplar:null, student:null };
+let pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
 let pendingDevolutionId = null;
 let pendingDevolutionStudentId = null;
 let pendingReturnLoanId = null;
@@ -360,7 +360,23 @@ function parseExemplarCode(code) {
   const dashIdx = tail.indexOf("-");
   if (dashIdx === -1) return null;
   const exemplar = tail.slice(0, dashIdx);
-  return { bookId, exemplar, exemplarId: rest };
+  return { bookId, exemplar, exemplarId: `EXEMPLAR-${rest}` };
+}
+
+function _findBookByIdOrIsbn(identifier) {
+  const books = Store.books();
+  // Busca exata por ID
+  let found = books.find(b => b.id === identifier);
+  if (found) return found;
+  // Busca exata por ISBN
+  found = books.find(b => (b.isbn || "").trim() === String(identifier).trim());
+  if (found) return found;
+  // Busca case-insensitive se for UUID
+  if (identifier && identifier.length === 36 && identifier.includes("-")) {
+    found = books.find(b => (b.id || "").toLowerCase() === identifier.toLowerCase());
+    if (found) return found;
+  }
+  return null;
 }
 
 function setLoanStudent(student) {
@@ -384,26 +400,55 @@ function setLoanStudent(student) {
 }
 
 function lookupBook() {
-  const q = normalizeQueryValue(Utils.el("isbn-input").value);
+  const inputVal = Utils.el("isbn-input").value.trim();
+  const q = normalizeQueryValue(inputVal);
   if (!q) return;
-  const books = Store.books();
-  const found = books.find(b =>
-    normalizeQueryValue(b.isbn) === q ||
-    normalizeQueryValue(b.id).startsWith(q) ||
-    normalizeQueryValue(b.titulo || b.title).includes(q)
-  );
+  
+  // Verifica se é um QR de exemplar
+  const parsedExemplar = parseExemplarCode(inputVal);
+  let found = null;
+  let scannedExemplar = null;
+  let scannedExemplarId = null;
+  
+  if (parsedExemplar) {
+    found = _findBookByIdOrIsbn(parsedExemplar.bookId);
+    scannedExemplar = parsedExemplar.exemplar;
+    scannedExemplarId = parsedExemplar.exemplarId;
+  } else {
+    const books = Store.books();
+    found = books.find(b =>
+      normalizeQueryValue(b.isbn) === q ||
+      normalizeQueryValue(b.id).startsWith(q) ||
+      normalizeQueryValue(b.titulo || b.title).includes(q)
+    );
+  }
+  
   const infoEl = Utils.el("book-result");
   if (!found) {
     if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`;
     pendingLoan.book = null;
     return;
   }
+  
   const loans  = Store.loans();
   const active = loans.filter(l => l.livro_id === found.id && !l.devolvido_em);
   const total  = found.exemplares||found.copies||1;
   const avail  = total - active.length;
   const dispEx = Array.from({length: total}, (_, i) => String(i+1).padStart(3, "0")).filter(ex => !active.find(l => l.exemplar === ex));
   const genBadge = found.genero_nome ? `<span class="badge" style="background:${found.genero_cor||"#6366f1"}22;color:${found.genero_cor||"#6366f1"}">${found.genero_nome}</span>` : "";
+  
+  // Se foi escaneado um exemplar específico
+  if (scannedExemplar && dispEx.includes(scannedExemplar)) {
+    infoEl.innerHTML = `<div class="book-found"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author} ${genBadge}
+       <br><small>Exemplar #${scannedExemplar} identificado pelo QR</small></div>`;
+    selectExemplar(found.id, scannedExemplar, null, scannedExemplarId);
+    return;
+  } else if (scannedExemplar && !dispEx.includes(scannedExemplar)) {
+    infoEl.innerHTML = `<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> O exemplar #${scannedExemplar} não está disponível ou já foi emprestado.</div>`;
+    pendingLoan.book = null;
+    return;
+  }
+  
   infoEl.innerHTML = avail > 0
     ? `<div class="book-found"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author} ${genBadge}
        <br><small>${avail} de ${total} disponíveis</small>
@@ -417,9 +462,10 @@ function lookupBook() {
   }
 }
 
-function selectExemplar(bookId, ex, btn) {
+function selectExemplar(bookId, ex, btn, exemplarId) {
   pendingLoan.book     = Store.bookById(bookId);
   pendingLoan.exemplar = ex;
+  pendingLoan.exemplarId = exemplarId || null;
   Utils.qsa(".book-found .btn-sm").forEach(b => b.classList.remove("btn-primary"));
   btn?.classList.add("btn-primary");
 }
@@ -488,13 +534,15 @@ async function confirmLoan() {
   const obsEl = Utils.el("loan-obs");
   const obs = obsEl ? obsEl.value.trim() : "";
   try {
-    await API.loans.create({
+    const payload = {
       livro_id: pendingLoan.book.id,
       aluno_id: pendingLoan.student.id,
       exemplar: pendingLoan.exemplar,
       dias: days, data_emprestimo: date,
       observacao: obs, criado_por: currentUser?.login||"sistema",
-    });
+    };
+    if (pendingLoan.exemplarId) payload.exemplar_id = pendingLoan.exemplarId;
+    await API.loans.create(payload);
     Utils.toast(`Empréstimo registrado — ${pendingLoan.book.titulo||pendingLoan.book.title}`, "success");
     resetLoanForm();
     await syncData();
@@ -504,7 +552,7 @@ async function confirmLoan() {
 }
 
 function resetLoanForm() {
-  pendingLoan = { book:null, exemplar:null, student:null };
+  pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
   ["isbn-input","student-input","loan-obs"].forEach(id => { const el=Utils.el(id); if(el) el.value=""; });
   Utils.el("loan-date").value = Utils.today();
   Utils.el("loan-days").value = 7;
@@ -600,12 +648,12 @@ function resolveQRCode(code) {
   }
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
   const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
   if (student) return { type: "student", data: student };
-  const book = Store.books().find(b => b.id === normalized || (b.isbn||"") === normalized);
+  const book = _findBookByIdOrIsbn(normalized);
   if (book) return { type: "book", data: book };
   return { type: "unknown", data: null };
 }
@@ -622,7 +670,7 @@ async function resolveQRCodeAsync(code) {
 
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
-    const book = Store.books().find(b => b.id === parsedExemplar.bookId || (b.isbn||"") === parsedExemplar.bookId);
+    const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
     if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
   }
 

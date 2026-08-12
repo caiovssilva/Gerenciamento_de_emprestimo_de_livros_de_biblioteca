@@ -200,13 +200,13 @@ async function importCSV(event) {
 }
 
 // Estado do "pegar livro" feito de dentro do histórico do aluno
-let pendingHistoryLoan = { book:null, exemplar:null };
+let pendingHistoryLoan = { book:null, exemplar:null, exemplarId:null };
 
 function showStudentHistory(id) {
   const s = Store.studentById(id);
   if (!s) return;
   _historyStudentId = id;
-  pendingHistoryLoan = { book:null, exemplar:null };
+  pendingHistoryLoan = { book:null, exemplar:null, exemplarId:null };
   Utils.el("modal-history-title").textContent = `Histórico — ${s.nome||s.name}`;
 
   _renderHistoryCard(s);
@@ -306,14 +306,23 @@ function _renderHistoryNewLoan(s) {
 }
 
 function lookupHistoryBook() {
-  const q = Utils.el("hist-book-input").value.trim().toLowerCase();
-  if (!q) return;
-  const books = Store.books();
-  const found = books.find(b =>
-    (b.isbn||"").toLowerCase()===q ||
-    (b.id||"").toLowerCase().startsWith(q) ||
-    (b.titulo||b.title||"").toLowerCase().includes(q)
-  );
+  const inputVal = Utils.el("hist-book-input").value.trim();
+  if (!inputVal) return;
+  
+  // Verifica se é um QR de exemplar
+  const parsedExemplar = parseExemplarCode(inputVal);
+  let found = null;
+  let scannedExemplar = null;
+  let scannedExemplarId = null;
+  
+  if (parsedExemplar) {
+    found = _findBookByIdOrIsbn(parsedExemplar.bookId);
+    scannedExemplar = parsedExemplar.exemplar;
+    scannedExemplarId = parsedExemplar.exemplarId;
+  } else {
+    found = _findBookByIdOrIsbn(inputVal);
+  }
+  
   const resEl = Utils.el("hist-book-result");
   if (!found) { resEl.innerHTML = `<span style="color:var(--red);font-size:12px;"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`; pendingHistoryLoan.book=null; pendingHistoryLoan.exemplar=null; return; }
 
@@ -327,6 +336,20 @@ function lookupHistoryBook() {
     resEl.innerHTML = `<div style="color:var(--red);font-size:12px;"><i class="ti ti-alert-circle"></i> Todos os exemplares de "${found.titulo||found.title}" estão emprestados.</div>`;
     pendingHistoryLoan.book=null; pendingHistoryLoan.exemplar=null; return;
   }
+  
+  // Se foi escaneado um exemplar específico
+  if (scannedExemplar && dispEx.includes(scannedExemplar)) {
+    pendingHistoryLoan.book = found;
+    pendingHistoryLoan.exemplar = scannedExemplar;
+    pendingHistoryLoan.exemplarId = scannedExemplarId;
+    resEl.innerHTML = `<div style="font-size:12px;"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author}
+      <br><small>Exemplar #${scannedExemplar} identificado pelo QR</small></div>`;
+    return;
+  } else if (scannedExemplar && !dispEx.includes(scannedExemplar)) {
+    resEl.innerHTML = `<div style="color:var(--red);font-size:12px;"><i class="ti ti-alert-circle"></i> O exemplar #${scannedExemplar} não está disponível ou já foi emprestado.</div>`;
+    pendingHistoryLoan.book=null; pendingHistoryLoan.exemplar=null; return;
+  }
+  
   pendingHistoryLoan.book = found;
   resEl.innerHTML = `<div style="font-size:12px;"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author}
     <br><small>${avail} de ${total} disponíveis — escolha o exemplar:</small>
@@ -336,9 +359,10 @@ function lookupHistoryBook() {
   if (!pendingHistoryLoan.exemplar) selectHistoryExemplar(found.id, dispEx[0]);
 }
 
-function selectHistoryExemplar(bookId, ex, btn) {
+function selectHistoryExemplar(bookId, ex, btn, exemplarId) {
   pendingHistoryLoan.book     = Store.bookById(bookId);
   pendingHistoryLoan.exemplar = ex;
+  pendingHistoryLoan.exemplarId = exemplarId || null;
   Utils.qsa("#hist-book-result .btn-sm").forEach(b=>b.classList.remove("btn-primary"));
   btn?.classList.add("btn-primary");
 }
@@ -348,13 +372,15 @@ async function confirmHistoryLoan(studentId) {
   if (!pendingHistoryLoan.exemplar) { Utils.toast("Selecione um exemplar.","error"); return; }
   const days = parseInt(Utils.el("hist-loan-days")?.value)||7;
   try {
-    await API.loans.create({
+    const payload = {
       livro_id: pendingHistoryLoan.book.id,
       aluno_id: studentId,
       exemplar: pendingHistoryLoan.exemplar,
       dias: days, data_emprestimo: Utils.today(),
       criado_por: currentUser?.login||"sistema",
-    });
+    };
+    if (pendingHistoryLoan.exemplarId) payload.exemplar_id = pendingHistoryLoan.exemplarId;
+    await API.loans.create(payload);
     Utils.toast(`Empréstimo registrado — ${pendingHistoryLoan.book.titulo||pendingHistoryLoan.book.title}`,"success");
     await syncData(); Charts.refresh();
     showStudentHistory(studentId); // redesenha tudo, já com o novo empréstimo

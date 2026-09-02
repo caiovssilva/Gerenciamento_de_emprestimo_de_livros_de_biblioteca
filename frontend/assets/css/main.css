@@ -54,6 +54,70 @@ body.theme-dark {
   --muted:       #d4c7ff;
   --hint:        #b8a5ff;
   --shadow:      0 20px 50px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+body.theme-dark input,
+body.theme-dark textarea,
+body.theme-dark select,
+body.theme-dark option,
+body.theme-dark button,
+body.theme-dark a,
+body.theme-dark p,
+body.theme-dark span,
+body.theme-dark small,
+body.theme-dark label,
+body.theme-dark li,
+body.theme-dark td,
+body.theme-dark th,
+body.theme-dark h1,
+body.theme-dark h2,
+body.theme-dark h3,
+body.theme-dark h4,
+body.theme-dark h5,
+body.theme-dark h6,
+body.theme-dark div {
+  color: var(--text);
+}
+
+body.theme-dark .form-group input,
+body.theme-dark .form-group textarea,
+body.theme-dark .form-group select,
+body.theme-dark .toolbar input,
+body.theme-dark .toolbar select,
+body.theme-dark .barcode-row input,
+body.theme-dark .barcode-row select,
+body.theme-dark input[type="text"],
+body.theme-dark input[type="search"],
+body.theme-dark select,
+body.theme-dark textarea {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+body.theme-dark option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+body.theme-dark .sb-user-name,
+body.theme-dark .sb-logo .sub,
+body.theme-dark .topbar-sub,
+body.theme-dark .metric-label,
+body.theme-dark .td-muted,
+body.theme-dark .login-head p,
+body.theme-dark .login-hint,
+body.theme-dark .cam-status,
+body.theme-dark .chart-stat,
+body.theme-dark .report-desc,
+body.theme-dark .empty-state,
+body.theme-dark .lr-sub,
+body.theme-dark .sic-meta,
+body.theme-dark .ali-sub,
+body.theme-dark .form-field label,
+body.theme-dark .alert,
+body.theme-dark .dev-info .row span {
+  color: var(--muted);
 }
 
 html, body {

@@ -282,5 +282,77 @@
         "qr_data": "EXEMPLAR-1fb62195-309a-4d33-ae90-0859b3afd861-001-1fb62195-309a-4d33-ae90-0859b3afd861-EX-001-3f669d30-df9d-4c7c-83cb-7c40c25f2711"
       }
     ]
+  },
+  {
+    "id": "1713bcf7-e92a-49bc-875e-6171497b2555",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "1713bcf7-e92a-49bc-875e-6171497b2555-EX-001-c9e0fbd6-6583-46c9-995f-7f14afa92cb1"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "1713bcf7-e92a-49bc-875e-6171497b2555-EX-001-c9e0fbd6-6583-46c9-995f-7f14afa92cb1",
+        "code": "001",
+        "qr_data": "EXEMPLAR-1713bcf7-e92a-49bc-875e-6171497b2555-EX-001-c9e0fbd6-6583-46c9-995f-7f14afa92cb1"
+      }
+    ]
+  },
+  {
+    "id": "27ef3b5b-c84d-4e16-a086-993e7cb6fadd",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "27ef3b5b-c84d-4e16-a086-993e7cb6fadd-EX-001-7ddb4309-f258-46ba-8eff-cdaff31a898e"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "27ef3b5b-c84d-4e16-a086-993e7cb6fadd-EX-001-7ddb4309-f258-46ba-8eff-cdaff31a898e",
+        "code": "001",
+        "qr_data": "EXEMPLAR-27ef3b5b-c84d-4e16-a086-993e7cb6fadd-EX-001-7ddb4309-f258-46ba-8eff-cdaff31a898e"
+      }
+    ]
+  },
+  {
+    "id": "eb064fe2-da89-4fb1-9fa4-c8428314bdb1",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "eb064fe2-da89-4fb1-9fa4-c8428314bdb1-EX-001-2d2c726f-cf10-4797-ae96-d5941a2c0701"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "eb064fe2-da89-4fb1-9fa4-c8428314bdb1-EX-001-2d2c726f-cf10-4797-ae96-d5941a2c0701",
+        "code": "001",
+        "qr_data": "EXEMPLAR-eb064fe2-da89-4fb1-9fa4-c8428314bdb1-EX-001-2d2c726f-cf10-4797-ae96-d5941a2c0701"
+      }
+    ]
+  },
+  {
+    "id": "3da27a7d-880f-4a4e-90b5-bf99dec746d4",
+    "isbn": "",
+    "titulo": "Livro QR Teste",
+    "autor": "Autor Teste",
+    "area": "Geral",
+    "exemplares": 1,
+    "exemplares_ids": [
+      "3da27a7d-880f-4a4e-90b5-bf99dec746d4-EX-001-dfa09b03-5358-4473-8292-52b5d5959a19"
+    ],
+    "exemplares_meta": [
+      {
+        "id": "3da27a7d-880f-4a4e-90b5-bf99dec746d4-EX-001-dfa09b03-5358-4473-8292-52b5d5959a19",
+        "code": "001",
+        "qr_data": "EXEMPLAR-3da27a7d-880f-4a4e-90b5-bf99dec746d4-EX-001-dfa09b03-5358-4473-8292-52b5d5959a19"
+      }
+    ]
   }
 ]

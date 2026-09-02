@@ -14,6 +14,75 @@ let pendingReturnLoanId = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 const THEME_STORAGE_KEY = "biblioteca-theme";
+const SESSION_COOKIE_KEY = "biblioteca-session";
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
+function getSessionCookie() {
+  const value = document.cookie.match(new RegExp('(?:^|; )' + SESSION_COOKIE_KEY + '=([^;]*)'));
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value[1]));
+    if (!parsed || !parsed.login || !parsed.role) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionCookie(user) {
+  if (!user?.login || !user?.role) return;
+  const payload = encodeURIComponent(JSON.stringify({
+    role: user.role,
+    login: user.login,
+    name: user.name || user.login,
+    student: user.student || null,
+    lastActivity: Date.now(),
+  }));
+  document.cookie = `${SESSION_COOKIE_KEY}=${payload}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+}
+
+function clearSessionCookie() {
+  document.cookie = `${SESSION_COOKIE_KEY}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function isSessionExpired(session) {
+  if (!session?.lastActivity) return true;
+  return Date.now() - Number(session.lastActivity) > SESSION_TIMEOUT_MS;
+}
+
+function resetSessionActivity() {
+  if (!currentUser?.login) return;
+  const session = getSessionCookie();
+  if (!session) return;
+  session.lastActivity = Date.now();
+  document.cookie = `${SESSION_COOKIE_KEY}=${encodeURIComponent(JSON.stringify({
+    ...session,
+    lastActivity: session.lastActivity,
+  }))}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+}
+
+function scheduleSessionTimeout() {
+  if (!currentUser?.login) return;
+  const session = getSessionCookie();
+  if (!session) return;
+  if (isSessionExpired(session)) {
+    doLogout({ confirmPrompt: false, reason: "Sessão expirada por inatividade." });
+    return;
+  }
+
+  const remaining = SESSION_TIMEOUT_MS - (Date.now() - Number(session.lastActivity || Date.now()));
+  const timeoutMs = Math.max(1000, remaining);
+  clearTimeout(window.__session_timeout_handle);
+  window.__session_timeout_handle = setTimeout(() => {
+    if (!currentUser) return;
+    const currentSession = getSessionCookie();
+    if (currentSession && !isSessionExpired(currentSession)) {
+      scheduleSessionTimeout();
+      return;
+    }
+    doLogout({ confirmPrompt: false, reason: "Sessão expirada por inatividade." });
+  }, timeoutMs);
+}
 
 function getPreferredTheme() {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -51,6 +120,33 @@ function toggleTheme() {
   const nextTheme = document.body.classList.contains("theme-dark") ? "light" : "dark";
   applyTheme(nextTheme);
   Utils.toast(nextTheme === "dark" ? "Modo escuro ativado." : "Modo claro ativado.", "info");
+}
+
+let _syncInFlight = false;
+let _lastSuccessfulSyncTs = 0;
+const SYNC_COOLDOWN_MS = 7000;
+
+function debounce(fn, wait = 120) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+const renderScheduler = {
+  books: debounce(() => renderBooks(), 140),
+  students: debounce(() => renderStudents(), 140),
+  rooms: debounce(() => renderRooms(), 140),
+  loans: debounce(() => renderLoans(), 140),
+};
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && currentUser) {
+      syncData({ force: false });
+    }
+  });
 }
 
 // ── Auth: login tradicional (usuário/senha) ───────────────────────────
@@ -160,6 +256,8 @@ function cancelQRLoginResult() {
 // ── Finaliza login (qualquer origem) e aplica permissões ──────────────
 async function _finishLogin(user, showRoleToast) {
   currentUser = user;
+  setSessionCookie(user);
+  scheduleSessionTimeout();
   Utils.el("login-screen").style.display = "none";
   Utils.el("login-card-qr-result").style.display = "none";
   Utils.el("login-qr-result-body").innerHTML = "";
@@ -202,9 +300,11 @@ function _applyRolePermissions() {
 
 function isLibrarian() { return currentUser?.role === "librarian"; }
 
-function doLogout() {
-  if (!confirm("Sair do sistema?")) return;
+function doLogout({ confirmPrompt = true, reason = "" } = {}) {
+  if (confirmPrompt && !confirm("Sair do sistema?")) return;
   currentUser = null;
+  clearSessionCookie();
+  clearTimeout(window.__session_timeout_handle);
   Charts.destroy();
   Utils.el("app").style.display = "none";
   Utils.el("login-screen").style.display = "flex";
@@ -215,6 +315,7 @@ function doLogout() {
   Utils.qsa('[data-role="admin"]').forEach(el => el.classList.remove("lib-hidden"));
   document.body.classList.remove("role-librarian");
   toggleMobileSidebar(false);
+  if (reason) Utils.toast(reason, "info");
 }
 
 function toggleMobileSidebar(force) {
@@ -283,18 +384,47 @@ async function syncAll() {
   await Promise.all([syncData(), syncRooms(), syncGenres()]);
 }
 
-async function syncData() {
+function _renderActivePage() {
+  const activePage = Utils.qs(".page.active")?.id?.replace("page-", "") || "dashboard";
+  if (activePage === "dashboard") renderDashboard();
+  if (activePage === "livros") renderBooks();
+  if (activePage === "alunos") renderStudents();
+  if (activePage === "salas") renderRooms();
+  if (activePage === "generos") renderGenres();
+  if (activePage === "emprestimo") {
+    renderLoans();
+    resetLoanForm();
+    renderLoanScanPanel();
+  }
+  if (activePage === "relatorios") Charts.refresh();
+}
+
+async function syncData({ force = false } = {}) {
+  if (document.hidden && !force) return;
+  if (_syncInFlight && !force) return;
+
+  const hasCachedData = !!(Store.books().length || Store.students().length || Store.loans().length);
+  const elapsedSinceLastSync = Date.now() - _lastSuccessfulSyncTs;
+  if (!force && hasCachedData && elapsedSinceLastSync < SYNC_COOLDOWN_MS) {
+    return;
+  }
+
+  _syncInFlight = true;
+
   const st = Utils.el("cloud-status");
   if (st) st.innerHTML = `<i class="ti ti-loader" style="animation:spin 1s linear infinite;display:inline-block;"></i> Sincronizando...`;
   try {
     const [books, students, loans] = await Promise.all([API.books.list(), API.students.list(), API.loans.list()]);
     Store.setBooks(books); Store.setStudents(students); Store.setLoans(loans);
+    _lastSuccessfulSyncTs = Date.now();
     if (st) st.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — ${new Date().toLocaleTimeString("pt-BR")}</span>`;
-    renderDashboard(); renderBooks(); renderStudents(); renderLoans();
+    _renderActivePage();
   } catch {
     if (st) st.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Offline — cache local</span>`;
     Store.loadLocal();
-    renderDashboard(); renderBooks(); renderStudents(); renderLoans();
+    _renderActivePage();
+  } finally {
+    _syncInFlight = false;
   }
 }
 
@@ -917,7 +1047,7 @@ function decodeQrPayload(code) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   loadSupabaseConfig?.().then((config) => {
     if (!config) {
       const status = Utils.el("cloud-status");
@@ -926,6 +1056,41 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   });
+
+  const savedSession = getSessionCookie();
+  if (savedSession?.login && savedSession?.role) {
+    if (isSessionExpired(savedSession)) {
+      clearSessionCookie();
+    } else {
+      currentUser = {
+        role: savedSession.role,
+        login: savedSession.login,
+        name: savedSession.name || savedSession.login,
+        student: savedSession.student || null,
+      };
+      Utils.el("login-screen").style.display = "none";
+      Utils.el("app").style.display = "flex";
+
+      const ini = currentUser.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+      Utils.el("sb-avatar-initials").textContent = ini;
+      Utils.el("sb-user-name").textContent = currentUser.name;
+      const roleBadge = Utils.el("sb-role-badge");
+      roleBadge.innerHTML = currentUser.role === "librarian"
+        ? `<span class="role-badge role-librarian"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
+        : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
+
+      _applyRolePermissions();
+      scheduleSessionTimeout();
+      await syncAll();
+      navigateTo(currentUser.role === "librarian" ? "emprestimo" : "dashboard");
+    }
+  }
+
+  document.addEventListener("click", () => resetSessionActivity());
+  document.addEventListener("keydown", () => resetSessionActivity());
+  document.addEventListener("mousemove", () => resetSessionActivity());
+  document.addEventListener("touchstart", () => resetSessionActivity());
+  document.addEventListener("scroll", () => resetSessionActivity(), { passive: true });
 
   // Login ao pressionar Enter
   Utils.el("login-pass")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });

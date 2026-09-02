@@ -153,8 +153,8 @@
           </div>
           <div id="tab-lista" style="display:none;">
             <div class="toolbar">
-              <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="loans-search" placeholder="Buscar..." oninput="renderLoans()"></div>
-              <select id="loans-filter" onchange="renderLoans()"><option value="">Todos</option><option value="active">Ativos</option><option value="overdue">Atrasados</option><option value="returned">Devolvidos</option></select>
+              <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="loans-search" placeholder="Buscar..." oninput="renderScheduler.loans()"></div>
+              <select id="loans-filter" onchange="renderScheduler.loans()"><option value="">Todos</option><option value="active">Ativos</option><option value="overdue">Atrasados</option><option value="returned">Devolvidos</option></select>
             </div>
             <div class="tbl-wrap"><table>
               <thead><tr><th>#</th><th>Aluno</th><th>Turma</th><th>Livro</th><th>Exemplar</th><th>Empréstimo</th><th>Devolução</th><th>Status</th><th></th></tr></thead>
@@ -166,8 +166,8 @@
         <!-- ACERVO -->
         <div class="page" id="page-livros">
           <div class="toolbar">
-            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="books-search" placeholder="Título, autor, ISBN..." oninput="renderBooks()"></div>
-            <select id="books-genre-filter" onchange="renderBooks()"><option value="">Todos os gêneros</option></select>
+            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="books-search" placeholder="Título, autor, ISBN..." oninput="renderScheduler.books()"></div>
+            <select id="books-genre-filter" onchange="renderScheduler.books()"><option value="">Todos os gêneros</option></select>
           </div>
           <div class="tbl-wrap"><table>
             <thead><tr><th>ISBN / ID</th><th>Título</th><th>Autor</th><th>Gênero</th><th>Área</th><th>Exemplares</th><th>Disponíveis</th><th></th></tr></thead>
@@ -193,9 +193,9 @@
             <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="importCSV(event)">
           </div>
           <div class="toolbar">
-            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="students-search" placeholder="Nome, turma ou carteirinha..." oninput="renderStudents()"></div>
-            <select id="students-class-filter" onchange="renderStudents()"><option value="">Todas as turmas</option></select>
-            <select id="students-room-filter"  onchange="renderStudents()"><option value="">Todas as salas</option></select>
+            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="students-search" placeholder="Nome, turma ou carteirinha..." oninput="renderScheduler.students()"></div>
+            <select id="students-class-filter" onchange="renderScheduler.students()"><option value="">Todas as turmas</option></select>
+            <select id="students-room-filter"  onchange="renderScheduler.students()"><option value="">Todas as salas</option></select>
           </div>
           <div class="tbl-wrap"><table>
             <thead><tr><th>Carteirinha / ID</th><th>Nome</th><th>Turma</th><th>Sala</th><th>Ativos</th><th>Situação</th><th></th></tr></thead>
@@ -206,7 +206,7 @@
         <!-- SALAS -->
         <div class="page" id="page-salas">
           <div class="toolbar">
-            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="rooms-search" placeholder="Buscar sala..." oninput="renderRooms()"></div>
+            <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="rooms-search" placeholder="Buscar sala..." oninput="renderScheduler.rooms()"></div>
           </div>
           <div class="tbl-wrap"><table>
             <thead><tr><th>Código</th><th>Nome</th><th>Descrição</th><th>Capacidade</th><th>Ocupação</th><th></th></tr></thead>

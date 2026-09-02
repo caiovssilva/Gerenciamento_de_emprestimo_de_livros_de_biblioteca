@@ -7,20 +7,30 @@ function renderStudents() {
   const cls  = Utils.el("students-class-filter")?.value||"";
   const sala = Utils.el("students-room-filter")?.value||"";
   const all  = Store.students();
+  const rooms = Store.rooms();
+  const roomMap = new Map(rooms.map(r => [r.id, r]));
+  const loans = Store.loans();
+  const loanMap = new Map();
 
-  // Preenche filtro de turmas
+  loans.forEach(l => {
+    if (!l.devolvido_em && l.aluno_id) {
+      const list = loanMap.get(l.aluno_id) || [];
+      list.push(l);
+      loanMap.set(l.aluno_id, list);
+    }
+  });
+
   const selCls = Utils.el("students-class-filter");
   if (selCls) {
     const cur = selCls.value;
     selCls.innerHTML = '<option value="">Todas as turmas</option>' +
       Store.classes().map(c=>`<option value="${c}" ${c===cur?"selected":""}>${c}</option>`).join("");
   }
-  // Preenche filtro de salas
   const selRoom = Utils.el("students-room-filter");
   if (selRoom) {
     const cur = selRoom.value;
     selRoom.innerHTML = '<option value="">Todas as salas</option>' +
-      Store.rooms().map(r=>`<option value="${r.id}" ${r.id===cur?"selected":""}>${r.nome}</option>`).join("");
+      rooms.map(r=>`<option value="${r.id}" ${r.id===cur?"selected":""}>${r.nome}</option>`).join("");
   }
 
   let studs = all;
@@ -31,13 +41,12 @@ function renderStudents() {
   const tbody = Utils.el("students-tbody");
   if (!studs.length) { tbody.innerHTML = Utils.emptyState("ti-users","Nenhum aluno encontrado."); return; }
 
-  const loans = Store.loans();
   tbody.innerHTML = studs.map(s => {
-    const actives = loans.filter(l=>l.aluno_id===s.id&&!l.devolvido_em);
+    const actives = loanMap.get(s.id) || [];
     const overdue = actives.filter(l=>Utils.daysLeft(l.data_devolucao_prevista)<0);
     const bcls    = overdue.length?"badge-red":actives.length?"badge-amber":"badge-green";
     const btxt    = overdue.length?"Irregular":actives.length?"Com empréstimo":"Regular";
-    const room    = Store.rooms().find(r=>r.id===s.sala_id);
+    const room    = roomMap.get(s.sala_id);
     const roomBadge = room
       ? `<span class="badge badge-blue"><i class="ti ti-door"></i>${room.nome}</span>`
       : `<span class="badge badge-gray">Sem sala</span>`;

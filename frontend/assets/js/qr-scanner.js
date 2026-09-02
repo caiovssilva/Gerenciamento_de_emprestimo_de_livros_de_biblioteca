@@ -3,6 +3,8 @@
  * Scanner QR local no navegador, com troca de câmera e fechamento confiável.
  */
 const QRScanner = (() => {
+  const CAPTURE_INTERVAL_MS = 1500;
+
   let _stream = null;
   let _timer = null;
   let _container = null;
@@ -177,7 +179,7 @@ const QRScanner = (() => {
       await _startWithPreferredCamera();
       await refreshCameras();
       if (_statusEl) _statusEl.textContent = "Procurando código...";
-      _timer = setInterval(_capture, 600);
+      _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
     } catch (error) {
       Utils.toast("Não foi possível trocar a câmera: " + error.message, "error");
     } finally {
@@ -300,7 +302,7 @@ const QRScanner = (() => {
         await refreshCameras();
         if (_statusEl) _statusEl.textContent = "Procurando código...";
         clearInterval(_timer);
-        _timer = setInterval(_capture, 600);
+        _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
       } catch (error) {
         if (_statusEl) _statusEl.textContent = "Câmera indisponível.";
         Utils.toast("Câmera indisponível: " + error.message, "error");
@@ -308,6 +310,7 @@ const QRScanner = (() => {
       }
     },
     stop,
+    destroy() { stop(); },
     refreshCameras,
     switchCamera,
   };

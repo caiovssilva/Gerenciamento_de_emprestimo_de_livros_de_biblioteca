@@ -10,7 +10,6 @@
 
 const Charts = (() => {
   let _charts   = { summary: null, topbooks: null, byclass: null, exports: null };
-  let _pollTimer = null;
   let _summarySeq = 0;
   let _topBooksSeq = 0;
   let _byClassSeq = 0;
@@ -240,18 +239,6 @@ const Charts = (() => {
     });
   }
 
-  // ── Polling ───────────────────────────────────────────────────
-  function _startPolling(ms = 15000) {
-    _stopPolling();
-    _pollTimer = setInterval(async () => {
-      await _buildSummary( Utils.el("chart-type-summary")?.value  || "bar");
-      await _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar");
-      await _buildByClass( Utils.el("chart-type-byclass")?.value  || "bar");
-      await _buildExportColumns();
-    }, ms);
-  }
-  function _stopPolling() { clearInterval(_pollTimer); _pollTimer = null; }
-
   // ── API pública ───────────────────────────────────────────────
   return {
     async init() {
@@ -262,8 +249,10 @@ const Charts = (() => {
         _buildByClass( Utils.el("chart-type-byclass")?.value  || "bar"),
         _buildExportColumns(),
       ]);
-      _startPolling(15000);
     },
+
+    start() { return this.init(); },
+    stop() { this.destroy(); },
 
     async changeSummaryType(t)  { await _buildSummary(t);  },
     async changeTopBooksType(t) { await _buildTopBooks(t); },
@@ -279,7 +268,6 @@ const Charts = (() => {
     },
 
     destroy() {
-      _stopPolling();
       _summarySeq += 1;
       _topBooksSeq += 1;
       _byClassSeq += 1;

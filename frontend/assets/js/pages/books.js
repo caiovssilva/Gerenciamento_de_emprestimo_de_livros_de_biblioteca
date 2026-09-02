@@ -5,31 +5,40 @@
 function renderBooks() {
   const q      = (Utils.el("books-search")?.value||"").toLowerCase();
   const genre  = Utils.el("books-genre-filter")?.value||"";
-  let   books  = Store.books();
+  const books  = Store.books();
+  const loans  = Store.loans();
+  const genres = Store.genres();
+  const loanByBook = new Map();
 
-  if (q) books = books.filter(b =>
+  loans.forEach(l => {
+    if (!l.devolvido_em && l.livro_id) {
+      const count = loanByBook.get(l.livro_id) || 0;
+      loanByBook.set(l.livro_id, count + 1);
+    }
+  });
+
+  let filtered = books;
+  if (q) filtered = filtered.filter(b =>
     (b.titulo||b.title||"").toLowerCase().includes(q)||
     (b.autor||b.author||"").toLowerCase().includes(q)||
     (b.isbn||"").toLowerCase().includes(q)||
     (b.id||"").toLowerCase().startsWith(q)
   );
-  if (genre) books = books.filter(b => b.genero_id === genre);
+  if (genre) filtered = filtered.filter(b => b.genero_id === genre);
 
-  // Preenche filtro de gêneros
   const sel = Utils.el("books-genre-filter");
   if (sel) {
     const cur = sel.value;
     sel.innerHTML = '<option value="">Todos os gêneros</option>' +
-      Store.genres().map(g=>`<option value="${g.id}" ${g.id===cur?"selected":""}>${g.nome}</option>`).join("");
+      genres.map(g=>`<option value="${g.id}" ${g.id===cur?"selected":""}>${g.nome}</option>`).join("");
   }
 
   const tbody = Utils.el("books-tbody");
-  if (!books.length) { tbody.innerHTML = Utils.emptyState("ti-books","Nenhum livro encontrado."); return; }
+  if (!filtered.length) { tbody.innerHTML = Utils.emptyState("ti-books","Nenhum livro encontrado."); return; }
 
-  const loans = Store.loans();
-  tbody.innerHTML = books.map(b => {
+  tbody.innerHTML = filtered.map(b => {
     const copies = b.exemplares||b.copies||1;
-    const active = loans.filter(l=>l.livro_id===b.id&&!l.devolvido_em).length;
+    const active = loanByBook.get(b.id) || 0;
     const avail  = copies - active;
     const color  = avail===0?"var(--red)":avail<=1?"var(--amber)":"var(--green)";
     const genreStyle = b.genero_cor ? `background:${b.genero_cor}22;color:${b.genero_cor};border:1px solid ${b.genero_cor}44` : "";
@@ -240,7 +249,7 @@ function _showPrintCard(cards, w = null) {
 <div class="top-actions"><button class="print-btn" onclick="window.print()">🖨️ Imprimir ${cards.length > 1 ? `todos (${cards.length})` : ""}</button></div>
 ${blocks}
 </body></html>`);
-  w.document.close();
+  win.document.close();
 }
 
 function _downloadImg(src, filename) {

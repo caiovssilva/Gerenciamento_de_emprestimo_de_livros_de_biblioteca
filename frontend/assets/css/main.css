@@ -57,6 +57,12 @@ body.theme-dark {
   color-scheme: dark;
 }
 
+body.theme-dark *,
+body.theme-dark *::before,
+body.theme-dark *::after {
+  color: var(--text);
+}
+
 body.theme-dark input,
 body.theme-dark textarea,
 body.theme-dark select,

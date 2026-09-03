@@ -32,6 +32,11 @@ LOGIN_ALIASES = {
     "bibliotecaria": "biblioteca",
 }
 
+DEFAULT_LOCAL_USERS = [
+    {"id": "local-admin", "nome": "Administrador", "login": "admin", "senha": "narceu2026"},
+    {"id": "local-biblioteca", "nome": "Bibliotecária", "login": "biblioteca", "senha": "narceu2026"},
+]
+
 
 def _normalize_supabase_url(url: str) -> str:
     normalized = (url or "").strip()
@@ -77,6 +82,15 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     return False
 
 
+def _get_local_user_by_login(login_str: str):
+    canonical_login = LOGIN_ALIASES.get((login_str or "").strip().lower(), login_str)
+    normalized_login = (canonical_login or "").strip().lower()
+    for user in DEFAULT_LOCAL_USERS:
+        if (user.get("login") or "").strip().lower() == normalized_login:
+            return user
+    return None
+
+
 def _get_user_by_login(login_str: str):
     sb = get_client()
     canonical_login = LOGIN_ALIASES.get((login_str or "").strip().lower(), login_str)
@@ -104,6 +118,10 @@ def _get_user_by_login(login_str: str):
                     return r
     except Exception:
         pass
+
+    local_user = _get_local_user_by_login(login_str)
+    if local_user is not None:
+        return local_user
 
     return None
 

@@ -199,11 +199,27 @@ async function showEntityQR(type, id) {
 
 async function printCard(type, id) {
   Utils.toast("Gerando cartão...","info");
+  const win = window.open("","_blank","width=700,height=350");
+  if (!win) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
+
+  const emptyHtml = `<!DOCTYPE html><html><head><title>Gerando cartão...</title><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;} .loading{padding:20px 28px;border-radius:12px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.12);font-weight:600;}</style></head><body><div class="loading">Gerando cartão... Aguarde.</div></body></html>`;
+  win.document.write(emptyHtml);
+  win.document.close();
+
   try {
     const res = type==="book" ? await API.qr.cardBook(id) : await API.qr.cardStudent(id);
     const cards = res.cards || [{ image: res.image, filename: res.filename, exemplar: "" }];
-    _showPrintCard(cards);
-  } catch(e) { Utils.toast("Erro ao gerar cartão: "+e.message,"error"); }
+    requestAnimationFrame(() => _showPrintCard(cards, win));
+  } catch(e) {
+    Utils.toast("Erro ao gerar cartão: "+e.message,"error");
+    if (!win.closed) {
+      win.document.write(`<!DOCTYPE html><html><head><title>Erro</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#0f172a;">Erro ao gerar cartão.</body></html>`);
+      win.document.close();
+    }
+  }
 }
 
 function _showQRResult(imgSrc, label, entityId, type) {
@@ -216,12 +232,12 @@ function _showQRResult(imgSrc, label, entityId, type) {
 }
 
 function _showPrintCard(cards, w = null) {
-  // Abre em nova aba para impressão direta — um bloco por exemplar
   const win = w || window.open("","_blank","width=700,height=350");
   if (!win) {
     Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
     return;
   }
+
   const blocks = cards.map(c => `
 <div class="card-wrap">
   ${c.exemplar ? `<div class="exemplar-label">Exemplar ${c.exemplar}</div>` : ""}
@@ -231,7 +247,9 @@ function _showPrintCard(cards, w = null) {
   </div>
 </div>`).join("\n");
 
-  win.document.write(`<!DOCTYPE html>
+  const render = () => {
+    win.document.open();
+    win.document.write(`<!DOCTYPE html>
 <html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
   body{margin:0;padding:24px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;justify-content:center;min-height:100vh;background:#f1f5f9;}
@@ -249,7 +267,14 @@ function _showPrintCard(cards, w = null) {
 <div class="top-actions"><button class="print-btn" onclick="window.print()">🖨️ Imprimir ${cards.length > 1 ? `todos (${cards.length})` : ""}</button></div>
 ${blocks}
 </body></html>`);
-  win.document.close();
+    win.document.close();
+  };
+
+  if (win.requestAnimationFrame) {
+    win.requestAnimationFrame(render);
+  } else {
+    setTimeout(render, 0);
+  }
 }
 
 function _downloadImg(src, filename) {

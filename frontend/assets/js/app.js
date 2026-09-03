@@ -47,7 +47,7 @@ function clearSessionCookie() {
 
 function isSessionExpired(session) {
   if (!session?.lastActivity) return true;
-  return Date.now() - Number(session.lastActivity) > SESSION_TIMEOUT_MS;
+  return Date.now() - Number(session.lastActivity) >= SESSION_TIMEOUT_MS;
 }
 
 function resetSessionActivity() {
@@ -993,14 +993,20 @@ async function printAdminCard() {
     Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
     return;
   }
+
+  const loading = `<!DOCTYPE html><html><head><title>Gerando carteirinha...</title><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;} .loading{padding:20px 28px;border-radius:12px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.12);font-weight:600;}</style></head><body><div class="loading">Gerando carteirinha... Aguarde.</div></body></html>`;
+  w.document.write(loading);
+  w.document.close();
+
   try {
-    w.document.write(`<!DOCTYPE html><html><head><title>Gerando carteirinha...</title></head><body><p style="font-family:Arial,sans-serif;padding:24px;">Gerando carteirinha...</p></body></html>`);
-    w.document.close();
     const res = await API.qr.cardAdmin(currentUser.login);
-    _showPrintCard([{ image: res.image, filename: res.filename }], w);
+    requestAnimationFrame(() => _showPrintCard([{ image: res.image, filename: res.filename }], w));
   } catch(e) {
     Utils.toast("Erro ao gerar carteirinha: "+e.message,"error");
-    if (!w.closed) w.close();
+    if (!w.closed) {
+      w.document.write(`<!DOCTYPE html><html><head><title>Erro</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#0f172a;">Erro ao gerar carteirinha.</body></html>`);
+      w.document.close();
+    }
   }
 }
 

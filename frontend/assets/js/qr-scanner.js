@@ -3,7 +3,8 @@
  * Scanner QR local no navegador, com troca de câmera e fechamento confiável.
  */
 const QRScanner = (() => {
-  const CAPTURE_INTERVAL_MS = 1500;
+  const CAPTURE_INTERVAL_MS = 700;
+  const READ_COOLDOWN_MS = 1800;
 
   let _stream = null;
   let _timer = null;
@@ -23,6 +24,8 @@ const QRScanner = (() => {
   let _selectEl = null;
   let _cancelBtnEl = null;
   let _refreshBtnEl = null;
+  let _lastDecodedValue = "";
+  let _lastReadAt = 0;
 
   function _getBarcodeDetector() {
     if (_barcodeDetector !== null) return _barcodeDetector;
@@ -188,10 +191,11 @@ const QRScanner = (() => {
   }
 
   async function _capture() {
-    if (_decoding || Date.now() < _retryAt) return;
+    const now = Date.now();
+    if (_decoding || now < _retryAt || now - _lastReadAt < READ_COOLDOWN_MS) return;
     if (!_videoEl || !_canvasEl || _videoEl.readyState < 2) return;
 
-    const maxEdge = 960;
+    const maxEdge = 640;
     const scale = Math.min(1, maxEdge / Math.max(_videoEl.videoWidth, _videoEl.videoHeight));
     const width = Math.max(1, Math.round(_videoEl.videoWidth * scale));
     const height = Math.max(1, Math.round(_videoEl.videoHeight * scale));
@@ -203,15 +207,21 @@ const QRScanner = (() => {
     ctx.drawImage(_videoEl, 0, 0, width, height);
     const imageData = ctx.getImageData(0, 0, width, height);
 
-    if (typeof window.jsQR === "function") {
+    const jsQr = typeof window.jsQR === "function" ? window.jsQR : null;
+    if (jsQr) {
       _decoding = true;
       try {
-        const result = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        const result = jsQr(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "attemptBoth",
         });
         if (result?.data) {
-          _onFound({ primary: result.data, type: "unknown", data: null, codes: [result.data], source: "client" });
-          return;
+          const candidate = String(result.data).trim();
+          if (candidate && candidate !== _lastDecodedValue) {
+            _lastDecodedValue = candidate;
+            _lastReadAt = Date.now();
+            _onFound({ primary: candidate, type: "unknown", data: null, codes: [candidate], source: "client" });
+            return;
+          }
         }
       } finally {
         _decoding = false;
@@ -222,10 +232,12 @@ const QRScanner = (() => {
     if (detector && typeof detector.detect === "function") {
       _decoding = true;
       try {
-        const detected = await detector.detect(_videoEl);
+        const detected = await detector.detect(_canvasEl);
         if (detected?.length) {
-          const primary = detected[0].rawValue || detected[0].displayValue;
-          if (primary) {
+          const primary = String(detected[0].rawValue || detected[0].displayValue || "").trim();
+          if (primary && primary !== _lastDecodedValue) {
+            _lastDecodedValue = primary;
+            _lastReadAt = Date.now();
             _onFound({ primary, type: "unknown", data: null, codes: [primary], source: "client" });
             return;
           }
@@ -275,6 +287,8 @@ const QRScanner = (() => {
     _switching = false;
     _decoding = false;
     _retryAt = 0;
+    _lastDecodedValue = "";
+    _lastReadAt = 0;
     _barcodeDetector = null;
     _videoEl = null;
     _canvasEl = null;

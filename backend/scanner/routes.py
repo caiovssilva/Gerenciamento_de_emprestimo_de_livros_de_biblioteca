@@ -13,18 +13,31 @@ import threading
 import time
 from io import BytesIO
 
-try:
-    import cv2
-    import numpy as np
-    from pyzbar import pyzbar
-except Exception:  # pragma: no cover - optional in some environments
-    cv2 = None
-    np = None
-    pyzbar = None
+cv2 = None
+np = None
+pyzbar = None
+
+
+def _ensure_scan_deps():
+    global cv2, np, pyzbar
+    if cv2 is not None and np is not None and pyzbar is not None:
+        return cv2, np, pyzbar
+    try:
+        import cv2 as _cv2
+        import numpy as _np
+        from pyzbar import pyzbar as _pyzbar
+    except Exception:  # pragma: no cover - optional in some environments
+        return None, None, None
+    cv2 = _cv2
+    np = _np
+    pyzbar = _pyzbar
+    return cv2, np, pyzbar
 
 from flask import Blueprint, jsonify, request, send_file
 
 qr_bp = Blueprint("qr", __name__)
+
+_FONT_CACHE = {}
 
 # ── Estado câmera servidor ────────────────────────────────────────────
 _lock          = threading.Lock()
@@ -35,14 +48,12 @@ _camera_thread = None
 
 def _scan_loop(camera_index: int = 0):
     global _camera_active, _last_result
-    try:
-        import cv2
-        from pyzbar import pyzbar
-    except ImportError:
+    cv2_local, _, pyzbar_local = _ensure_scan_deps()
+    if cv2_local is None or pyzbar_local is None:
         _camera_active = False
         return
 
-    cap = cv2.VideoCapture(camera_index)
+    cap = cv2_local.VideoCapture(camera_index)
     if not cap.isOpened():
         _camera_active = False
         return
@@ -52,7 +63,7 @@ def _scan_loop(camera_index: int = 0):
         if not ret:
             time.sleep(0.1)
             continue
-        decoded = pyzbar.decode(frame)
+        decoded = pyzbar_local.decode(frame)
         if decoded:
             data = decoded[0].data.decode("utf-8", errors="replace")
             with _lock:
@@ -477,7 +488,7 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     Retorna string base64 "data:image/png;base64,..."
     """
     import qrcode as qr_lib
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
     import textwrap
 
     W, H = 600, 260
@@ -493,50 +504,47 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     img  = Image.new("RGB", (W, H), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # Card principal
     draw.rounded_rectangle([8, 8, W-8, H-8], radius=22, fill=card_color, outline=border_color, width=2)
-
-    # Header
     draw.rounded_rectangle([14, 14, W-14, 72], radius=16, fill=header_color)
     draw.text((28, 24), "BIBLIOTECA NARCEU DE PAIVA FILHO", fill=(255, 255, 255), font=_load_font(18, bold=True))
     header_label = "CARTEIRINHA" if entity_type == "aluno" else "CARTÃO DE LIVRO"
     draw.text((28, 46), header_label, fill=(255, 255, 255), font=_load_font(12, bold=True))
     draw.rectangle([14, 72, W-14, 76], fill=(255, 255, 255))
 
-    # QR Code
     chip_text = "narceu"
-    chip_w    = draw.textlength(chip_text, font=_load_font(11, bold=True)) + 20
+    chip_font = _load_font(11, bold=True)
+    chip_w    = draw.textlength(chip_text, font=chip_font) + 20
     chip_x    = W - chip_w - 24
     chip_y    = 24
     draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + 28], radius=14, fill=(255, 255, 255), outline=(255, 255, 255), width=0)
-    draw.text((chip_x + 10, chip_y + 6), chip_text, fill=header_color, font=_load_font(11, bold=True))
+    draw.text((chip_x + 10, chip_y + 6), chip_text, fill=header_color, font=chip_font)
 
-    qr = qr_lib.QRCode(version=1, box_size=5, border=1)
+    qr = qr_lib.QRCode(version=1, box_size=4, border=1)
     qr.add_data(qr_data)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color=header_color, back_color="white").convert("RGB")
-    qr_size = 146
-    qr_img  = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
+    qr_size = 134
+    qr_img = qr_img.resize((qr_size, qr_size), getattr(Image, "Resampling", Image).LANCZOS)
     qr_x = W - qr_size - MARGIN - 4
     qr_y = 88
     img.paste(qr_img, (qr_x, qr_y))
     draw.rectangle([qr_x-3, qr_y-3, qr_x+qr_size+3, qr_y+qr_size+3], outline=border_color, width=2)
     qr_label = "ESCANEAR QR"
-    label_w  = draw.textlength(qr_label, font=_load_font(11))
-    draw.text((qr_x + (qr_size - label_w) / 2, qr_y + qr_size + 8), qr_label, fill=text_muted, font=_load_font(11))
+    label_font = _load_font(11)
+    label_w = draw.textlength(qr_label, font=label_font)
+    draw.text((qr_x + (qr_size - label_w) / 2, qr_y + qr_size + 8), qr_label, fill=text_muted, font=label_font)
 
-    # Texto principal
     cx = 34
     cy = 90
+    title_font = _load_font(24, bold=True)
     title_wrapped = textwrap.wrap(title, width=22)
-    for line in title_wrapped[:3]:
-        draw.text((cx, cy), line, fill=text_dark, font=_load_font(24, bold=True))
+    for line in title_wrapped[:2]:
+        draw.text((cx, cy), line, fill=text_dark, font=title_font)
         cy += 34
     cy += 4
     draw.text((cx, cy), subtitle, fill=text_dark, font=_load_font(14, bold=False))
     cy += 28
 
-    # Bloco de detalhes com fundo suave
     details_x = cx
     details_y = cy
     details_w = qr_x - details_x - 12
@@ -545,24 +553,24 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     for field in [field1, field2, field3]:
         if field and ("".join(field.split(": ")[1:]).strip() if ": " in field else field).strip():
             label, _, value = field.partition(": ")
-            wrapped = textwrap.wrap(value, width=28) or [""]
+            wrapped = textwrap.wrap(value, width=26) or [""]
             info_blocks.append((label, wrapped))
 
-    block_top_padding = 18
-    block_spacing = 16
-    line_height = 22
-    details_h = max(118, block_top_padding + sum(line_height * (1 + len(wrapped)) + block_spacing for _, wrapped in info_blocks))
+    block_top_padding = 16
+    block_spacing = 12
+    line_height = 20
+    details_h = max(110, block_top_padding + sum(line_height * (1 + len(wrapped)) + block_spacing for _, wrapped in info_blocks))
 
     draw.rounded_rectangle([details_x, details_y, details_x + details_w, details_y + details_h], radius=20, fill=(249, 250, 252), outline=border_color, width=1)
 
-    # Badge / turma ou gênero
     if badge:
         badge_text = badge.upper()
-        badge_w = draw.textlength(badge_text, font=_load_font(12, bold=True)) + 26
+        badge_font = _load_font(12, bold=True)
+        badge_w = draw.textlength(badge_text, font=badge_font) + 26
         badge_x = details_x + details_w - badge_w - 18
         badge_y = details_y + 18
         draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 28], radius=14, fill=header_color)
-        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=_load_font(12, bold=True))
+        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=badge_font)
 
     info_x = details_x + 18
     info_y = details_y + block_top_padding
@@ -570,7 +578,7 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
         draw.text((info_x, info_y), label, fill=text_muted, font=_load_font(10, bold=True))
         info_y += line_height
         for line in wrapped_value:
-            draw.text((info_x, info_y), line, fill=text_dark, font=_load_font(16, bold=False))
+            draw.text((info_x, info_y), line, fill=text_dark, font=_load_font(15, bold=False))
             info_y += line_height
         info_y += block_spacing
 
@@ -579,20 +587,25 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
     draw.text((34, footer_y), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
     draw.text((34, footer_y + 21), "Biblioteca Narceu de Paiva Filho — Carteirinha", fill=text_muted, font=_load_font(10))
 
-    # Barra inferior contrastante
     draw.rectangle([0, H - 10, W, H], fill=header_color)
 
     buf = BytesIO()
-    img.save(buf, format="PNG", dpi=(300, 300))
+    img.save(buf, format="PNG", optimize=True)
     b64 = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{b64}"
 
 
 def _load_font(size, bold=False):
     from PIL import ImageFont
+    font_key = (size, bold)
+    if font_key in _FONT_CACHE:
+        return _FONT_CACHE[font_key]
     try:
         if bold:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        else:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
     except Exception:
-        return ImageFont.load_default()
+        font = ImageFont.load_default()
+    _FONT_CACHE[font_key] = font
+    return font

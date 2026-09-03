@@ -95,3 +95,21 @@ def test_login_with_plain_text_password(client, monkeypatch):
     payload = response.get_json()
     assert payload["access"] == "admin"
     assert payload["login"] == "admin"
+
+
+def test_login_uses_default_local_fallback_when_supabase_is_offline(client, monkeypatch):
+    class OfflineClient:
+        def table(self, _name):
+            raise Exception("could not find the table — offline mode")
+
+    monkeypatch.setattr(auth_module, "get_client", lambda: OfflineClient())
+
+    response = client.post(
+        "/api/auth/login",
+        json={"login": "admin", "password": "narceu2026"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["access"] == "admin"
+    assert payload["login"] == "admin"

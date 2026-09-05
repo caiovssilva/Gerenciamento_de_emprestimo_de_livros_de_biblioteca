@@ -76,7 +76,56 @@ function openAddBook() {
   Utils.el("book-copies").value  = 1;
   _populateGenreSelect("book-genre");
   Utils.el("book-genre").value   = "";
+  Utils.el("book-isbn-status").textContent = "";
   Utils.openModal("modal-book");
+}
+
+function _normalizeIsbn(value) {
+  return String(value || "").replace(/[^0-9Xx]/g, "").toUpperCase();
+}
+
+function _genreIdFromCategories(categories) {
+  const available = Store.genres();
+  const normalized = (categories || []).map(category => category.toLowerCase());
+  const match = available.find(genre => {
+    const name = (genre.nome || "").toLowerCase();
+    return normalized.some(category => category.includes(name) || name.includes(category));
+  });
+  return match?.id || "";
+}
+
+async function lookupBookIsbn() {
+  const input = Utils.el("book-isbn");
+  const status = Utils.el("book-isbn-status");
+  const isbn = _normalizeIsbn(input?.value);
+  if (!isbn) {
+    Utils.toast("Informe ou leia um ISBN.", "error");
+    return;
+  }
+
+  status.textContent = "Pesquisando informações do livro...";
+  try {
+    const result = await API.books.lookupIsbn(isbn);
+    input.value = result.isbn || isbn;
+    Utils.el("book-title").value = result.titulo || "";
+    Utils.el("book-author").value = result.autor || "";
+    Utils.el("book-genre").value = _genreIdFromCategories(result.categorias);
+    status.textContent = result.categorias?.length
+      ? `Encontrado: ${result.categorias.join(", ")}`
+      : "Livro encontrado. Escolha o gênero manualmente, se necessário.";
+    Utils.toast("Dados do livro preenchidos. Confira antes de salvar.", "success");
+  } catch (error) {
+    status.textContent = "Livro não encontrado. Você pode preencher os dados manualmente.";
+    Utils.toast(error.message || "Livro não encontrado.", "error");
+  }
+}
+
+function scanBookIsbn() {
+  QRScanner.start("book-isbn", result => {
+    const value = _normalizeIsbn(result.primary);
+    Utils.el("book-isbn").value = value;
+    lookupBookIsbn();
+  });
 }
 
 function editBook(id) {

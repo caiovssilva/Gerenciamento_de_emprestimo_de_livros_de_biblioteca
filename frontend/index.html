@@ -334,7 +334,7 @@
   <div class="modal-head"><h2 id="modal-book-title">Cadastrar livro</h2><button class="modal-close" onclick="Utils.closeModal('modal-book')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <input type="hidden" id="book-edit-id">
-    <div class="form-group"><label>ISBN / Código</label><input type="text" id="book-isbn" placeholder="Vazio = gera ID automático"></div>
+    <div class="form-group"><label>ISBN / Código de barras</label><div class="barcode-row"><input type="text" id="book-isbn" placeholder="Leia ou informe o ISBN"><button type="button" class="scan-btn" onclick="scanBookIsbn()" title="Ler código de barras"><i class="ti ti-barcode"></i>Ler</button><button type="button" class="scan-btn" onclick="lookupBookIsbn()" title="Pesquisar ISBN"><i class="ti ti-search"></i>Pesquisar</button></div><small id="book-isbn-status" style="display:block;margin-top:6px;color:var(--muted);"></small></div>
     <div class="form-group"><label>Título *</label><input type="text" id="book-title" placeholder="Título completo"></div>
     <div class="form-group"><label>Autor *</label><input type="text" id="book-author" placeholder="Nome do autor"></div>
     <div class="form-row cols-2">

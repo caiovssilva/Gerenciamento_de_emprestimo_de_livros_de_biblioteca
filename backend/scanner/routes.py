@@ -33,6 +33,43 @@ def _ensure_scan_deps():
     pyzbar = _pyzbar
     return cv2, np, pyzbar
 
+
+def _decode_barcode_variants(frame):
+    """Tenta leituras controladas para imagens pequenas, desfocadas ou com baixo contraste."""
+    cv2_local, _, pyzbar_local = _ensure_scan_deps()
+    if cv2_local is None or pyzbar_local is None or frame is None:
+        return []
+
+    variants = [frame]
+    gray = cv2_local.cvtColor(frame, cv2_local.COLOR_BGR2GRAY)
+    variants.append(gray)
+
+    height, width = gray.shape[:2]
+    if max(height, width) < 1200:
+        scale = 2 if max(height, width) < 700 else 1.5
+        enlarged = cv2_local.resize(gray, None, fx=scale, fy=scale, interpolation=cv2_local.INTER_CUBIC)
+        blurred = cv2_local.GaussianBlur(enlarged, (0, 0), 3)
+        sharpened = cv2_local.addWeighted(enlarged, 1.7, blurred, -0.7, 0)
+        clahe = cv2_local.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(enlarged)
+        variants.extend([
+            enlarged,
+            sharpened,
+            clahe,
+            cv2_local.threshold(enlarged, 0, 255, cv2_local.THRESH_BINARY + cv2_local.THRESH_OTSU)[1],
+            cv2_local.threshold(sharpened, 0, 255, cv2_local.THRESH_BINARY + cv2_local.THRESH_OTSU)[1],
+            cv2_local.adaptiveThreshold(enlarged, 255, cv2_local.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        cv2_local.THRESH_BINARY, 31, 7),
+        ])
+
+    for candidate in variants:
+        try:
+            decoded = pyzbar_local.decode(candidate)
+        except Exception:
+            decoded = []
+        if decoded:
+            return decoded
+    return []
+
 from flask import Blueprint, jsonify, request, send_file
 
 qr_bp = Blueprint("qr", __name__)
@@ -136,9 +173,10 @@ def decode_image():
 
         decoded = []
         try:
-            if cv2 is not None and np is not None and pyzbar is not None:
-                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                decoded = pyzbar.decode(frame)
+            cv2_local, np_local, _ = _ensure_scan_deps()
+            if cv2_local is not None and np_local is not None:
+                frame = cv2_local.cvtColor(np_local.array(pil_img), cv2_local.COLOR_RGB2BGR)
+                decoded = _decode_barcode_variants(frame)
         except Exception:
             decoded = []
 

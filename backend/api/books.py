@@ -1,4 +1,9 @@
 """api/books.py — CRUD de livros com fallback JSON local."""
+import json
+import re
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 from flask import Blueprint, request, jsonify
 from pathlib import Path
 from utils import get_client, sb_exec, new_id, today_str
@@ -9,6 +14,48 @@ DATA_DIR   = Path(__file__).resolve().parent.parent / "data"
 BOOKS_FILE = DATA_DIR / "livros.json"
 GENR_FILE  = DATA_DIR / "generos.json"
 LOAN_FILE  = DATA_DIR / "emprestimos.json"
+
+
+def _normalize_isbn(value: str) -> str:
+    return re.sub(r"[^0-9Xx]", "", str(value or "")).upper()
+
+
+def _google_books_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    if len(normalized) not in (10, 13):
+        raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
+
+    url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" + normalized
+    try:
+        request_obj = Request(url, headers={"Accept": "application/json"})
+        with urlopen(request_obj, timeout=6) as response:
+            data = json.load(response)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise RuntimeError("Não foi possível consultar a Google Books agora.") from exc
+
+    item = (data.get("items") or [None])[0]
+    if not item:
+        raise LookupError("Livro não encontrado para este ISBN.")
+
+    info = item.get("volumeInfo") or {}
+    identifiers = info.get("industryIdentifiers") or []
+    found_isbn = normalized
+    for identifier in identifiers:
+        if identifier.get("type") == "ISBN_13":
+            found_isbn = _normalize_isbn(identifier.get("identifier"))
+            break
+    else:
+        for identifier in identifiers:
+            if identifier.get("type") == "ISBN_10":
+                found_isbn = _normalize_isbn(identifier.get("identifier"))
+                break
+
+    return {
+        "isbn": found_isbn,
+        "titulo": str(info.get("title") or "").strip(),
+        "autor": ", ".join(str(author).strip() for author in (info.get("authors") or []) if str(author).strip()),
+        "categorias": [str(category).strip() for category in (info.get("categories") or []) if str(category).strip()],
+    }
 
 
 def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:
@@ -52,6 +99,19 @@ def list_books():
         g = b.pop("generos", None) or gmap.get(b.get("genero_id"), {})
         b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")
     return jsonify(books)
+
+
+@books_bp.route("/isbn-lookup", methods=["GET"])
+def lookup_isbn():
+    isbn = request.args.get("isbn", "")
+    try:
+        return jsonify(_google_books_lookup(isbn))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 @books_bp.route("/<book_id>", methods=["GET"])

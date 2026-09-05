@@ -139,6 +139,15 @@ const QRScanner = (() => {
       _videoEl.srcObject = _stream;
       await _videoEl.play();
     }
+    const track = _stream?.getVideoTracks?.()[0];
+    const capabilities = track?.getCapabilities?.() || {};
+    if (track?.applyConstraints && capabilities.focusMode?.includes("continuous")) {
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+      } catch {
+        // Alguns dispositivos informam o foco, mas não aceitam a aplicação em execução.
+      }
+    }
   }
 
   async function _startWithPreferredCamera() {
@@ -149,8 +158,9 @@ const QRScanner = (() => {
     }
 
     candidates.push(
-      { video: { facingMode: { ideal: "environment" } } },
-      { video: { facingMode: { ideal: "user" } } },
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
       { video: true },
     );
 
@@ -195,7 +205,7 @@ const QRScanner = (() => {
     if (_decoding || now < _retryAt || now - _lastReadAt < READ_COOLDOWN_MS) return;
     if (!_videoEl || !_canvasEl || _videoEl.readyState < 2) return;
 
-    const maxEdge = 640;
+    const maxEdge = 1280;
     const scale = Math.min(1, maxEdge / Math.max(_videoEl.videoWidth, _videoEl.videoHeight));
     const width = Math.max(1, Math.round(_videoEl.videoWidth * scale));
     const height = Math.max(1, Math.round(_videoEl.videoHeight * scale));
@@ -245,6 +255,26 @@ const QRScanner = (() => {
       } catch {
         _retryAt = Date.now() + 2500;
         if (_statusEl) _statusEl.textContent = "Não consegui ler ainda. Aponte melhor o QR ou troque a câmera.";
+      } finally {
+        _decoding = false;
+      }
+    }
+
+    // Fallback para EAN/ISBN em navegadores sem BarcodeDetector.
+    if (typeof API !== "undefined" && API.qr?.decode && _canvasEl.toDataURL) {
+      _decoding = true;
+      try {
+        const result = await API.qr.decode(_canvasEl.toDataURL("image/jpeg", 0.92));
+        const primary = String(result?.primary || "").trim();
+        if (primary && primary !== _lastDecodedValue) {
+          _lastDecodedValue = primary;
+          _lastReadAt = Date.now();
+          _onFound(result);
+          return;
+        }
+        if (_statusEl) _statusEl.textContent = "Procurando código de barras...";
+      } catch {
+        _retryAt = Date.now() + 1000;
       } finally {
         _decoding = false;
       }

@@ -40,6 +40,7 @@ const API = {
   books: {
     list:   (q="", genre="") => apiFetch(`/books/?q=${encodeURIComponent(q)}&genre=${encodeURIComponent(genre)}`),
     get:    id               => apiFetch(`/books/${id}`),
+    lookupIsbn: isbn         => apiFetch(`/books/isbn-lookup?isbn=${encodeURIComponent(isbn)}`),
     create: body             => apiFetch("/books/",      { method:"POST",   body:JSON.stringify(body) }),
     update: (id,body)        => apiFetch(`/books/${id}`, { method:"PUT",    body:JSON.stringify(body) }),
     delete: id               => apiFetch(`/books/${id}`, { method:"DELETE" }),

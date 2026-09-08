@@ -85,10 +85,20 @@ const windowStub = {
   jsQR: () => ({ data: 'ABC123' }),
 };
 
+const focusApplications = [];
+const videoTrack = {
+  getCapabilities: () => ({ focusMode: ['continuous'] }),
+  applyConstraints: async (constraints) => {
+    focusApplications.push(constraints);
+  },
+  stop: () => {},
+};
+
 const navigatorStub = {
   mediaDevices: {
     getUserMedia: async () => ({
-      getTracks: () => [],
+      getTracks: () => [videoTrack],
+      getVideoTracks: () => [videoTrack],
     }),
     enumerateDevices: async () => [],
   },
@@ -126,6 +136,12 @@ vm.runInContext(source, context);
   });
 
   assert.strictEqual(called, true, 'O callback do scanner deveria ser executado após ler o QR');
+  assert.strictEqual(focusApplications.length, 1, 'O scanner deveria tentar configurar o foco uma vez');
+  assert.strictEqual(
+    focusApplications[0].advanced[0].focusMode,
+    'continuous',
+    'O scanner deveria aplicar foco contínuo quando a câmera o anuncia',
+  );
   console.log('qr-scanner callback test passed');
 })().catch((error) => {
   console.error(error);

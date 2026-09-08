@@ -130,6 +130,33 @@ const QRScanner = (() => {
     }
   }
 
+  async function _applySupportedFocus(track) {
+    if (!track?.applyConstraints || typeof track.getCapabilities !== "function") return;
+
+    let capabilities;
+    try {
+      capabilities = track.getCapabilities() || {};
+    } catch (error) {
+      console.warn("Não foi possível consultar o foco da câmera:", error);
+      return;
+    }
+
+    const focusModes = Array.isArray(capabilities.focusMode) ? capabilities.focusMode : [];
+    const focusMode = focusModes.includes("continuous")
+      ? "continuous"
+      : focusModes.includes("single-shot")
+        ? "single-shot"
+        : null;
+
+    if (!focusMode) return;
+
+    try {
+      await track.applyConstraints({ advanced: [{ focusMode }] });
+    } catch (error) {
+      console.warn(`A câmera rejeitou o modo de foco ${focusMode}:`, error);
+    }
+  }
+
   async function _startStream(constraints) {
     _stream = await navigator.mediaDevices.getUserMedia(constraints);
     if (_videoEl) {
@@ -140,14 +167,7 @@ const QRScanner = (() => {
       await _videoEl.play();
     }
     const track = _stream?.getVideoTracks?.()[0];
-    const capabilities = track?.getCapabilities?.() || {};
-    if (track?.applyConstraints && capabilities.focusMode?.includes("continuous")) {
-      try {
-        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
-      } catch {
-        // Alguns dispositivos informam o foco, mas não aceitam a aplicação em execução.
-      }
-    }
+    await _applySupportedFocus(track);
   }
 
   async function _startWithPreferredCamera() {

@@ -1,6 +1,8 @@
 """api/books.py — CRUD de livros com fallback JSON local."""
 import json
+import os
 import re
+from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,6 +16,7 @@ DATA_DIR   = Path(__file__).resolve().parent.parent / "data"
 BOOKS_FILE = DATA_DIR / "livros.json"
 GENR_FILE  = DATA_DIR / "generos.json"
 LOAN_FILE  = DATA_DIR / "emprestimos.json"
+_ISBN_CACHE: dict[str, dict] = {}
 
 
 def _normalize_isbn(value: str) -> str:
@@ -25,7 +28,10 @@ def _google_books_lookup(isbn: str) -> dict:
     if len(normalized) not in (10, 13):
         raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
 
+    api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
     url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" + normalized
+    if api_key:
+        url += "&key=" + api_key
     try:
         request_obj = Request(url, headers={"Accept": "application/json"})
         with urlopen(request_obj, timeout=6) as response:
@@ -56,6 +62,78 @@ def _google_books_lookup(isbn: str) -> dict:
         "autor": ", ".join(str(author).strip() for author in (info.get("authors") or []) if str(author).strip()),
         "categorias": [str(category).strip() for category in (info.get("categories") or []) if str(category).strip()],
     }
+
+
+class _IsbnSearchParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.authors = ""
+        self._in_title = False
+        self._in_authors = False
+        self._capture_authors = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "title":
+            self._in_title = True
+        if tag == "p":
+            self._capture_authors = False
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+        if tag == "p":
+            self._in_authors = False
+            self._capture_authors = False
+
+    def handle_data(self, data):
+        text = " ".join(data.split())
+        if self._in_title:
+            self.title += text
+        if self._capture_authors:
+            self.authors += text
+        if text.lower().startswith("authors:"):
+            self._capture_authors = True
+            self._in_authors = True
+            self.authors += text.split(":", 1)[1].strip()
+
+
+def _isbnsearch_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    url = "https://isbnsearch.org/isbn/" + normalized
+    request_obj = Request(url, headers={"Accept": "text/html", "User-Agent": "Mozilla/5.0"})
+    try:
+        with urlopen(request_obj, timeout=6) as response:
+            parser = _IsbnSearchParser()
+            parser.feed(response.read().decode("utf-8", errors="replace"))
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from exc
+
+    title = re.sub(r"^ISBN\s+\S+\s*-\s*", "", parser.title, flags=re.IGNORECASE).strip()
+    authors = re.sub(r"\s*[-|].*$", "", parser.authors).strip()
+    if not title or title.upper().startswith("ISBN "):
+        raise LookupError("Livro não encontrado para este ISBN.")
+
+    return {"isbn": normalized, "titulo": title, "autor": authors, "categorias": []}
+
+
+def _lookup_isbn(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    if len(normalized) not in (10, 13):
+        raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
+    if normalized in _ISBN_CACHE:
+        return _ISBN_CACHE[normalized].copy()
+
+    errors = []
+    for provider in (_google_books_lookup, _isbnsearch_lookup):
+        try:
+            result = provider(normalized)
+            _ISBN_CACHE[normalized] = result
+            return result.copy()
+        except (HTTPError, URLError, TimeoutError, LookupError, RuntimeError) as exc:
+            errors.append(exc)
+
+    raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]
 
 
 def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:
@@ -105,7 +183,7 @@ def list_books():
 def lookup_isbn():
     isbn = request.args.get("isbn", "")
     try:
-        return jsonify(_google_books_lookup(isbn))
+        return jsonify(_lookup_isbn(isbn))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except LookupError as exc:

@@ -32,12 +32,6 @@ LOGIN_ALIASES = {
     "bibliotecaria": "biblioteca",
 }
 
-DEFAULT_LOCAL_USERS = [
-    {"id": "local-admin", "nome": "Administrador", "login": "admin", "senha": "narceu2026"},
-    {"id": "local-biblioteca", "nome": "Bibliotecária", "login": "biblioteca", "senha": "narceu2026"},
-]
-
-
 def _normalize_supabase_url(url: str) -> str:
     normalized = (url or "").strip()
     if normalized.endswith("/rest/v1/"):
@@ -82,18 +76,13 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     return False
 
 
-def _get_local_user_by_login(login_str: str):
-    canonical_login = LOGIN_ALIASES.get((login_str or "").strip().lower(), login_str)
-    normalized_login = (canonical_login or "").strip().lower()
-    for user in DEFAULT_LOCAL_USERS:
-        if (user.get("login") or "").strip().lower() == normalized_login:
-            return user
-    return None
-
-
 def _get_user_by_login(login_str: str):
     sb = get_client()
-    canonical_login = LOGIN_ALIASES.get((login_str or "").strip().lower(), login_str)
+    requested_login = (login_str or "").strip().lower()
+    canonical_login = LOGIN_ALIASES.get(requested_login, requested_login)
+    login_candidates = [canonical_login]
+    if requested_login not in login_candidates:
+        login_candidates.append(requested_login)
     # Try exact match first (fast). If no result, fallback to reading
     # all users and matching case-insensitively to tolerate different
     # capitalization in the stored `login` values.
@@ -101,7 +90,7 @@ def _get_user_by_login(login_str: str):
         rows = sb_exec(
             sb.table("usuarios")
             .select("id,nome,login,senha")
-            .eq("login", canonical_login)
+            .in_("login", login_candidates)
         )
     except Exception:
         rows = []
@@ -114,14 +103,10 @@ def _get_user_by_login(login_str: str):
         all_rows = sb_exec(sb.table("usuarios").select("id,nome,login,senha"))
         if all_rows:
             for r in all_rows:
-                if (r.get("login") or "").strip().lower() == (canonical_login or "").strip().lower():
+                if (r.get("login") or "").strip().lower() in login_candidates:
                     return r
     except Exception:
         pass
-
-    local_user = _get_local_user_by_login(login_str)
-    if local_user is not None:
-        return local_user
 
     return None
 
@@ -222,7 +207,7 @@ def get_supabase_config():
         key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY") or ""
         
         if not url or not key:
-            current_app.logger.info("Supabase não configurado: usando fallback local")
+            current_app.logger.error("Supabase não configurado")
             return jsonify({"url": "", "key": ""}), 200
         
         return jsonify({"url": url, "key": key}), 200

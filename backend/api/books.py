@@ -28,7 +28,7 @@ def _google_books_lookup(isbn: str) -> dict:
     if len(normalized) not in (10, 13):
         raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
 
-    api_key = os.getenv("AIzaSyAEFXrb_Ces2HQsEjOhoyi2jOyBbk-WXCQ", "").strip()
+    api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
     url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" + normalized
     if api_key:
         url += "&key=" + api_key
@@ -117,6 +117,36 @@ def _isbnsearch_lookup(isbn: str) -> dict:
     return {"isbn": normalized, "titulo": title, "autor": authors, "categorias": []}
 
 
+def _openlibrary_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    url = "https://openlibrary.org/api/books?bibkeys=ISBN:" + normalized + "&jscmd=data&format=json"
+    request_obj = Request(url, headers={"Accept": "application/json", "User-Agent": "Biblioteca/1.0"})
+    try:
+        with urlopen(request_obj, timeout=6) as response:
+            data = json.load(response)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from exc
+
+    book = data.get("ISBN:" + normalized) or {}
+    authors = []
+    for author in book.get("authors") or []:
+        name = author.get("name") if isinstance(author, dict) else author
+        if str(name or "").strip():
+            authors.append(str(name).strip())
+
+    categories = []
+    for subject in book.get("subjects") or []:
+        name = subject.get("name") if isinstance(subject, dict) else subject
+        if str(name or "").strip():
+            categories.append(str(name).strip())
+
+    author_text = ", ".join(authors)
+    title = str(book.get("title") or "").strip()
+    if not title and not author_text and not categories:
+        raise LookupError("Livro não encontrado para este ISBN.")
+    return {"isbn": normalized, "titulo": title, "autor": author_text, "categorias": categories}
+
+
 def _lookup_isbn(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
     if len(normalized) not in (10, 13):
@@ -125,14 +155,28 @@ def _lookup_isbn(isbn: str) -> dict:
         return _ISBN_CACHE[normalized].copy()
 
     errors = []
-    for provider in (_google_books_lookup, _isbnsearch_lookup):
+    result = None
+    for provider in (_google_books_lookup, _isbnsearch_lookup, _openlibrary_lookup):
         try:
-            result = provider(normalized)
-            _ISBN_CACHE[normalized] = result
-            return result.copy()
+            found = provider(normalized)
+            if result is None:
+                result = found
+            else:
+                result["titulo"] = result.get("titulo") or found.get("titulo", "")
+                result["autor"] = result.get("autor") or found.get("autor", "")
+                categories = result.get("categorias") or []
+                for category in found.get("categorias") or []:
+                    if category not in categories:
+                        categories.append(category)
+                result["categorias"] = categories
+            if result.get("titulo") and result.get("autor") and result.get("categorias"):
+                break
         except (HTTPError, URLError, TimeoutError, LookupError, RuntimeError) as exc:
             errors.append(exc)
 
+    if result is not None:
+        _ISBN_CACHE[normalized] = result
+        return result.copy()
     raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]
 
 

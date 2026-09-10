@@ -86,10 +86,30 @@ function _normalizeIsbn(value) {
 
 function _genreIdFromCategories(categories) {
   const available = Store.genres();
-  const normalized = (categories || []).map(category => category.toLowerCase());
+  const normalize = value => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const aliases = {
+    "informatica": ["computer", "computing", "technology", "programming", "software"],
+    "ficcao cientifica": ["science fiction", "sci-fi", "scifi"],
+    "literatura brasileira": ["brazilian literature"],
+    "matematica": ["mathematics", "math"],
+    "engenharia": ["engineering"],
+    "tecnico / didatico": ["computer", "computing", "technology", "programming", "software", "textbook", "technical"],
+    "romance": ["romance", "love story"],
+    "aventura": ["adventure"],
+    "comedia": ["comedy", "humor"],
+    "terror / suspense": ["horror", "thriller", "suspense"],
+    "historia": ["history"],
+    "biografia": ["biography", "autobiography"],
+    "autoajuda": ["self-help", "self help"],
+  };
+  const normalized = (categories || []).map(normalize);
   const match = available.find(genre => {
-    const name = (genre.nome || "").toLowerCase();
-    return normalized.some(category => category.includes(name) || name.includes(category));
+    const name = normalize(genre.nome);
+    const terms = [name, ...(aliases[name] || [])];
+    return normalized.some(category => terms.some(term => category.includes(term) || term.includes(category)));
   });
   return match?.id || "";
 }
@@ -106,6 +126,10 @@ async function lookupBookIsbn() {
   status.textContent = "Pesquisando informações do livro...";
   try {
     const result = await API.books.lookupIsbn(isbn);
+    if (!Store.genres().length && typeof syncGenres === "function") {
+      await syncGenres();
+    }
+    _populateGenreSelect("book-genre");
     input.value = result.isbn || isbn;
     Utils.el("book-title").value = result.titulo || "";
     Utils.el("book-author").value = result.autor || "";

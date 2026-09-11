@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import unicodedata
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -92,7 +93,8 @@ class _IsbnSearchParser(HTMLParser):
             self.title += text
         if self._capture_authors:
             self.authors += text
-        if text.lower().startswith("authors:"):
+        label = text.split(":", 1)[0].strip().lower()
+        if label in {"author", "authors"}:
             self._capture_authors = True
             self._in_authors = True
             self.authors += text.split(":", 1)[1].strip()
@@ -147,6 +149,43 @@ def _openlibrary_lookup(isbn: str) -> dict:
     return {"isbn": normalized, "titulo": title, "autor": author_text, "categorias": categories}
 
 
+def _match_genre(categories: list[str]) -> tuple[str, str]:
+    """Relaciona categorias externas a um gênero cadastrado no sistema."""
+    def normalize(value):
+        without_accents = unicodedata.normalize("NFKD", str(value or ""))
+        without_accents = "".join(char for char in without_accents if not unicodedata.combining(char))
+        return re.sub(r"[^a-z0-9]+", " ", without_accents.lower()).strip()
+    aliases = {
+        "ficcao cientifica": ["science fiction", "sci fi", "scifi"],
+        "historia": ["history", "historical"],
+        "biografia": ["biography", "autobiography", "memoir"],
+        "romance": ["romance", "love story", "romantic fiction"],
+        "aventura": ["adventure"],
+        "comedia": ["comedy", "humor"],
+        "terror suspense": ["horror", "thriller", "suspense"],
+        "autoajuda": ["self help", "self improvement"],
+        "tecnico didatico": ["textbook", "technical", "educational"],
+    }
+    try:
+        sb = get_client()
+        try:
+            genres = sb_exec(sb.table("generos").select("id,nome").order("nome"))
+        except Exception:
+            genres = read_json(GENR_FILE)
+    except Exception:
+        genres = read_json(GENR_FILE)
+
+    normalized_categories = [normalize(category) for category in categories or []]
+    for genre in genres:
+        genre_name = str(genre.get("nome") or "").strip()
+        normalized_name = normalize(genre_name)
+        terms = [normalized_name, *aliases.get(normalized_name, [])]
+        if any(category and (term in category or category in term)
+               for category in normalized_categories for term in terms):
+            return str(genre.get("id") or ""), genre_name
+    return "", ""
+
+
 def _lookup_isbn(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
     if len(normalized) not in (10, 13):
@@ -175,6 +214,8 @@ def _lookup_isbn(isbn: str) -> dict:
             errors.append(exc)
 
     if result is not None:
+        result["area"] = "Geral"
+        result["genero_id"], result["genero_nome"] = _match_genre(result.get("categorias", []))
         _ISBN_CACHE[normalized] = result
         return result.copy()
     raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]

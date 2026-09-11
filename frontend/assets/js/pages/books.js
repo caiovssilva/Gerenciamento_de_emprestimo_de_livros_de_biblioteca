@@ -129,11 +129,17 @@ async function lookupBookIsbn() {
     if (!Store.genres().length && typeof syncGenres === "function") {
       await syncGenres();
     }
+    const genreSelect = Utils.el("book-genre");
+    const currentGenre = genreSelect.value;
     _populateGenreSelect("book-genre");
     input.value = result.isbn || isbn;
-    Utils.el("book-title").value = result.titulo || "";
-    Utils.el("book-author").value = result.autor || "";
-    Utils.el("book-genre").value = _genreIdFromCategories(result.categorias);
+    const titleInput = Utils.el("book-title");
+    const authorInput = Utils.el("book-author");
+    const areaInput = Utils.el("book-area");
+    if (!titleInput.value.trim()) titleInput.value = result.titulo || "";
+    if (!authorInput.value.trim()) authorInput.value = result.autor || "";
+    if (!areaInput.value.trim()) areaInput.value = result.area || "Geral";
+    if (!currentGenre && result.genero_id) genreSelect.value = result.genero_id;
     status.textContent = result.categorias?.length
       ? `Encontrado: ${result.categorias.join(", ")}`
       : "Livro encontrado. Escolha o gênero manualmente, se necessário.";

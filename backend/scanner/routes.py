@@ -308,7 +308,7 @@ def _read_local_record(file_path, record_id, alt_field=None):
 def qr_login():
     """
     Recebe o código lido pela câmera (carteirinha) e resolve o tipo de acesso:
-    - admin: cartão administrativo, login direto.
+    - admin: cartão administrativo, exige senha validada no backend.
     - librarian: aluno com is_librarian=True, entra como Bibliotecário.
     - student: aluno comum, sem acesso ao painel (apenas informativo).
     - unknown: código não reconhecido.
@@ -321,6 +321,20 @@ def qr_login():
     resolved = _resolve_qr(code)
 
     if resolved["type"] == "admin":
+        from api.auth import _get_user_by_login, _verify_password
+
+        login = (resolved.get("data") or {}).get("login", "").strip()
+        password = str(body.get("password") or "")
+        user = _get_user_by_login(login)
+        if not user:
+            return jsonify({"error": "Cartão administrativo inválido."}), 401
+        if not password or not _verify_password(password, user.get("senha", "")):
+            return jsonify({"error": "Senha administrativa incorreta."}), 401
+        resolved["data"] = {
+            "id": user.get("id"),
+            "login": user.get("login"),
+            "nome": user.get("nome"),
+        }
         return jsonify({"access": "admin", **resolved})
 
     if resolved["type"] == "student":
@@ -335,29 +349,37 @@ def qr_login():
 
 
 # ── Cartão imprimível: Administrador ──────────────────────────────────
-@qr_bp.route("/card/admin/<login>", methods=["GET"])
+@qr_bp.route("/card/admin/<login>", methods=["POST"])
 def admin_card(login):
-    """Gera a 'carteirinha' do administrador/bibliotecária, com QR Code de login."""
+    """Gera a carteirinha administrativa somente após validar a senha real."""
     try:
-        users = {
-            "admin":      {"name": "Administrador", "role": "Sistema"},
-            "bibliotecario": {"name": "Bibliotecário",  "role": "Sistema"},
-        }
-        info = users.get(login, {"name": login.capitalize(), "role": "Usuário"})
+        from api.auth import _get_user_by_login, _verify_password
+
+        password = str((request.get_json(silent=True) or {}).get("password") or "")
+        user = _get_user_by_login(login)
+        if not user or not password or not _verify_password(password, user.get("senha", "")):
+            return jsonify({"error": "Senha administrativa incorreta."}), 401
+
+        stored_login = (user.get("login") or login).strip()
+        normalized_login = stored_login.lower()
+        if normalized_login not in ("admin", "bibliotecario", "biblioteca"):
+            return jsonify({"error": "Usuário não autorizado para carteirinha administrativa."}), 403
+
+        role = "Bibliotecário" if normalized_login in ("bibliotecario", "biblioteca") else "Administrador"
         qr_data = f"{ADMIN_CARD_PREFIX}{login}"
 
         img_b64 = _build_card(
-            entity_type = "aluno",
-            title       = info["name"],
+            entity_type = "admin",
+            title       = user.get("nome") or stored_login,
             subtitle    = "Acesso administrativo",
-            field1      = f"Usuário: {login}",
-            field2      = f"Perfil: {info['role']}",
-            field3      = "Acesso: Total ao sistema",
+            field1      = f"Usuário: {stored_login}",
+            field2      = f"Senha: {password}",
+            field3      = f"Perfil: {role}",
             qr_data     = qr_data,
             badge       = "ADMIN",
             color       = "#1a4f8a",
         )
-        return jsonify({"image": img_b64, "filename": f"carteirinha-admin-{login}.png"})
+        return jsonify({"image": img_b64, "filename": f"carteirinha-admin-{normalized_login}.png"})
     except ImportError as e:
         return jsonify({"error": f"Pillow não instalado: {e}"}), 500
     except Exception as e:

@@ -202,11 +202,15 @@ async function startQRLogin() {
     const code = res.primary;
     if (!code) { Utils.toast("Código não reconhecido.","error"); return; }
     try {
-      const r = await API.qr.login(code);
+      const password = code.startsWith("ADMIN-")
+        ? window.prompt("Digite a senha administrativa para confirmar o acesso:")
+        : "";
+      if (code.startsWith("ADMIN-") && password === null) return;
+      const r = await API.qr.login(code, password);
       if (r.access === "admin") {
         const adminData = r.data || {};
         const login = adminData.login || "admin";
-        const name = login === "bibliotecario" ? "Bibliotecário" : "Administrador";
+        const name = adminData.nome || (login === "bibliotecario" ? "Bibliotecário" : "Administrador");
         _showQRLoginResult({
           icon:"ti-shield-check", color:"var(--brand)",
           title:`Bem-vindo, ${name}`,
@@ -987,6 +991,12 @@ async function testConnection() {
 // Gera e abre para impressão a carteirinha do usuário admin logado
 async function printAdminCard() {
   if (!currentUser?.login) return;
+  const password = window.prompt("Digite sua senha atual para gerar a carteirinha administrativa:");
+  if (password === null) return;
+  if (!password) {
+    Utils.toast("Informe sua senha para gerar a carteirinha.", "error");
+    return;
+  }
   Utils.toast("Gerando carteirinha...","info");
   const w = window.open("","_blank","width=700,height=350");
   if (!w) {
@@ -999,7 +1009,7 @@ async function printAdminCard() {
   w.document.close();
 
   try {
-    const res = await API.qr.cardAdmin(currentUser.login);
+    const res = await API.qr.cardAdmin(currentUser.login, password);
     requestAnimationFrame(() => _showPrintCard([{ image: res.image, filename: res.filename }], w));
   } catch(e) {
     Utils.toast("Erro ao gerar carteirinha: "+e.message,"error");

@@ -1101,6 +1101,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Login ao pressionar Enter
   Utils.el("login-pass")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
   Utils.el("login-user")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
+  Utils.el("login-password-toggle")?.addEventListener("click", () => {
+    const passwordInput = Utils.el("login-pass");
+    const toggleButton = Utils.el("login-password-toggle");
+    const showing = passwordInput.type === "text";
+    passwordInput.type = showing ? "password" : "text";
+    toggleButton.setAttribute("aria-label", showing ? "Mostrar senha" : "Ocultar senha");
+    toggleButton.title = showing ? "Mostrar senha" : "Ocultar senha";
+    toggleButton.innerHTML = `<i class="ti ${showing ? "ti-eye" : "ti-eye-off"}"></i>`;
+  });
 
   // Botão login — apenas um handler
   Utils.el("login-btn")?.addEventListener("click", doLogin);

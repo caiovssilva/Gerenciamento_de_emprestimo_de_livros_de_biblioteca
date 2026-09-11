@@ -28,7 +28,7 @@ def _google_books_lookup(isbn: str) -> dict:
     if len(normalized) not in (10, 13):
         raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
 
-    api_key = os.getenv("KEY=AIzaSyAEFXrb_Ces2HQsEjOhoyi2jOyBbk-WXCQ", "").strip()
+    api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
     url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" + normalized
     if api_key:
         url += "&key=" + api_key

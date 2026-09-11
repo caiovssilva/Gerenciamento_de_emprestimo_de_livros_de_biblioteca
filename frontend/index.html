@@ -25,7 +25,7 @@
       <h1>Biblioteca Narceu de Paiva Filho</h1><p>Acesso Restrito — todos direitos a caio vitor</p>
     </div>
     <div class="form-field"><label>Usuário</label><input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username"></div>
-    <div class="form-field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"></div>
+    <div class="form-field"><label for="login-pass">Senha</label><div class="password-field"><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"><button type="button" class="password-toggle" id="login-password-toggle" aria-label="Mostrar senha" title="Mostrar senha"><i class="ti ti-eye"></i></button></div></div>
       <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
     <p class="login-err" id="login-err"></p>
     <div class="login-divider">ou</div>
@@ -84,8 +84,8 @@
           </div>
         </div>
         <div class="topbar-actions" id="topbar-actions">
-          <button class="btn btn-ghost topbar-theme-btn" id="theme-toggle-topbar-btn" type="button" onclick="toggleTheme()" title="Alternar tema"><i class="ti ti-moon"></i></button>
         </div>
+        <button class="btn btn-ghost topbar-theme-btn" id="theme-toggle-topbar-btn" type="button" onclick="toggleTheme()" title="Alternar tema" aria-label="Alternar tema"><i class="ti ti-moon"></i></button>
         <button class="topbar-cam-btn" title="Escanear carteirinha de aluno" onclick="openGlobalScanner()"><i class="ti ti-camera"></i></button>
       </div>
       <div class="content">

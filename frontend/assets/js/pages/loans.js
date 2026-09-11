@@ -59,6 +59,31 @@ function renderDashboard() {
     <div class="metric-card"><div class="metric-label">Alunos cadastrados</div><div class="metric-val c-green">${studs.length}</div></div>
     <div class="metric-card"><div class="metric-label">Atrasados</div><div class="metric-val c-red">${overdue.length}</div></div>`;
 
+  const priorityStudents = studs
+    .map((student) => {
+      const studentLoans = loans.filter((loan) => loan.aluno_id === student.id && !loan.devolvido_em);
+      const overdueLoans = studentLoans.filter((loan) => Utils.daysLeft(loan.data_devolucao_prevista) < 0);
+      const urgentLoans = studentLoans.filter((loan) => Utils.daysLeft(loan.data_devolucao_prevista) >= 0 && Utils.daysLeft(loan.data_devolucao_prevista) <= 2);
+      return { student, studentLoans, overdueLoans, urgentLoans };
+    })
+    .filter((item) => item.studentLoans.length)
+    .sort((a, b) => {
+      if (b.overdueLoans.length !== a.overdueLoans.length) return b.overdueLoans.length - a.overdueLoans.length;
+      if (b.urgentLoans.length !== a.urgentLoans.length) return b.urgentLoans.length - a.urgentLoans.length;
+      return (a.student.nome || a.student.name || "").localeCompare(b.student.nome || b.student.name || "");
+    })
+    .slice(0, 6);
+
+  const priorityPanel = Utils.el("dashboard-priority-students");
+  if (priorityPanel) {
+    priorityPanel.innerHTML = priorityStudents.length
+      ? `<div class="card" style="margin-bottom:1rem;"><div class="card-header"><h2><i class="ti ti-user-check" style="vertical-align:-2px;margin-right:6px;color:var(--amber);"></i>Alunos com atenção</h2></div><div class="card-body">${priorityStudents.map(({ student, overdueLoans, urgentLoans }) => {
+          const badge = overdueLoans.length ? `<span class="badge badge-red">${overdueLoans.length} atrasado(s)</span>` : urgentLoans.length ? `<span class="badge badge-amber">Vence em até 2 dias</span>` : `<span class="badge badge-green">Em dia</span>`;
+          return `<button class="btn" style="display:block;width:100%;text-align:left;margin-bottom:0.5rem;" onclick="showStudentHistory('${student.id}')"><strong>${student.nome || student.name}</strong><div style="font-size:0.85rem;color:var(--muted);margin-top:0.2rem;">${badge}</div></button>`;
+        }).join("")}</div></div>`
+      : `<div class="card" style="margin-bottom:1rem;"><div class="card-header"><h2><i class="ti ti-user-check" style="vertical-align:-2px;margin-right:6px;color:var(--green);"></i>Alunos com atenção</h2></div><div class="card-body"><div class="empty-state"><i class="ti ti-mood-happy"></i><p>Nenhum aluno com empréstimo em risco no momento.</p></div></div></div>`;
+  }
+
   const tbody = Utils.el("dash-loans-tbody");
   if (!active.length) {
     tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><i class="ti ti-mood-happy"></i><p>Nenhum empréstimo ativo. Tudo em dia!</p></div></td></tr>`;

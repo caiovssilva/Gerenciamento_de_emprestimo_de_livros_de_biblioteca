@@ -649,6 +649,9 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
 
     draw.rectangle([0, H - 10, W, H], fill=header_color)
 
+    if entity_type == "admin":
+        img = img.resize((900, 390), getattr(Image, "Resampling", Image).LANCZOS)
+
     buf = BytesIO()
     img.save(buf, format="PNG", optimize=True)
     b64 = base64.b64encode(buf.getvalue()).decode()

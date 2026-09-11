@@ -983,8 +983,8 @@ async function testConnection() {
   if (btn) btn.disabled = true;
   try {
     const r = await API.health();
-    Utils.toast(r.database === "conectado" ? "Supabase conectado!" : "Offline — usando dados locais.", r.database==="conectado"?"success":"info");
-  } catch { Utils.toast("Backend não encontrado.","error"); }
+    Utils.toast(r.database === "conectado" ? "Supabase conectado!" : "Banco indisponível.", r.database==="conectado"?"success":"error");
+  } catch { Utils.toast("Banco de dados indisponível.","error"); }
   finally { if (btn) btn.disabled = false; }
 }
 
@@ -1062,13 +1062,33 @@ function decodeQrPayload(code) {
   return resolveQRCode(code);
 }
 
+async function waitForDatabase() {
+  const screen = Utils.el("database-wait-screen");
+  const status = Utils.el("database-wait-status");
+  while (true) {
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.database === "conectado") {
+        screen.style.display = "none";
+        return;
+      }
+      status.textContent = "Banco indisponível. Nova tentativa em 3 segundos...";
+    } catch {
+      status.textContent = "Backend indisponível. Nova tentativa em 3 segundos...";
+    }
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  await waitForDatabase();
   loadSupabaseConfig?.().then((config) => {
     if (!config) {
       const status = Utils.el("cloud-status");
-      if (status && !status.textContent.includes("Offline")) {
-        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-cloud-off"></i> Conexão Supabase não disponível — usando dados locais</span>`;
+      if (status) {
+        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-cloud-off"></i> Aguardando conexão com o Supabase</span>`;
       }
     }
   });

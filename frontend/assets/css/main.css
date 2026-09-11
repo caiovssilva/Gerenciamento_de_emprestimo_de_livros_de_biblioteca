@@ -142,6 +142,20 @@ body {
   touch-action: manipulation;
   transition: background .2s ease, color .2s ease;
 }
+.database-wait-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem; background: var(--bg);
+}
+.database-wait-card {
+  width: min(100%, 420px); padding: 2rem; text-align: center;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.database-wait-icon { display: block; margin-bottom: 1rem; color: var(--brand); font-size: 42px; }
+.database-wait-card h1 { font-size: 20px; margin-bottom: .5rem; }
+.database-wait-card p, .database-wait-card span { color: var(--muted); font-size: 13px; }
+.database-wait-card span { display: block; margin-top: 1rem; }
 
 button, input, select, textarea {
   font: inherit;

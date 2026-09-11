@@ -15,6 +15,14 @@
 <link rel="stylesheet" href="assets/css/main.css">
 </head>
 <body>
+<div id="database-wait-screen" class="database-wait-screen" role="status" aria-live="polite">
+  <div class="database-wait-card">
+    <i class="ti ti-database-off database-wait-icon"></i>
+    <h1>Aguardando banco de dados</h1>
+    <p>O sistema só será liberado quando o Supabase estiver conectado.</p>
+    <span id="database-wait-status">Tentando conectar...</span>
+  </div>
+</div>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleMobileSidebar(false)"></div>
 
 <!-- LOGIN -->

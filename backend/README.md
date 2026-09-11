@@ -231,9 +231,9 @@ Isso significa que **não é necessário configurar nenhuma URL** — o sistema 
 
 ---
 
-## Modo offline
+## Dependência do banco
 
-Se o Supabase estiver indisponível (sem internet, credenciais expiradas, etc.), o sistema funciona completamente com os arquivos JSON em `backend/data/`:
+O sistema depende do Supabase e não usa os arquivos JSON como fonte de dados em execução. Se o banco estiver indisponível, a API retorna `503` e o frontend mostra uma tela de espera, tentando novamente a cada 3 segundos:
 
 | Arquivo | Conteúdo |
 |---------|---------|
@@ -243,9 +243,9 @@ Se o Supabase estiver indisponível (sem internet, credenciais expiradas, etc.),
 | `salas.json` | Salas cadastradas |
 | `generos.json` | Gêneros de livros |
 
-Todas as operações (criar, editar, deletar, emprestar, devolver, renovar, conceder acesso de Bibliotecário) funcionam no modo offline. O painel mostra `⚠️ Offline — cache local` quando o Supabase não está disponível.
+Os arquivos em `backend/data/` são apenas dados históricos de desenvolvimento e não são usados como fallback pela aplicação.
 
-> 💡 **Coluna `is_librarian` e `renovacoes`:** se você usa Supabase, o sistema funciona mesmo sem essas colunas na tabela `alunos`/`emprestimos` — nesse caso, o título de Bibliotecário e o contador de renovações são salvos automaticamente nos arquivos JSON locais como fallback. Para persistir tudo no Supabase, adicione `is_librarian boolean default false` em `alunos` e `renovacoes integer default 0` em `emprestimos`.
+> **Colunas obrigatórias:** o Supabase deve conter `is_librarian boolean default false` em `alunos` e `renovacoes integer default 0` em `emprestimos`.
 
 ---
 

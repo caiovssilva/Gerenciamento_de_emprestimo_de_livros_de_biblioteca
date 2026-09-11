@@ -90,11 +90,11 @@ def has_deleted_at(sb, table: str) -> bool:
 
 
 def is_offline_error(e: Exception) -> bool:
-    """Detecta se o erro é de conexão/modo offline."""
+    """Detecta falhas de conexão com o banco real."""
     error_msg = str(e).lower()
     offline_keywords = [
         "could not find the table",
-        "offline mode",
+        "supabase indisponível",
         "connection refused",
         "connection reset",
         "timed out",

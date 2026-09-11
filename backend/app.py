@@ -6,7 +6,7 @@ import os, sys
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
@@ -85,6 +85,30 @@ def apply_security_headers(response):
     response.headers["Content-Security-Policy"] = csp
     return response
 
+
+@app.before_request
+def require_database_for_api():
+    """Impede que qualquer API de negócio sirva ou grave dados locais."""
+    if not request.path.startswith("/api/") or request.path in {
+        "/api/health",
+        "/api/auth/config/supabase",
+        "/api/config/supabase",
+        "/api/auth/supabase-config",
+        "/api/supabase-config",
+    }:
+        return None
+    try:
+        from utils import get_client, sb_exec
+        sb_exec(get_client().table("livros").select("id").limit(1))
+    except Exception as exc:
+        logger.warning("API bloqueada: Supabase indisponível: %s", exc)
+        return jsonify({
+            "error": "Banco de dados indisponível. A aplicação está aguardando a conexão.",
+            "code": "DATABASE_UNAVAILABLE",
+            "retry_after": 3,
+        }), 503
+    return None
+
 # ── Tratamento de erros ───────────────────────────────────────────────
 @app.errorhandler(HTTPException)
 def handle_http(err):
@@ -106,7 +130,7 @@ def health():
         return jsonify({"status": "ok", "service": "Biblioteca narceu de paiva filho v3", "database": "conectado"}), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return jsonify({"status": "offline", "service": "Biblioteca narceu de paiva filho v3", "database": f"offline — {e}", "hint": "defina SUPABASE_URL e SUPABASE_KEY reais no backend/.env"}), 200
+        return jsonify({"status": "waiting", "service": "Biblioteca narceu de paiva filho v3", "database": "indisponível", "retry_after": 3}), 503
 
 # ── Serve o frontend ──────────────────────────────────────────────────
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))

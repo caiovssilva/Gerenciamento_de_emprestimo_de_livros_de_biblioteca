@@ -1,17 +1,10 @@
-"""
-utils/supabase_client.py
-Conexão ao Supabase. Se falhar, entra em modo offline — dados dos JSONs locais.
-"""
+"""Cliente central do Supabase; o sistema exige conexão real com o banco."""
 import os
-import time
 
 _URL  = os.getenv("SUPABASE_URL", "")
 _KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or ""
 
-_client      = None
-_offline     = False
-_last_attempt = 0
-_retry_after_seconds = 60
+_client = None
 
 _NETWORK_ERROR_TOKENS = (
     "name or service not known",
@@ -22,7 +15,6 @@ _NETWORK_ERROR_TOKENS = (
     "timeout",
     "temporary failure",
     "network is unreachable",
-    "offline mode",
     "certificate verify failed",
 )
 
@@ -48,24 +40,6 @@ def _get_env_config():
     return _normalize_supabase_url(_URL), _KEY
 
 
-class _OfflineQuery:
-    """Stub que imita a interface do supabase-py mas sempre levanta exceção controlada."""
-    def select(self, *a, **kw): return self
-    def order(self, *a, **kw):  return self
-    def limit(self, *a, **kw):  return self
-    def eq(self, *a, **kw):     return self
-    def is_(self, *a, **kw):    return self
-    def insert(self, *a, **kw): return self
-    def update(self, *a, **kw): return self
-    def delete(self, *a, **kw): return self
-    def upsert(self, *a, **kw): return self
-    def execute(self):
-        raise Exception("could not find the table — offline mode")
-
-class _OfflineClient:
-    def table(self, _): return _OfflineQuery()
-
-
 class SupabaseTable:
     def __init__(self, client, name):
         self.q = client.table(name)
@@ -83,7 +57,7 @@ class SupabaseTable:
             r = self.q.execute()
         except Exception as exc:
             if _looks_like_offline_error(exc):
-                raise Exception("could not find the table — offline mode") from exc
+                raise Exception("Supabase indisponível") from exc
             raise
         if hasattr(r, "error") and r.error:
             raise Exception(r.error.message or str(r.error))
@@ -99,41 +73,27 @@ class SupabaseClient:
         return SupabaseTable(self._c, name)
 
 
-def _now_seconds():
-    return int(time.time())
-
-
 def reset_client_state():
-    global _client, _offline, _last_attempt
+    global _client
     _client = None
-    _offline = False
-    _last_attempt = 0
 
 
 def get_client():
-    global _client, _offline, _last_attempt
+    global _client
 
-    if _client is not None and not _offline:
+    if _client is not None:
         return _client
 
-    if _offline:
-        now = _now_seconds()
-        if now - _last_attempt < _retry_after_seconds:
-            return _OfflineClient()
-
-    _last_attempt = _now_seconds()
     try:
         url, key = _get_env_config()
         if not url or not key:
             raise ValueError("SUPABASE_URL / SUPABASE_KEY não configurados")
         _client = SupabaseClient(url, key)
-        _offline = False
         print("[supabase] ✅ Conectado com sucesso.")
     except Exception as e:
-        print(f"[supabase] ⚠️  Falha: {e} — usando dados locais (JSON).")
-        _offline = True
+        print(f"[supabase] ⚠️  Falha: {e} — aguardando conexão real.")
         _client = None
-        return _OfflineClient()
+        raise ConnectionError(f"Supabase indisponível: {e}") from e
 
     return _client
 

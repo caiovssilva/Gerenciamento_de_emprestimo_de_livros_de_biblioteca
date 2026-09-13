@@ -145,8 +145,11 @@ async function lookupBookIsbn() {
       : "Livro encontrado. Escolha o gênero manualmente, se necessário.";
     Utils.toast("Dados do livro preenchidos. Confira antes de salvar.", "success");
   } catch (error) {
-    status.textContent = "Livro não encontrado. Você pode preencher os dados manualmente.";
-    Utils.toast(error.message || "Livro não encontrado.", "error");
+    const message = error.message || "Livro não encontrado.";
+    status.textContent = message.includes("ISBN")
+      ? message
+      : "Livro não encontrado. Você pode preencher os dados manualmente.";
+    Utils.toast(message, "error");
   }
 }
 

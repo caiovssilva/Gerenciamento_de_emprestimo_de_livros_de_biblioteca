@@ -1,8 +1,12 @@
 """api/books.py — CRUD de livros com fallback JSON local."""
 import json
+import logging
 import os
 import re
+import time
 import unicodedata
+from collections import OrderedDict
+from copy import deepcopy
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -13,32 +17,82 @@ from utils import get_client, sb_exec, new_id, today_str
 from api._helpers import read_json, write_json, table_ok, has_deleted_at, is_offline_error
 
 books_bp   = Blueprint("books", __name__)
+logger = logging.getLogger(__name__)
 DATA_DIR   = Path(__file__).resolve().parent.parent / "data"
 BOOKS_FILE = DATA_DIR / "livros.json"
 GENR_FILE  = DATA_DIR / "generos.json"
 LOAN_FILE  = DATA_DIR / "emprestimos.json"
-_ISBN_CACHE: dict[str, dict] = {}
+_ISBN_CACHE: OrderedDict[str, dict] = OrderedDict()
+_ISBN_CACHE_TIMESTAMPS: dict[str, float] = {}
+_ISBN_CACHE_TTL_SECONDS = 15 * 60
+_ISBN_CACHE_MAX_SIZE = 128
+_PROVIDER_TIMEOUT_SECONDS = 6
+_PROVIDER_ATTEMPTS = 2
+_PROVIDER_RETRY_DELAY_SECONDS = 0.2
 
 
 def _normalize_isbn(value: str) -> str:
     return re.sub(r"[^0-9Xx]", "", str(value or "")).upper()
 
 
+def _validate_isbn(normalized: str) -> None:
+    if len(normalized) == 10:
+        if not re.fullmatch(r"[0-9]{9}[0-9X]", normalized):
+            raise ValueError("Informe um ISBN-10 válido.")
+        total = sum((10 - index) * (10 if digit == "X" else int(digit))
+                    for index, digit in enumerate(normalized))
+        if total % 11 != 0:
+            raise ValueError("Informe um ISBN-10 válido.")
+        return
+
+    if len(normalized) == 13 and normalized.isdigit():
+        total = sum(int(digit) * (1 if index % 2 == 0 else 3)
+                    for index, digit in enumerate(normalized))
+        if total % 10 == 0:
+            return
+
+    raise ValueError("Informe um ISBN-10 ou ISBN-13 válido.")
+
+
+class _ProviderError(RuntimeError):
+    def __init__(self, source: str, message: str):
+        super().__init__(message)
+        self.source = source
+
+
+def _open_provider(request_obj: Request, source: str):
+    for attempt in range(_PROVIDER_ATTEMPTS):
+        try:
+            return urlopen(request_obj, timeout=_PROVIDER_TIMEOUT_SECONDS)
+        except HTTPError as exc:
+            retryable = exc.code in {408, 429, 500, 502, 503, 504}
+            if retryable and attempt + 1 < _PROVIDER_ATTEMPTS:
+                time.sleep(_PROVIDER_RETRY_DELAY_SECONDS)
+                continue
+            if exc.code == 404:
+                raise LookupError("Livro não encontrado para este ISBN.") from exc
+            raise _ProviderError(source, f"A fonte {source} respondeu HTTP {exc.code}.") from exc
+        except (URLError, TimeoutError) as exc:
+            if attempt + 1 < _PROVIDER_ATTEMPTS:
+                time.sleep(_PROVIDER_RETRY_DELAY_SECONDS)
+                continue
+            raise _ProviderError(source, f"Não foi possível consultar {source} agora.") from exc
+
+
 def _google_books_lookup(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
-    if len(normalized) not in (10, 13):
-        raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
+    _validate_isbn(normalized)
 
     api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
     url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" + normalized
     if api_key:
         url += "&key=" + api_key
+    request_obj = Request(url, headers={"Accept": "application/json"})
     try:
-        request_obj = Request(url, headers={"Accept": "application/json"})
-        with urlopen(request_obj, timeout=6) as response:
+        with _open_provider(request_obj, "Google Books") as response:
             data = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise RuntimeError("Não foi possível consultar a Google Books agora.") from exc
+    except (ValueError, TypeError) as exc:
+        raise _ProviderError("Google Books", "A Google Books retornou uma resposta inválida.") from exc
 
     item = (data.get("items") or [None])[0]
     if not item:
@@ -57,12 +111,15 @@ def _google_books_lookup(isbn: str) -> dict:
                 found_isbn = _normalize_isbn(identifier.get("identifier"))
                 break
 
-    return {
+    result = {
         "isbn": found_isbn,
         "titulo": str(info.get("title") or "").strip(),
         "autor": ", ".join(str(author).strip() for author in (info.get("authors") or []) if str(author).strip()),
         "categorias": [str(category).strip() for category in (info.get("categories") or []) if str(category).strip()],
     }
+    if not any((result["titulo"], result["autor"], result["categorias"])):
+        raise LookupError("Livro não encontrado para este ISBN.")
+    return result
 
 
 class _IsbnSearchParser(HTMLParser):
@@ -102,14 +159,15 @@ class _IsbnSearchParser(HTMLParser):
 
 def _isbnsearch_lookup(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
     url = "https://isbnsearch.org/isbn/" + normalized
     request_obj = Request(url, headers={"Accept": "text/html", "User-Agent": "Mozilla/5.0"})
     try:
-        with urlopen(request_obj, timeout=6) as response:
+        with _open_provider(request_obj, "ISBNsearch") as response:
             parser = _IsbnSearchParser()
             parser.feed(response.read().decode("utf-8", errors="replace"))
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from exc
+    except UnicodeError as exc:
+        raise _ProviderError("ISBNsearch", "O ISBNsearch retornou uma resposta inválida.") from exc
 
     title = re.sub(r"^ISBN\s+\S+\s*-\s*", "", parser.title, flags=re.IGNORECASE).strip()
     authors = re.sub(r"\s*[-|].*$", "", parser.authors).strip()
@@ -121,13 +179,14 @@ def _isbnsearch_lookup(isbn: str) -> dict:
 
 def _openlibrary_lookup(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
     url = "https://openlibrary.org/api/books?bibkeys=ISBN:" + normalized + "&jscmd=data&format=json"
     request_obj = Request(url, headers={"Accept": "application/json", "User-Agent": "Biblioteca/1.0"})
     try:
-        with urlopen(request_obj, timeout=6) as response:
+        with _open_provider(request_obj, "Open Library") as response:
             data = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from exc
+    except (ValueError, TypeError) as exc:
+        raise _ProviderError("Open Library", "A Open Library retornou uma resposta inválida.") from exc
 
     book = data.get("ISBN:" + normalized) or {}
     authors = []
@@ -188,37 +247,60 @@ def _match_genre(categories: list[str]) -> tuple[str, str]:
 
 def _lookup_isbn(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
-    if len(normalized) not in (10, 13):
-        raise ValueError("Informe um ISBN válido de 10 ou 13 dígitos.")
-    if normalized in _ISBN_CACHE:
-        return _ISBN_CACHE[normalized].copy()
+    _validate_isbn(normalized)
+    cached = _ISBN_CACHE.get(normalized)
+    cached_at = _ISBN_CACHE_TIMESTAMPS.get(normalized, 0)
+    if cached and time.monotonic() - cached_at < _ISBN_CACHE_TTL_SECONDS:
+        _ISBN_CACHE.move_to_end(normalized)
+        return deepcopy(cached)
+    if cached:
+        _ISBN_CACHE.pop(normalized, None)
+        _ISBN_CACHE_TIMESTAMPS.pop(normalized, None)
 
     errors = []
     result = None
-    for provider in (_google_books_lookup, _isbnsearch_lookup, _openlibrary_lookup):
+    unavailable_provider = False
+    providers = (
+        ("Google Books", _google_books_lookup),
+        ("ISBNsearch", _isbnsearch_lookup),
+        ("Open Library", _openlibrary_lookup),
+    )
+    for provider_name, provider in providers:
         try:
             found = provider(normalized)
             if result is None:
-                result = found
+                result = deepcopy(found)
             else:
                 result["titulo"] = result.get("titulo") or found.get("titulo", "")
                 result["autor"] = result.get("autor") or found.get("autor", "")
-                categories = result.get("categorias") or []
+                categories = list(result.get("categorias") or [])
                 for category in found.get("categorias") or []:
                     if category not in categories:
                         categories.append(category)
                 result["categorias"] = categories
             if result.get("titulo") and result.get("autor") and result.get("categorias"):
                 break
-        except (HTTPError, URLError, TimeoutError, LookupError, RuntimeError) as exc:
+        except LookupError as exc:
             errors.append(exc)
+        except _ProviderError as exc:
+            unavailable_provider = True
+            errors.append(exc)
+            logger.warning("Consulta de ISBN falhou no provedor %s: %s", exc.source, exc)
 
     if result is not None:
         result["area"] = "Geral"
         result["genero_id"], result["genero_nome"] = _match_genre(result.get("categorias", []))
-        _ISBN_CACHE[normalized] = result
-        return result.copy()
-    raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]
+        if result.get("titulo") and result.get("autor") and result.get("categorias"):
+            _ISBN_CACHE[normalized] = deepcopy(result)
+            _ISBN_CACHE_TIMESTAMPS[normalized] = time.monotonic()
+            _ISBN_CACHE.move_to_end(normalized)
+            while len(_ISBN_CACHE) > _ISBN_CACHE_MAX_SIZE:
+                expired_isbn, _ = _ISBN_CACHE.popitem(last=False)
+                _ISBN_CACHE_TIMESTAMPS.pop(expired_isbn, None)
+        return deepcopy(result)
+    if unavailable_provider and errors:
+        raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]
+    raise LookupError("Livro não encontrado para este ISBN.")
 
 
 def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:

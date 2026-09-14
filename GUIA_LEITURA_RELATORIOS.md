@@ -10,45 +10,49 @@ O projeto possui consulta bibliográfica por ISBN, com Google Books, ISBNsearch 
 
 O estado atual é funcional para desenvolvimento e uso controlado, mas não deve ser descrito como pronto para produção. Ainda existem limitações de autorização server-side, segurança de chaves e credenciais, RLS permissivo, reconciliação offline/online, concorrência de exemplares e cobertura E2E.
 
+O relatório-base desta análise é [`RELATORIO_ANALISE_COMPLETA_ESTADO_ATUAL.md`](RELATORIO_ANALISE_COMPLETA_ESTADO_ATUAL.md). Ele é a referência consolidada para responder perguntas sobre o projeto. Os demais documentos continuam úteis como explicação, tema específico ou histórico, mas não substituem a conferência do código atual.
+
 ## ORDEM RECOMENDADA PARA LER A DOCUMENTAÇÃO
 
-1. [`auditoria-documentacao.md`](auditoria-documentacao.md): leia primeiro para saber quais documentos são atuais, históricos, desatualizados ou temáticos.
-2. [`relatorio_atual_2026.md`](relatorio_atual_2026.md): visão técnica atual do sistema, suas rotas, dados, segurança e limitações.
-3. [`RELATORIO_ESTRUTURA_PASTAS.md`](RELATORIO_ESTRUTURA_PASTAS.md): localização dos módulos e responsabilidades das pastas; confira os caminhos contra a árvore atual.
-4. [`RELATORIO_ESTUDO_PROJETO.md`](RELATORIO_ESTUDO_PROJETO.md): explicação geral para iniciantes, com a arquitetura e os principais arquivos.
-5. [`RELATORIO_LOGICA_COMPLETA_SISTEMA.md`](RELATORIO_LOGICA_COMPLETA_SISTEMA.md): fluxos de login, acervo, empréstimos, scanner e relatórios.
-6. [`RELATORIO_CONSULTA_ISBN.md`](RELATORIO_CONSULTA_ISBN.md): fluxo detalhado do ISBN, fontes externas, validação, fallback e formulário.
-7. [`RELATORIO_SCANNER.md`](RELATORIO_SCANNER.md): leitura de câmera e diferença entre teste mock e câmera física.
-8. [`MELHORIAS_EXEMPLARES_QR.md`](MELHORIAS_EXEMPLARES_QR.md): exemplares e QR Code; leia como documento temático/histórico.
-9. [`relatorio-modificacoes.md`](relatorio-modificacoes.md): evolução e riscos; confira as marcações de histórico.
-10. [`RELATORIO_STATUS_ATUAL.md`](RELATORIO_STATUS_ATUAL.md): resumo factual do estado atual.
-11. [`TESTES_EXECUTADOS.md`](TESTES_EXECUTADOS.md): resultados de uma execução específica; não substitui uma nova execução.
-12. [`RELATORIO_TCC_SISTEMA.md`](RELATORIO_TCC_SISTEMA.md): material acadêmico mais amplo, útil depois que a arquitetura estiver clara.
-13. [`CURSO_LEITURA_DE_CODIGO.md`](CURSO_LEITURA_DE_CODIGO.md): material de estudo para conceitos de leitura de código.
-14. [`COMO_USAR.md`](COMO_USAR.md) e [`backend/README.md`](backend/README.md): instruções de uso e execução, conferindo os comandos com o ambiente instalado.
-15. [`RELATORIO_COMPARATIVO_COMPLETO_GIT.md`](RELATORIO_COMPARATIVO_COMPLETO_GIT.md) e [`RELATORIO_3_COMPARATIVO_GIT.md`](RELATORIO_3_COMPARATIVO_GIT.md): evolução histórica pelo Git.
-16. Os demais relatórios numerados, pitch, execução inicial, otimizações e resumo final: consulte como histórico, conforme a classificação da auditoria.
+1. [`RELATORIO_ANALISE_COMPLETA_ESTADO_ATUAL.md`](RELATORIO_ANALISE_COMPLETA_ESTADO_ATUAL.md): leia primeiro; é o relatório-base factual, com arquitetura, módulos, campos, endpoints, banco, segurança, testes, limitações e informações não confirmadas.
+2. [`auditoria-documentacao.md`](auditoria-documentacao.md): consulte para classificar documentos atuais, históricos, desatualizados ou temáticos.
+3. [`relatorio_atual_2026.md`](relatorio_atual_2026.md): visão técnica anterior/consolidada; use como apoio e confronte com o relatório-base e o código.
+4. [`RELATORIO_ESTRUTURA_PASTAS.md`](RELATORIO_ESTRUTURA_PASTAS.md): localização dos módulos e responsabilidades das pastas; confira os caminhos contra a árvore atual.
+5. [`RELATORIO_ESTUDO_PROJETO.md`](RELATORIO_ESTUDO_PROJETO.md): explicação geral para iniciantes, com a arquitetura e os principais arquivos.
+6. [`RELATORIO_LOGICA_COMPLETA_SISTEMA.md`](RELATORIO_LOGICA_COMPLETA_SISTEMA.md): fluxos de login, acervo, empréstimos, scanner e relatórios.
+7. [`RELATORIO_CONSULTA_ISBN.md`](RELATORIO_CONSULTA_ISBN.md): fluxo detalhado do ISBN, fontes externas, validação, fallback e formulário.
+8. [`RELATORIO_SCANNER.md`](RELATORIO_SCANNER.md): leitura de câmera e diferença entre teste mock e câmera física.
+9. [`MELHORIAS_EXEMPLARES_QR.md`](MELHORIAS_EXEMPLARES_QR.md): exemplares e QR Code; leia como documento temático/histórico.
+10. [`relatorio-modificacoes.md`](relatorio-modificacoes.md): evolução e riscos; confira as marcações de histórico.
+11. [`RELATORIO_STATUS_ATUAL.md`](RELATORIO_STATUS_ATUAL.md): resumo factual do estado atual, subordinado ao relatório-base.
+12. [`TESTES_EXECUTADOS.md`](TESTES_EXECUTADOS.md): resultados de uma execução específica; não substitui uma nova execução.
+13. [`RELATORIO_TCC_SISTEMA.md`](RELATORIO_TCC_SISTEMA.md): material acadêmico mais amplo, útil depois que a arquitetura estiver clara.
+14. [`CURSO_LEITURA_DE_CODIGO.md`](CURSO_LEITURA_DE_CODIGO.md): material de estudo para conceitos de leitura de código.
+15. [`COMO_USAR.md`](COMO_USAR.md) e [`backend/README.md`](backend/README.md): instruções de uso e execução, conferindo os comandos com o ambiente instalado.
+16. [`RELATORIO_COMPARATIVO_COMPLETO_GIT.md`](RELATORIO_COMPARATIVO_COMPLETO_GIT.md) e [`RELATORIO_3_COMPARATIVO_GIT.md`](RELATORIO_3_COMPARATIVO_GIT.md): evolução histórica pelo Git.
+17. Os demais relatórios numerados, pitch, execução inicial, otimizações e resumo final: consulte como histórico, conforme a classificação da auditoria.
 
 ## Mapa da documentação
 
 | Ordem | Documento | Objetivo | Nível | Pré-requisito |
 |---:|---|---|---|---|
-| 1 | `auditoria-documentacao.md` | Fonte de verdade documental e conflitos | Básico | Nenhum |
-| 2 | `relatorio_atual_2026.md` | Estado técnico atual | Intermediário | Ordem 1 |
-| 3 | `RELATORIO_ESTRUTURA_PASTAS.md` | Onde cada parte está | Básico | Ordem 1 |
-| 4 | `RELATORIO_ESTUDO_PROJETO.md` | Arquitetura explicada | Básico | Ordens 1-3 |
-| 5 | `RELATORIO_LOGICA_COMPLETA_SISTEMA.md` | Fluxos de negócio | Intermediário | Ordem 4 |
-| 6 | `RELATORIO_CONSULTA_ISBN.md` | Consulta bibliográfica e fontes | Intermediário | Ordens 2 e 4 |
-| 7 | `RELATORIO_SCANNER.md` | Câmera, QR e código de barras | Intermediário | Ordens 4 e 6 |
-| 8 | `MELHORIAS_EXEMPLARES_QR.md` | Identificação de exemplares | Intermediário | Ordens 5 e 7 |
-| 9 | `relatorio-modificacoes.md` | Mudanças e riscos | Intermediário | Ordem 2 |
-| 10 | `RELATORIO_STATUS_ATUAL.md` | Resumo atual | Básico | Ordens 1-2 |
-| 11 | `TESTES_EXECUTADOS.md` | Execuções registradas | Intermediário | Ordem 2 |
-| 12 | `RELATORIO_TCC_SISTEMA.md` | Visão acadêmica ampla | Avançado | Ordens 2-8 |
-| 13 | `CURSO_LEITURA_DE_CODIGO.md` | Método de estudo | Básico | Nenhum |
-| 14 | `COMO_USAR.md` | Uso da aplicação | Básico | Ordem 2 |
-| 15 | `backend/README.md` | Execução do backend | Básico | Ordem 2 |
-| 16 | `RELATORIO_COMPARATIVO_COMPLETO_GIT.md` | Evolução histórica | Avançado | Ordem 2 |
+| 1 | `RELATORIO_ANALISE_COMPLETA_ESTADO_ATUAL.md` | Fonte factual consolidada do estado atual | Básico/intermediário | Nenhum |
+| 2 | `auditoria-documentacao.md` | Classificação documental e conflitos | Básico | Ordem 1 |
+| 3 | `relatorio_atual_2026.md` | Estado técnico anterior/consolidado | Intermediário | Ordens 1-2 |
+| 4 | `RELATORIO_ESTRUTURA_PASTAS.md` | Onde cada parte está | Básico | Ordens 1-2 |
+| 5 | `RELATORIO_ESTUDO_PROJETO.md` | Arquitetura explicada | Básico | Ordens 1-4 |
+| 6 | `RELATORIO_LOGICA_COMPLETA_SISTEMA.md` | Fluxos de negócio | Intermediário | Ordem 5 |
+| 7 | `RELATORIO_CONSULTA_ISBN.md` | Consulta bibliográfica e fontes | Intermediário | Ordens 1 e 5 |
+| 8 | `RELATORIO_SCANNER.md` | Câmera, QR e código de barras | Intermediário | Ordens 5 e 7 |
+| 9 | `MELHORIAS_EXEMPLARES_QR.md` | Identificação de exemplares | Intermediário | Ordens 6 e 8 |
+| 10 | `relatorio-modificacoes.md` | Mudanças e riscos | Intermediário | Ordem 1 |
+| 11 | `RELATORIO_STATUS_ATUAL.md` | Resumo atual | Básico | Ordens 1-3 |
+| 12 | `TESTES_EXECUTADOS.md` | Execuções registradas | Intermediário | Ordem 1 |
+| 13 | `RELATORIO_TCC_SISTEMA.md` | Visão acadêmica ampla | Avançado | Ordens 1 e 6-9 |
+| 14 | `CURSO_LEITURA_DE_CODIGO.md` | Método de estudo | Básico | Nenhum |
+| 15 | `COMO_USAR.md` | Uso da aplicação | Básico | Ordem 1 |
+| 16 | `backend/README.md` | Execução do backend | Básico | Ordem 1 |
+| 17 | `RELATORIO_COMPARATIVO_COMPLETO_GIT.md` | Evolução histórica | Avançado | Ordem 1 |
 
 Os documentos restantes estão no inventário de [`auditoria-documentacao.md`](auditoria-documentacao.md). Eles devem ser lidos como históricos ou temáticos quando essa classificação estiver indicada.
 
@@ -159,6 +163,16 @@ câmera do navegador
 ```
 
 O QR não muda o ISBN em ID principal. Livros usam o UUID interno; exemplares usam um código derivado do livro e do exemplar.
+
+## Como interpretar autenticação e testes
+
+O frontend grava um cookie JavaScript para controlar atividade e expiração visual, mas esse cookie não é `HttpOnly`, não é validado pelo backend e não protege as chamadas posteriores às APIs. A ocultação de telas conforme o papel também é apenas frontend; não deve ser descrita como autorização server-side.
+
+Os testes existentes comprovam somente cenários específicos. Na execução registrada no relatório-base, 13 testes Python passaram e 9 falharam; os 2 testes JavaScript executados passaram. Esses resultados não comprovam produção, integração real com Supabase, câmera física ou cobertura E2E completa.
+
+Para qualquer informação não comprovada pelo código atual, pelo SQL ou por um teste reproduzível, use exatamente:
+
+> Não foi possível confirmar esta informação no estado atual do projeto.
 
 ## Glossário
 

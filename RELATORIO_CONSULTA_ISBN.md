@@ -4,7 +4,7 @@
 
 Este relatório documenta como o sistema consulta livros por ISBN, desde a entrada do usuário no frontend até a resposta das fontes externas e o preenchimento do formulário de cadastro.
 
-A análise foi feita sobre o código existente no frontend, backend, banco de dados e testes. Nenhum código de aplicação foi alterado.
+A análise foi feita sobre o código existente no frontend, backend, banco de dados e testes. Este documento foi atualizado em 2026-09-14 para refletir o código atual; nenhum código de aplicação foi alterado nesta auditoria documental.
 
 ## 2. Fluxo completo
 
@@ -113,7 +113,7 @@ A função `_normalizeIsbn()` existe no frontend e no backend. Ela:
 - remove tudo que não seja número ou `X`;
 - converte `x` para `X`.
 
-O código verifica apenas se o resultado possui 10 ou 13 caracteres. Não existe validação do dígito verificador do ISBN.
+No backend, `_validate_isbn()` verifica também o dígito verificador oficial do ISBN-10 e do ISBN-13. ISBN-10 aceita `X` somente na posição final. ISBN com comprimento ou checksum inválido gera `ValueError` antes de qualquer chamada externa.
 
 ## 7. Fontes externas
 
@@ -180,14 +180,14 @@ Quando o ISBNsearch não encontra título válido, `_isbnsearch_lookup()` gera `
 
 Quando a Open Library não possui dados do ISBN, `_openlibrary_lookup()` gera `LookupError`. Se nenhuma fonte tiver retornado dados, o backend responde com erro HTTP 502.
 
-Erros de rede, timeout e erros HTTP também fazem o backend tentar o próximo provedor.
+Erros de rede, timeout e erros HTTP tratados como temporários podem receber uma segunda tentativa em `_open_provider()`. A quantidade máxima é de duas tentativas, com atraso de 0,2 segundo, e timeout de 6 segundos por tentativa. HTTP 404 é tratado como livro não encontrado; outros erros finais de provedor preservam a fonte em `_ProviderError` e são registrados no logger.
 
 Se alguma fonte retornar dados parciais, o resultado pode ser mantido e complementado pelas fontes seguintes.
 
 A rota converte os erros da seguinte forma:
 
 - ISBN inválido: HTTP 400;
-- nenhuma fonte encontrada: HTTP 502;
+- nenhuma fonte encontrou o ISBN: HTTP 404;
 - falha de consulta externa: HTTP 502;
 - resposta encontrada: HTTP 200.
 
@@ -219,7 +219,7 @@ Existe uma função frontend chamada `_genreIdFromCategories()`, mas ela não é
 
 ## 10. Uso do ISBN no sistema
 
-O ISBN é usado como metadado bibliográfico e possui índice no banco de dados.
+O ISBN é usado como metadado bibliográfico e possui índice no banco de dados. A consulta externa valida o checksum antes de acessar os provedores.
 
 Ele é usado para:
 
@@ -265,12 +265,13 @@ Foram encontrados os seguintes elementos relacionados à leitura ou resolução 
 
 Nenhuma outra API bibliográfica ou endpoint específico de consulta de ISBN foi encontrado.
 
+O cache atual usa o ISBN normalizado como chave, TTL de 15 minutos, limite de 128 entradas e cópia profunda dos resultados. Resultados parciais não entram no cache, para que uma consulta posterior possa tentar completar os dados.
+
 ## 13. Informações não encontradas
 
-- Não existe validação do dígito verificador do ISBN.
-- Não existe teste automatizado específico para `/api/books/isbn-lookup`.
-- Não existe teste automatizado das respostas das três fontes externas.
-- Não existe retry com backoff específico para a consulta de ISBN.
+- Não há garantia de que todos os metadados estejam disponíveis em todas as fontes externas; dados de autoria e categorias continuam dependentes dos provedores.
+- Não existe teste automatizado com a câmera física do usuário.
+- Não existe contrato local que garanta disponibilidade permanente das APIs externas.
 - Não existe tratamento frontend que identifique qual provedor falhou.
 - `genero_nome` retornado pelo backend não é usado para preencher o formulário.
 - `categorias` não são colocadas em um campo do formulário.

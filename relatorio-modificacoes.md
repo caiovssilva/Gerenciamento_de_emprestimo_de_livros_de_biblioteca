@@ -1,7 +1,7 @@
 # Relatório técnico de modificações e estado atual
 
 **Projeto:** Gerenciamento de empréstimo de livros de biblioteca
-**Data da análise:** 2026-09-05
+**Data da análise:** 2026-09-14
 **Branch analisada:** `fix/login-error-message`
 **Escopo:** código, banco, documentação, testes, histórico Git e alterações locais presentes no workspace.
 
@@ -39,15 +39,15 @@ O sistema **não está pronto para produção**. O maior risco é de segurança:
 - **Impacto:** hashes bcrypt e formatos legados podem ser verificados; senhas legadas podem ser re-hashadas após login.
 - **Pendência:** [database.sql](database.sql) ainda insere `narceu2026` em texto puro. A migração de todas as contas para hashes e a troca das credenciais padrão ainda precisam ser feitas.
 
-### 2.3 Sessão e expiração por inatividade
+### 2.3 Estado visual do frontend
 
 **Status:** PARCIALMENTE FUNCIONANDO.
 
-- **Alteração:** sessão visual no frontend com cookie, restauração de estado e expiração após 30 minutos sem atividade.
+- **Estado confirmado:** o frontend mantém `currentUser` em memória e controla a visibilidade das telas. Não foi confirmada sessão server-side, cookie seguro ou validação de credencial em cada rota.
 - **Local:** [frontend/assets/js/app.js](frontend/assets/js/app.js).
 - **Necessidade anterior:** manter o usuário conectado e encerrar sessões ociosas.
-- **Impacto:** a interface esconde o login após autenticação e executa logout por inatividade.
-- **Pendência crítica:** o cookie é legível e editável pelo cliente, não é `HttpOnly`, não é assinado e não é validado nas rotas Flask. Portanto, isso é controle de interface, não autenticação confiável.
+- **Impacto:** a interface pode ocultar o login e controlar a navegação, mas isso não protege diretamente a API.
+- **Pendência crítica:** as rotas de negócio não exigem token, sessão ou papel server-side.
 
 ### 2.4 IDs próprios, exemplares e QR Codes
 
@@ -80,13 +80,14 @@ O sistema **não está pronto para produção**. O maior risco é de segurança:
 
 ### 2.7 Cadastro automático de livros por ISBN
 
-**Status:** IMPLEMENTADO LOCALMENTE, ainda PARCIAL por depender de serviço externo e estar em alterações não commitadas.
+**Status:** IMPLEMENTADO no código, ainda PARCIAL por depender de serviços externos e metadados de terceiros.
 
 - **Alteração:** rota `GET /api/books/isbn-lookup`, cliente API, botão de leitura e pesquisa no modal de cadastro.
 - **Local:** [backend/api/books.py](backend/api/books.py), [frontend/assets/js/api.js](frontend/assets/js/api.js), [frontend/assets/js/pages/books.js](frontend/assets/js/pages/books.js), [frontend/index.html](frontend/index.html).
 - **Fluxo implementado:** ler código, normalizar ISBN, consultar Google Books, preencher ISBN/título/autor e tentar associar categorias a gêneros locais.
 - **Regra preservada:** o cadastro continua chamando a rota existente de criação; `new_id()`, exemplares, QR e carteirinha não foram substituídos pelo ISBN.
-- **Pendências:** Google Books respondeu `HTTP 429` durante a verificação; não há cache, quota própria, retry progressivo ou provedor alternativo. Também não há validação do dígito verificador do ISBN nem teste automatizado da API externa.
+- **Estado atual:** `_validate_isbn()` verifica ISBN-10/ISBN-13; `_open_provider()` faz até duas tentativas com timeout de 6 segundos; `_lookup_isbn()` mantém a ordem Google Books, ISBNsearch e Open Library e só armazena no cache resultados com título, autor e categorias.
+- **Pendências:** as fontes externas ainda podem retornar dados incompletos, 404, 429 ou timeout; não há teste E2E de câmera física nem garantia de disponibilidade dos provedores.
 
 ### 2.8 Tema, interface e acessibilidade
 
@@ -121,7 +122,7 @@ O sistema **não está pronto para produção**. O maior risco é de segurança:
 | Carteirinhas | Funcionando/parcial | Geração PNG/cartão existe; expiração e revogação de QR administrativo não existem. |
 | Fallback JSON | Funcionando/parcial | Permite operação offline local; não há fila nem reconciliação posterior. |
 | Reconexão Supabase | Funcionando/parcial | Cliente tenta novamente após 60 segundos; falhas de schema podem ser mascaradas. |
-| Google Books | Parcialmente funcionando | Consulta externa está implementada, mas está sujeita a quota/429 e sem cache. |
+| Consulta ISBN | Parcialmente funcionando | Validação, fallback, retry e cache limitado existem; a qualidade final depende dos metadados e disponibilidade das fontes externas. |
 
 ## 4. Lógica atual do sistema
 
@@ -187,8 +188,8 @@ O papel não é uma autorização criptograficamente confiável: as rotas não e
 | Alta | Cookie de sessão editável | [frontend/assets/js/app.js](frontend/assets/js/app.js) | Usuário pode forjar papel localmente; backend não valida | Sessão assinada/HttpOnly/Secure/SameSite e validação server-side. |
 | Alta | Exclusão física pode apagar histórico | Foreign keys usam `ON DELETE CASCADE` e livros podem ser deletados | Empréstimos históricos podem desaparecer | Preferir soft delete e bloquear exclusão com histórico. |
 | Alta | Concorrência na escolha de exemplar | disponibilidade é calculada antes do insert | Duas requisições podem escolher o mesmo exemplar | Transação, constraint e tratamento de conflito/retry. |
-| Alta | Quota da Google Books | serviço externo respondeu HTTP 429 | Cadastro automático pode não preencher dados | Cache por ISBN, limite local, retry com backoff, API key própria e fallback. |
-| Média | Falta de validação completa de ISBN | somente comprimento 10/13 é verificado | ISBN inválido pode ser consultado/armazenado | Validar dígitos verificadores e normalizar EAN-13/ISBN-10. |
+| Alta | Quota/indisponibilidade de provedores ISBN | serviços externos podem responder 429, 404 ou timeout | Cadastro automático pode não preencher dados | Monitorar fontes, manter fallback e considerar políticas operacionais de quota. |
+| Média | Metadados incompletos de ISBN | autor/categorias dependem da fonte | Formulário pode exigir complementação manual | Permitir revisão manual e registrar a fonte dos dados, se necessário. |
 | Média | Fallback JSON sem reconciliação | cliente Supabase alterna para arquivos | Dados podem divergir silenciosamente | Criar fila de operações e processo de reconciliação. |
 | Média | Tratamento amplo de exceções | vários `except:` nos blueprints | Erros de schema/permissão parecem offline | Capturar exceções específicas, registrar contexto e retornar códigos corretos. |
 | Média | Testes Python não executáveis no ambiente atual | `pytest` não está instalado nem em `backend/requirements.txt` | Falhas podem passar sem detecção | Adicionar pytest às dependências e executar CI. |

@@ -1,5 +1,7 @@
 # Melhorias: Exemplares com QR Únicos e Busca Robusta
 
+> Documento temático/histórico. Atualização documental: 2026-09-14. Confirme formatos e fluxos atuais no código e em [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 ## 📋 Resumo Executivo
 
 Foram implementadas melhorias significativas no sistema de exemplares para:

@@ -3,6 +3,8 @@
 ╚════════════════════════════════════════════════════════════════════════════════╝
 
 🚀 SERVIDOR RODANDO
+
+NOTA DE AUDITORIA (2026-09-14): este é um guia histórico de execução. O fluxo atual e as limitações de conexão com o Supabase devem ser conferidos em `backend/app.py`, `relatorio_atual_2026.md` e `auditoria-documentacao.md`.
 ───────────────────────────────────────────────────────────────────────────────
 
    ✅ Servidor Flask ativo

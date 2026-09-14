@@ -1,4 +1,6 @@
 📊 RELATÓRIO DE TESTES - APLICAÇÃO EM EXECUÇÃO
+
+NOTA DE AUDITORIA (2026-09-14): os resultados abaixo são registros históricos de uma execução específica. Eles não foram tratados como execução atual; confirme cada endpoint no ambiente presente antes de declarar aprovação.
 ═══════════════════════════════════════════════════════════════════════════════
 
 🚀 STATUS DO SERVIDOR

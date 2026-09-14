@@ -1,5 +1,7 @@
 # Relatório 3 - Estado Atual do Projeto e Pitch Aprimorado
 
+> Atualizado em 2026-09-14. Este documento deve ser lido junto com [`auditoria-documentacao.md`](auditoria-documentacao.md). Afirmações antigas de modo offline completo, sessão segura ou produção pronta não são confirmadas pelo código atual.
+
 ## 1. Estado atual do projeto
 
 ### Contexto do branch
@@ -15,7 +17,7 @@
 - Cadastro e gerenciamento de livros, alunos, salas e gêneros.
 - Registro e controle de empréstimos, devoluções e renovações.
 - Relatórios visuais e exportação de dados em CSV.
-- Suporte offline via arquivos JSON locais quando o Supabase não está disponível.
+- Caminhos de fallback em arquivos JSON em módulos específicos; o servidor atual bloqueia APIs de negócio quando não confirma a conexão com `livros` no Supabase.
 - Scanner de QR Code integrado ao fluxo de biblioteca.
 
 ### Componentes que comprovam a funcionalidade
@@ -32,14 +34,14 @@
 - Arquitetura modular clara, com API separada por recurso.
 - O sistema funciona sem uma base de dados externa, o que é excelente para testes e uso local.
 - UI orientada para as necessidades escolares: empréstimos, devoluções, histórico e relatórios junto com a criação e uso de carteirnhas para identificação de Alunos e Livros.
-- Permissões de usuário já diferenciadas entre administrador e bibliotecário.
+- Classificação de acesso no login e controles visuais de interface; autorização server-side por requisição não foi encontrada.
 - A documentação acompanha o desenvolvimento com guias, relatórios e testes.
 
 ### Principais riscos ou melhorias necessárias
-- A autenticação ainda não é ideal para produção: falta token seguro/JWT ou sessão consolidada no backend.
+- A autenticação ainda não é ideal para produção: não há token seguro, JWT, sessão server-side ou verificação de papel nas rotas de negócio.
 - CORS está configurado como aberto (`origins: *`), o que deve ser refinado antes de colocar em produção.
-- A segurança de senha usa SHA-256 + salt em vez de um algoritmo adaptativo mais robusto.
-- O fallback offline em JSON local precisa de controle melhor de concorrência e integridade de dados.
+- O backend aceita formatos de hash via Passlib/bcrypt/crypt e ainda aceita senha legada em texto puro quando o valor armazenado não contém `$`; o SQL contém credenciais seed em texto puro.
+- O fallback em JSON precisa de reconciliação, controle de concorrência e confirmação do fluxo de recuperação; não há sincronização bidirecional confirmada.
 - Dependências do scanner podem não estar instaladas por padrão, o que exige cuidado ao configurar o ambiente.
 - Ainda faltam testes de integração do frontend para validar fluxos completos.
 -configurar e verificar se os IDs são diferentes nos livros, evitando erros na parte de empréstimo 

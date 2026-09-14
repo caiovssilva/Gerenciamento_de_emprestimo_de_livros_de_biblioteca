@@ -1,5 +1,7 @@
 # Relatório 1 - Estrutura de Pastas e Funções do Projeto
 
+> Auditoria documental: 2026-09-14. Este relatório contém referências históricas; arquivos devem ser conferidos na árvore atual. A referência principal é [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 ## Visão Geral
 Este relatório descreve todas as pastas e os principais arquivos do projeto, explicando sua função para você estudar e entender a arquitetura do sistema.
 
@@ -8,8 +10,8 @@ Este relatório descreve todas as pastas e os principais arquivos do projeto, ex
 ## Raiz do projeto
 
 ### `README.md`
-- Descreve o projeto, a stack, pré-requisitos, instalação e execução.
-- Serve como documentação inicial para usuários e desenvolvedores.
+- Não encontrado na raiz atual do projeto.
+- Os guias existentes estão em `COMO_USAR.md` e `backend/README.md`.
 
 ### `COMO_USAR.md`
 - Guia passo a passo para rodar o projeto.
@@ -36,8 +38,8 @@ Este relatório descreve todas as pastas e os principais arquivos do projeto, ex
 - Pode ser usado para criar tabelas ou popular o banco local.
 
 ### `package-lock.json`
-- Lockfile do npm usado pelo frontend.
-- Garante versões fixas de dependências JavaScript.
+- Não encontrado na árvore atual.
+- O frontend usa scripts e bibliotecas referenciadas no HTML; não foi confirmado um projeto npm.
 
 ---
 
@@ -55,8 +57,8 @@ Esta pasta contém o servidor Flask, a API e o suporte ao modo offline.
 - Serve o frontend SPA através de `index.html`.
 
 ### `backend/.env.example`
-- Modelo de variáveis de ambiente.
-- Exemplo de configuração para Supabase e chaves secretas.
+- Não foi confirmado na árvore atual durante esta auditoria.
+- O carregamento de ambiente é feito por `backend/app.py`, usando `backend/.env` quando presente.
 
 ### `backend/README.md`
 - Documentação dedicada ao backend.
@@ -148,8 +150,8 @@ Contém os módulos de API do backend, separados por recurso.
 - Calcula métricas de uso reais.
 
 ### `backend/api/validators.py`
-- Contém validações reutilizáveis.
-- Provavelmente usado para validar entradas de formulários API.
+- Não encontrado na árvore atual.
+- As validações observadas estão nos próprios módulos, como `_validate_isbn()` em `backend/api/books.py`.
 
 ---
 

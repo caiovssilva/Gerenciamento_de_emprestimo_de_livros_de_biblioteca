@@ -1,5 +1,7 @@
 # Relatório de Execução e Configuração do Projeto
 
+> Registro histórico de execução inicial. Atualização documental: 2026-09-14. Os resultados abaixo valem para aquela execução e não substituem a verificação atual em [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 - Nome do responsável: GitHub Copilot
 - Data: 09/09/2026
 - Projeto: Gestão de Empréstimo de Livros de Biblioteca

@@ -1,5 +1,7 @@
 # Relatório de explicação da lógica do sistema
 
+> Material didático. Atualização documental: 2026-09-14. Para divergências, prevalecem o código atual e [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 ## 1. Visão geral
 Este projeto é uma aplicação web para gerenciamento de empréstimo de livros em uma biblioteca. A estrutura é dividida em:
 

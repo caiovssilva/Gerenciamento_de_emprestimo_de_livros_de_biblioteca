@@ -1,5 +1,7 @@
 # Relatório 2 - Avaliação do Projeto e Pitch
 
+> Documento de apresentação/histórico. Atualização documental: 2026-09-14. Descrições promocionais não são prova de funcionalidade; confira o código atual.
+
 ## Visão geral do projeto
 Este projeto é um sistema de gerenciamento de biblioteca escolar completo, desenvolvido com backend em Python/Flask e frontend em HTML/CSS/JavaScript. Ele atende às principais necessidades de uma biblioteca escolar, incluindo cadastro de livros, gerenciamento de alunos, controle de empréstimos e geração de relatórios.
 

@@ -1,5 +1,7 @@
 # 📊 RELATÓRIO DE MUDANÇAS
 
+> Registro histórico de mudanças. Atualização documental: 2026-09-14. Consulte [`auditoria-documentacao.md`](auditoria-documentacao.md) para o estado atual.
+
 **Data:** 02 de Julho de 2026
 **Projeto:** Gerenciamento de Empréstimo de Livros de Biblioteca
 **Branch:** fix/login-error-message

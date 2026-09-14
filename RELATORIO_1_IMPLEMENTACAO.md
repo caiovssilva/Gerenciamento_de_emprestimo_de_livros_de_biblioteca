@@ -1,5 +1,7 @@
 # Relatório 1 — Implementação feita
 
+> Registro histórico de implementação. Atualização documental: 2026-09-14. Não representa sozinho o estado atual; consulte [`relatorio_atual_2026.md`](relatorio_atual_2026.md).
+
 ## 1. Visão geral
 Este relatório documenta as melhorias aplicadas no sistema de gerenciamento de empréstimo de livros, com foco em QR, controle de empréstimos, relatórios e ajuste de identidade visual da biblioteca.
 

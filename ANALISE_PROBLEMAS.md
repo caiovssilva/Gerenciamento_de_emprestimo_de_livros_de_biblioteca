@@ -1,5 +1,7 @@
 # Análise Completa de Problemas - Sistema de Gerenciamento de Empréstimo de Livros
 
+> Documento histórico de análise. Atualização documental: 2026-09-14. Afirmações sobre arquivos e correções devem ser conferidas em [`auditoria-documentacao.md`](auditoria-documentacao.md) e no código atual.
+
 ## 📋 Resumo Executivo
 Foram identificados **12 problemas críticos e moderados** no projeto, categorizados em segurança, configuração, consistência e prática de desenvolvimento. Nenhum erro de sintaxe Python foi encontrado, mas há **3 problemas críticos de segurança** que precisam de atenção imediata.
 

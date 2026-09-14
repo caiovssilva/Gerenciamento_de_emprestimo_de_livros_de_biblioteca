@@ -1,5 +1,7 @@
 # Relatório do Scanner de Câmera
 
+> Revisão documental: 2026-09-14. O teste automatizado usa câmera simulada; câmera física, navegadores e iluminação real não foram confirmados por este documento.
+
 ## Escopo
 
 Foi corrigido o comportamento de foco da câmera no scanner existente, sem recriar sua arquitetura e sem alterar cadastro de livros, ISBN, empréstimos, geração de QR Code ou outras funcionalidades.

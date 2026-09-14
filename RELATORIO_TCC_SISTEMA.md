@@ -1,5 +1,7 @@
 # Relatório de TCC: Sistema de Gerenciamento de Empréstimos de Livros
 
+> Documento acadêmico/temático. Atualização documental: 2026-09-14. O escopo e a narrativa acadêmica devem ser confrontados com [`relatorio_atual_2026.md`](relatorio_atual_2026.md) para o estado técnico atual.
+
 **Projeto:** Gerenciamento de Empréstimo de Livros de Biblioteca  
 **Objetivo deste documento:** explicar o sistema do mais simples ao mais completo, usando uma linguagem adequada para apresentação de TCC.
 

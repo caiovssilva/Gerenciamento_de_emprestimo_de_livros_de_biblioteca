@@ -1,7 +1,7 @@
 # Relatório Técnico Definitivo
 
 **Projeto:** Gerenciamento de Empréstimo de Livros de Biblioteca  
-**Data da auditoria:** 2026-08-23  
+**Data da auditoria:** 2026-09-14
 **Fonte de verdade:** código, SQL, dependências e testes presentes no repositório. README, comentários e relatórios anteriores não são prova.
 
 ## 1. VEREDITO GERAL
@@ -21,6 +21,7 @@ Há autenticação de credenciais e login por QR, mas não há sessão, cookie, 
 - Fallback local não faz reconciliação com Supabase quando a conexão volta.
 - `localStorage` é cache, não sessão nem fila offline.
 - `SECRET_KEY` é definida, mas não foi encontrada sendo usada para sessão.
+- A consulta ISBN atual valida checksum ISBN-10/ISBN-13, tenta novamente falhas temporárias, registra o provedor com erro e usa cache limitado somente para resultados completos.
 - CORS é aberto e a CSP permite `unsafe-inline`; o SQL semeia senha em texto puro.
 
 ## 3. VISÃO GERAL DO PROJETO
@@ -103,7 +104,7 @@ RBAC backend não existe. Há papéis calculados no login, `is_librarian` no alu
 
 ## 22. LIVROS
 
-`list_books()` filtra título/autor/ISBN/gênero em [`books.py`](backend/api/books.py#L27-L48). `create_book()` exige título/autor, usa `new_id()`, cria exemplares e persiste em [`books.py`](backend/api/books.py#L73-L113). `_build_exemplar_meta()` gera códigos `001`, IDs e `EXEMPLAR-...` em [`books.py`](backend/api/books.py#L12-L23). Atualização remove campos derivados; exclusão bloqueia empréstimo ativo.
+`list_books()` filtra título/autor/ISBN/gênero em [`books.py`](backend/api/books.py#L245-L260). `create_book()` exige título/autor, usa `new_id()`, cria exemplares e persiste em [`books.py`](backend/api/books.py#L300-L347). `_build_exemplar_meta()` gera códigos `001`, IDs e `EXEMPLAR-...` em [`books.py`](backend/api/books.py#L265-L277). A consulta ISBN usa `_validate_isbn()`, `_open_provider()` e `_lookup_isbn()` para validar checksum, fazer retry limitado, combinar provedores e evitar cachear dados parciais.
 
 ## 23. ALUNOS
 

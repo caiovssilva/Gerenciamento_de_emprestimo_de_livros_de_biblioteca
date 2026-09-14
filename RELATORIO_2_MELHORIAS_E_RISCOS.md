@@ -1,5 +1,7 @@
 # Relatório 2 — Resumo, sugestões de melhoria e erros críticos
 
+> Registro histórico de melhorias e riscos. Atualização documental: 2026-09-14. O código atual prevalece sobre as conclusões desta versão.
+
 ## 1. Resumo executivo
 O projeto foi significativamente melhorado no quesito de rastreabilidade, segurança do fluxo de devolução e relatórios. A principal evolução foi transformar o QR e o registro de empréstimo em algo mais específico, evitando ambiguidades quando há livros iguais ou alunos com nomes repetidos.
 

@@ -1,5 +1,7 @@
 # Relatorio de explicacao da logica completa do sistema
 
+> Atualização documental: 2026-09-14. Este documento é didático; para conflitos com versões anteriores, consulte [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 ## 1. Visao geral
 
 O projeto e um sistema de gerenciamento de biblioteca escolar. Ele controla livros, exemplares, alunos, salas, generos e emprestimos. Tambem oferece login administrativo, acesso restrito de bibliotecario, QR codes, leitura de codigo de barras, consulta de ISBN e relatorios.
@@ -99,7 +101,7 @@ Depois:
 4. a resposta inclui ISBN, titulo, autor, categorias, area, `genero_id` e `genero_nome`;
 5. o frontend preenche somente campos vazios, preservando informacoes digitadas pelo usuario.
 
-O cache `_ISBN_CACHE` evita consultas repetidas durante a vida do processo. Se uma fonte nao tiver o ISBN, a proxima e tentada. Um retorno sem autor ou categoria e uma ausencia de metadados, nao necessariamente uma falha do sistema.
+`_validate_isbn()` rejeita ISBN-10/ISBN-13 matematicamente inválido antes da rede. `_open_provider()` faz até duas tentativas para falhas temporárias, com timeout de seis segundos por tentativa. `_lookup_isbn()` tenta Google Books, ISBNsearch e Open Library, combina dados sem substituir informação válida por vazia e só guarda no `_ISBN_CACHE` resultados completos por 15 minutos, com no máximo 128 entradas. Um retorno sem autor ou categoria ainda representa metadado ausente, não necessariamente falha do sistema.
 
 ## 6. Scanner de QR e codigo de barras
 

@@ -1,5 +1,7 @@
 # Curso de Leitura de Código — Projeto de Gestão de Empréstimo de Livros
 
+> Material didático. Atualização documental: 2026-09-14. Para o mapa factual atual, consulte [`GUIA_LEITURA_RELATORIOS.md`](GUIA_LEITURA_RELATORIOS.md).
+
 Este curso foi criado para te ajudar a aprender a ler código de forma profissional, usando o seu projeto como exemplo real.
 
 O objetivo não é apenas entender a sintaxe, mas aprender a interpretar a lógica, a estrutura e o fluxo do sistema.

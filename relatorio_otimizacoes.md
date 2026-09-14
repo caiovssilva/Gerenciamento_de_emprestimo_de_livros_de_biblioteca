@@ -1,5 +1,7 @@
 # Relatório de otimizações aplicadas no projeto
 
+> Registro temático/histórico. Atualização documental: 2026-09-14. As otimizações descritas devem ser confirmadas no código atual.
+
 ## 1. Introdução
 
 Este relatório detalha as melhorias realizadas para reduzir a carga de processamento do frontend e diminuir a sensação de lentidão e engasgos durante a navegação e uso do sistema.

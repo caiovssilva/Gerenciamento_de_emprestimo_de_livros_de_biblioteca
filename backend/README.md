@@ -1,5 +1,7 @@
 # Biblioteca narceu de paiva filho — Campus Aracruz
 
+> README de apoio do backend. Atualização documental: 2026-09-14. O comportamento atual deve ser conferido em `backend/app.py` e [`auditoria-documentacao.md`](../auditoria-documentacao.md).
+
 Sistema completo de gerenciamento de biblioteca escolar com empréstimos, acervo, alunos, QR Code e relatórios.
 
 **Stack:** Python 3.11+ · Flask · JavaScript Vanilla · Supabase (PostgreSQL) · Chart.js

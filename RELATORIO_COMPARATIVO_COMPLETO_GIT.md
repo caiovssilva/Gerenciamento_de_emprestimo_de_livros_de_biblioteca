@@ -1,5 +1,7 @@
 # Relatorio comparativo completo do historico Git
 
+> Documento histórico. Atualização documental: 2026-09-14. Commits anteriores explicam evolução, mas não substituem a leitura do código atual.
+
 ## 1. Escopo e criterio
 
 Este documento compara a evolucao do repositorio desde o commit inicial ate o estado observado em 11/09/2026. A analise considera os 53 commits visiveis nas referencias locais, os arquivos versionados do produto e as alteracoes ainda nao commitadas no working tree.

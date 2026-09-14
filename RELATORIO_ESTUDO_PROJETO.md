@@ -1,5 +1,7 @@
 # Relatório de Estudo do Projeto
 
+> Atualização documental: 2026-09-14. Afirmações conflitantes com o código atual devem ser conferidas em [`auditoria-documentacao.md`](auditoria-documentacao.md).
+
 ## 1. Visão geral
 
 Este projeto é um sistema web de gerenciamento de biblioteca escolar. Ele permite:
@@ -11,7 +13,7 @@ Este projeto é um sistema web de gerenciamento de biblioteca escolar. Ele permi
 - ler QR Codes e códigos de barras;
 - gerar QR Codes e carteirinhas;
 - exibir relatórios e exportar CSV;
-- usar Supabase como banco principal e arquivos JSON como fallback offline.
+- usar Supabase como caminho principal de persistência e possuir caminhos JSON em módulos específicos. O servidor atual bloqueia APIs de negócio quando não confirma a conexão com `livros`; portanto, não é correto afirmar que o modo offline completo está garantido.
 
 ### Tecnologias
 
@@ -126,7 +128,7 @@ Implementa o acervo:
 - atualização e exclusão;
 - consulta de ISBN pela Google Books e fallback externo.
 
-O ISBN é metadado bibliográfico. O identificador principal do sistema continua sendo o UUID gerado por `new_id()`.
+O ISBN é metadado bibliográfico. O identificador principal do sistema continua sendo o UUID gerado por `new_id()`. A consulta atual valida ISBN-10/ISBN-13, tenta Google Books, ISBNsearch e Open Library em ordem, e usa cache limitado apenas para resultados completos.
 
 A chave da Google Books é lida por `GOOGLE_BOOKS_API_KEY`. Ela deve permanecer em variável de ambiente e nunca no frontend ou no código.
 

@@ -1,5 +1,7 @@
 # Relatório 3 — Comparativo com o estado anterior do Git
 
+> Documento histórico de comparação. Atualização documental: 2026-09-14. Use-o para evolução do Git, não como descrição única do comportamento atual.
+
 ## 1. Comparação geral
 Em relação ao estado anterior do repositório, o projeto passou por uma mudança significativa na forma como empréstimos, exemplares e QR são tratados.
 

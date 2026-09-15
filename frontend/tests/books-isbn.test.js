@@ -23,15 +23,23 @@ const context = {
   },
   API: {
     books: {
-      lookupIsbn: async () => ({
-        isbn: '9788576831303',
-        titulo: 'Livro didático',
-        autor: 'Autor da API',
-        categorias: ['Textbook'],
-        genero_id: 'genre-1',
-        genero_nome: 'Técnico / Didático',
-        area: 'Geral',
-      }),
+      lookupIsbn: async (isbn) => isbn === '9788576831303'
+        ? {
+            isbn: '9788576831303',
+            titulo: 'Livro didático',
+            autor: 'Autor da API',
+            categorias: ['Textbook'],
+            genero_id: 'genre-1',
+            genero_nome: 'Técnico / Didático',
+            area: 'Geral',
+          }
+        : {
+            isbn: '9780000000002',
+            titulo: 'Segundo livro',
+            autor: 'Segundo autor',
+            categorias: [],
+            area: 'Literatura',
+          },
     },
   },
   syncGenres: async () => {},
@@ -47,8 +55,15 @@ vm.runInContext(
   await context.lookupBookIsbn();
   assert.strictEqual(elements['book-isbn'].value, '9788576831303');
   assert.strictEqual(elements['book-title'].value, 'Livro didático');
-  assert.strictEqual(elements['book-author'].value, 'Autor digitado');
+  assert.strictEqual(elements['book-author'].value, 'Autor da API');
   assert.strictEqual(elements['book-genre'].value, 'genre-1');
+
+  elements['book-isbn'].value = '978-00-00000-00-2';
+  await context.lookupBookIsbn();
+  assert.strictEqual(elements['book-isbn'].value, '9780000000002');
+  assert.strictEqual(elements['book-title'].value, 'Segundo livro');
+  assert.strictEqual(elements['book-author'].value, 'Segundo autor');
+  assert.strictEqual(elements['book-area'].value, 'Literatura');
   console.log('books ISBN form test passed');
 })().catch((error) => {
   console.error(error);

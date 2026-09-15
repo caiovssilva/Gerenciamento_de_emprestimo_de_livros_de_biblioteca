@@ -136,9 +136,9 @@ async function lookupBookIsbn() {
     const titleInput = Utils.el("book-title");
     const authorInput = Utils.el("book-author");
     const areaInput = Utils.el("book-area");
-    if (!titleInput.value.trim()) titleInput.value = result.titulo || "";
-    if (!authorInput.value.trim()) authorInput.value = result.autor || "";
-    if (!areaInput.value.trim()) areaInput.value = result.area || "Geral";
+    titleInput.value = result.titulo || "";
+    authorInput.value = result.autor || "";
+    areaInput.value = result.area || "Geral";
     if (!currentGenre && result.genero_id) genreSelect.value = result.genero_id;
     status.textContent = result.categorias?.length
       ? `Encontrado: ${result.categorias.join(", ")}`

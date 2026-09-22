@@ -1,6 +1,15 @@
 # Relatório 3 - Estado Atual do Projeto e Pitch Aprimorado
 
-> Atualizado em 2026-09-14. Este documento deve ser lido junto com [`auditoria-documentacao.md`](auditoria-documentacao.md). Afirmações antigas de modo offline completo, sessão segura ou produção pronta não são confirmadas pelo código atual.
+> Atualizado em 2026-09-22. Este documento deve ser lido junto com [`auditoria-documentacao.md`](auditoria-documentacao.md). Afirmações antigas de modo offline completo, sessão segura ou produção pronta não são confirmadas pelo código atual.
+
+## Estado atual da consulta ISBN
+
+- O backend está preparado para usar o Groq como primeira fonte de metadados.
+- São aceitos os Secrets `GROQ_API_KEY`, `GROQ_API` e `API_GROQ`; o nome recomendado é `GROQ_API_KEY`.
+- Google Books, ISBNsearch e Open Library são consultadas em paralelo para confirmação e complementação.
+- Dados parciais obtidos pelo Groq são preservados quando as outras fontes não retornam dados.
+- Verificação no Codespaces em 2026-09-22: o Secret chegou ao processo, mas o Groq respondeu HTTP 403/código 1010; a API ainda não foi validada como operacional.
+- No mesmo teste, ISBNsearch respondeu HTTP 200, Google Books respondeu HTTP 429 e Open Library respondeu HTTP 404.
 
 ## 1. Estado atual do projeto
 

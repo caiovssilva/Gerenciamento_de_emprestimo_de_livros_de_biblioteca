@@ -126,9 +126,9 @@ Implementa o acervo:
 - criação com UUID próprio;
 - geração dos exemplares físicos;
 - atualização e exclusão;
-- consulta de ISBN pela Google Books e fallback externo.
+- consulta de ISBN pelo Groq e confirmação por fontes bibliográficas externas.
 
-O ISBN é metadado bibliográfico. O identificador principal do sistema continua sendo o UUID gerado por `new_id()`. A consulta atual valida ISBN-10/ISBN-13, tenta Google Books, ISBNsearch e Open Library em ordem, e usa cache limitado apenas para resultados completos.
+O ISBN é metadado bibliográfico. O identificador principal do sistema continua sendo o UUID gerado por `new_id()`. A consulta atual valida ISBN-10/ISBN-13, usa o Groq como fonte inicial, consulta Google Books, ISBNsearch e Open Library em paralelo e usa cache limitado apenas para resultados completos.
 
 A chave da Google Books é lida por `GOOGLE_BOOKS_API_KEY`. Ela deve permanecer em variável de ambiente e nunca no frontend ou no código.
 

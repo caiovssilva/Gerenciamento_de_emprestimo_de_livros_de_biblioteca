@@ -4,7 +4,7 @@
 
 Este relatório documenta como o sistema consulta livros por ISBN, desde a entrada do usuário no frontend até a resposta das fontes externas e o preenchimento do formulário de cadastro.
 
-A análise foi feita sobre o código existente no frontend, backend, banco de dados e testes. Este documento foi atualizado em 2026-09-14 para refletir o código atual; nenhum código de aplicação foi alterado nesta auditoria documental.
+A análise foi feita sobre o código existente no frontend, backend, banco de dados e testes. Este documento foi atualizado em 2026-09-22 para refletir a integração do Groq.
 
 ## 2. Fluxo completo
 
@@ -26,16 +26,15 @@ A análise foi feita sobre o código existente no frontend, backend, banco de da
 
 9. O backend registra essa rota pelo blueprint de livros com o prefixo `/api/books`.
 10. A função `lookup_isbn()` recebe o parâmetro da query string e chama `_lookup_isbn()`.
-11. `_lookup_isbn()` normaliza e valida o ISBN e consulta as fontes externas nesta ordem:
-    1. Google Books;
-    2. ISBNsearch;
-    3. Open Library.
-12. Os dados encontrados podem ser combinados. Campos ausentes de uma fonte podem ser completados por outra.
-13. O backend tenta associar as categorias encontradas a um gênero local usando `_match_genre()`.
-14. A resposta JSON retorna para `apiFetch()` no frontend.
-15. `lookupBookIsbn()` utiliza a resposta para preencher os campos do cadastro.
-16. O usuário confere os dados e clica em `Salvar`.
-17. `saveBook()` envia o ISBN, título, autor, área, quantidade de exemplares e `genero_id` para a rota de criação ou atualização do livro.
+11. `_lookup_isbn()` normaliza e valida o ISBN e consulta o Groq primeiro.
+12. O Groq fornece uma sugestão inicial estruturada, sem ser tratado como confirmação externa.
+13. Google Books, ISBNsearch e Open Library são consultadas em paralelo para reduzir a latência.
+14. Os dados encontrados podem ser combinados. Campos ausentes de uma fonte podem ser completados por outra, sem apagar dados já obtidos pelo Groq.
+15. O backend tenta associar as categorias encontradas a um gênero local usando `_match_genre()`.
+16. A resposta JSON retorna para `apiFetch()` no frontend.
+17. `lookupBookIsbn()` utiliza a resposta para preencher os campos do cadastro.
+18. O usuário confere os dados e clica em `Salvar`.
+19. `saveBook()` envia o ISBN, título, autor, área, quantidade de exemplares e `genero_id` para a rota de criação ou atualização do livro.
 
 ## 3. Arquivos e funções
 
@@ -51,10 +50,11 @@ A análise foi feita sobre o código existente no frontend, backend, banco de da
 | `frontend/assets/js/qr-scanner.js` | `_capture()` | Captura os frames e tenta decodificar QR/código de barras |
 | `backend/api/books.py` | `_normalize_isbn()` | Normaliza o ISBN no backend |
 | `backend/api/books.py` | `_google_books_lookup()` | Consulta a Google Books API |
+| `backend/api/books.py` | `_groq_lookup()` | Obtém sugestão inicial estruturada do Groq |
 | `backend/api/books.py` | `_isbnsearch_lookup()` | Consulta e interpreta o HTML do ISBNsearch |
 | `backend/api/books.py` | `_openlibrary_lookup()` | Consulta a Open Library API |
 | `backend/api/books.py` | `_match_genre()` | Relaciona categorias externas a gêneros locais |
-| `backend/api/books.py` | `_lookup_isbn()` | Controla a ordem dos provedores, fallback, combinação e cache |
+| `backend/api/books.py` | `_lookup_isbn()` | Controla Groq, confirmação paralela, combinação e cache |
 | `backend/api/books.py` | `lookup_isbn()` | Endpoint HTTP `GET /api/books/isbn-lookup` |
 | `backend/scanner/routes.py` | `_resolve_qr()` | Resolve QR como ID, ISBN, exemplar, aluno ou cartão administrativo |
 | `frontend/assets/js/app.js` | `lookupBook()` | Busca local de livros durante o empréstimo; não consulta as APIs bibliográficas |
@@ -117,6 +117,16 @@ No backend, `_validate_isbn()` verifica também o dígito verificador oficial do
 
 ## 7. Fontes externas
 
+### Groq
+
+URL: `https://api.groq.com/openai/v1/chat/completions`.
+
+Função: `_groq_lookup()`.
+
+O backend lê `GROQ_API_KEY`, `GROQ_API` ou `API_GROQ`. O modelo padrão é `meta-llama/llama-4-scout-17b-16e-instruct`. A requisição usa temperatura zero e resposta JSON com `isbn`, `titulo`, `autor` e `categorias`. A chave nunca é enviada ao frontend.
+
+O Groq é uma fonte inicial de sugestão, não uma prova de existência do livro. Os provedores bibliográficos são usados para confirmar e completar os campos.
+
 ### Google Books
 
 URL:
@@ -172,7 +182,7 @@ Dados obtidos:
 
 ## 8. Fallback e erros
 
-A ordem de tentativa é Google Books, ISBNsearch e Open Library.
+ O Groq é consultado primeiro. Em seguida, Google Books, ISBNsearch e Open Library são consultadas em paralelo.
 
 Quando o Google Books não encontra um item, `_google_books_lookup()` gera `LookupError` e a próxima fonte é tentada.
 
@@ -183,6 +193,18 @@ Quando a Open Library não possui dados do ISBN, `_openlibrary_lookup()` gera `L
 Erros de rede, timeout e erros HTTP tratados como temporários podem receber uma segunda tentativa em `_open_provider()`. A quantidade máxima é de duas tentativas, com atraso de 0,2 segundo, e timeout de 6 segundos por tentativa. HTTP 404 é tratado como livro não encontrado; outros erros finais de provedor preservam a fonte em `_ProviderError` e são registrados no logger.
 
 Se alguma fonte retornar dados parciais, o resultado pode ser mantido e complementado pelas fontes seguintes.
+
+Se o Groq retornar dados e todas as fontes de confirmação falharem ou não encontrarem o ISBN, os dados do Groq são preservados e devolvidos para conferência manual. O resultado só entra no cache quando estiver completo.
+
+### Estado verificado em 2026-09-22
+
+- `GROQ_API` foi encontrado no ambiente do Codespaces sem expor seu valor.
+- A chamada ao Groq e o endpoint `/models` retornaram HTTP 403, código 1010.
+- ISBNsearch respondeu HTTP 200 no teste realizado.
+- Google Books respondeu HTTP 429 no teste realizado.
+- Open Library respondeu HTTP 404 para os ISBNs testados.
+
+Portanto, a integração está preparada no código, mas o acesso ao Groq ainda não está operacional neste ambiente. É necessário revisar a validade ou as restrições da chave no console do Groq.
 
 A rota converte os erros da seguinte forma:
 

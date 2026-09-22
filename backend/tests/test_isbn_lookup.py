@@ -51,7 +51,7 @@ def test_fallback_complements_partial_data_and_caches_only_complete_result(monke
 
     result = books._lookup_isbn("978-85-7683-130-3")
 
-    assert calls == ["google", "isbnsearch", "openlibrary"]
+    assert sorted(calls) == ["google", "isbnsearch", "openlibrary"]
     assert result["titulo"] == "Livro"
     assert result["autor"] == "Autora"
     assert result["categorias"] == ["History"]
@@ -96,7 +96,28 @@ def test_temporary_provider_failure_is_retried_and_falls_back(monkeypatch):
     result = books._lookup_isbn("9788576831303")
 
     assert result["autor"] == "Autora"
-    assert calls == ["google", "isbnsearch"]
+    assert sorted(calls) == ["google", "isbnsearch", "openlibrary"]
+
+
+def test_groq_data_is_preserved_when_verification_sources_find_nothing(monkeypatch):
+    groq_result = {
+        "isbn": "9788576831303",
+        "titulo": "Livro sugerido",
+        "autor": "Autora sugerida",
+        "categorias": [],
+    }
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: groq_result)
+    not_found = lambda _isbn: (_ for _ in ()).throw(books.LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", not_found)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788576831303")
+
+    assert result["titulo"] == "Livro sugerido"
+    assert result["autor"] == "Autora sugerida"
+    assert result["categorias"] == []
 
 
 def test_all_not_found_providers_return_lookup_error(monkeypatch):

@@ -91,7 +91,7 @@ Cada exemplar possui um codigo diferente. Isso permite saber exatamente qual uni
 
 ### ISBN
 
-O frontend normaliza o ISBN e chama `/api/books/isbn-lookup`. O backend consulta, em ordem, Google Books, isbnsearch.org e OpenLibrary. O resultado pode combinar dados de mais de uma fonte.
+O frontend normaliza o ISBN e chama `/api/books/isbn-lookup`. O backend consulta o Groq primeiro e depois consulta Google Books, isbnsearch.org e OpenLibrary em paralelo. O resultado pode combinar dados de mais de uma fonte e preservar dados parciais do Groq.
 
 Depois:
 
@@ -101,7 +101,7 @@ Depois:
 4. a resposta inclui ISBN, titulo, autor, categorias, area, `genero_id` e `genero_nome`;
 5. o frontend preenche somente campos vazios, preservando informacoes digitadas pelo usuario.
 
-`_validate_isbn()` rejeita ISBN-10/ISBN-13 matematicamente inválido antes da rede. `_open_provider()` faz até duas tentativas para falhas temporárias, com timeout de seis segundos por tentativa. `_lookup_isbn()` tenta Google Books, ISBNsearch e Open Library, combina dados sem substituir informação válida por vazia e só guarda no `_ISBN_CACHE` resultados completos por 15 minutos, com no máximo 128 entradas. Um retorno sem autor ou categoria ainda representa metadado ausente, não necessariamente falha do sistema.
+`_validate_isbn()` rejeita ISBN-10/ISBN-13 matematicamente inválido antes da rede. `_open_provider()` faz até duas tentativas para falhas temporárias, com timeout de seis segundos por tentativa. `_lookup_isbn()` usa o Groq como sugestão inicial, consulta Google Books, ISBNsearch e Open Library em paralelo, combina dados sem substituir informação válida por vazia e só guarda no `_ISBN_CACHE` resultados completos por 15 minutos, com no máximo 128 entradas. Um retorno sem autor ou categoria ainda representa metadado ausente, não necessariamente falha do sistema.
 
 ## 6. Scanner de QR e codigo de barras
 

@@ -6,6 +6,7 @@ import re
 import time
 import unicodedata
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
@@ -29,6 +30,8 @@ _ISBN_CACHE_MAX_SIZE = 128
 _PROVIDER_TIMEOUT_SECONDS = 6
 _PROVIDER_ATTEMPTS = 2
 _PROVIDER_RETRY_DELAY_SECONDS = 0.2
+_GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
 def _normalize_isbn(value: str) -> str:
@@ -119,6 +122,69 @@ def _google_books_lookup(isbn: str) -> dict:
     }
     if not any((result["titulo"], result["autor"], result["categorias"])):
         raise LookupError("Livro não encontrado para este ISBN.")
+    return result
+
+
+def _groq_lookup(isbn: str) -> dict:
+    """Obtém uma sugestão inicial do Groq; as outras fontes fazem a confirmação."""
+    normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
+    api_key = (
+        os.getenv("GROQ_API_KEY")
+        or os.getenv("API_GROQ")
+        or os.getenv("GROQ_API")
+        or ""
+    ).strip()
+    if not api_key:
+        raise LookupError("Groq não configurado.")
+
+    model = os.getenv("GROQ_MODEL", _GROQ_DEFAULT_MODEL).strip() or _GROQ_DEFAULT_MODEL
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": 300,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Você é um extrator de metadados bibliográficos. Responda somente JSON com "
+                    "isbn, titulo, autor e categorias. Não invente dados: use string vazia ou "
+                    "lista vazia quando não souber. O ISBN informado é a única identidade aceita."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"ISBN: {normalized}. Retorne os metadados conhecidos deste livro.",
+            },
+        ],
+    }
+    request_obj = Request(
+        _GROQ_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + api_key,
+        },
+        method="POST",
+    )
+    try:
+        with _open_provider(request_obj, "Groq") as response:
+            body = json.load(response)
+        content = body["choices"][0]["message"]["content"]
+        result = json.loads(content)
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise _ProviderError("Groq", "O Groq retornou uma resposta inválida.") from exc
+
+    result = {
+        "isbn": normalized,
+        "titulo": str(result.get("titulo") or "").strip(),
+        "autor": str(result.get("autor") or "").strip(),
+        "categorias": [str(item).strip() for item in (result.get("categorias") or []) if str(item).strip()],
+    }
+    if not any((result["titulo"], result["autor"], result["categorias"])):
+        raise LookupError("Groq não encontrou dados para este ISBN.")
     return result
 
 
@@ -260,14 +326,40 @@ def _lookup_isbn(isbn: str) -> dict:
     errors = []
     result = None
     unavailable_provider = False
+    try:
+        result = deepcopy(_groq_lookup(normalized))
+    except LookupError:
+        pass
+    except _ProviderError as exc:
+        unavailable_provider = True
+        errors.append(exc)
+        logger.warning("Consulta de ISBN falhou no provedor %s: %s", exc.source, exc)
+
     providers = (
         ("Google Books", _google_books_lookup),
         ("ISBNsearch", _isbnsearch_lookup),
         ("Open Library", _openlibrary_lookup),
     )
-    for provider_name, provider in providers:
+
+    def call_provider(item):
+        provider_name, provider = item
         try:
-            found = provider(normalized)
+            return provider_name, provider(normalized), None
+        except (LookupError, _ProviderError) as exc:
+            return provider_name, None, exc
+
+    # As fontes de confirmação são independentes; consultá-las juntas reduz a latência.
+    with ThreadPoolExecutor(max_workers=len(providers)) as executor:
+        responses = list(executor.map(call_provider, providers))
+
+    for provider_name, found, error in responses:
+        if error:
+            errors.append(error)
+            if isinstance(error, _ProviderError):
+                unavailable_provider = True
+                logger.warning("Consulta de ISBN falhou no provedor %s: %s", error.source, error)
+            continue
+        try:
             if result is None:
                 result = deepcopy(found)
             else:
@@ -280,12 +372,9 @@ def _lookup_isbn(isbn: str) -> dict:
                 result["categorias"] = categories
             if result.get("titulo") and result.get("autor") and result.get("categorias"):
                 break
-        except LookupError as exc:
-            errors.append(exc)
-        except _ProviderError as exc:
-            unavailable_provider = True
-            errors.append(exc)
-            logger.warning("Consulta de ISBN falhou no provedor %s: %s", exc.source, exc)
+        except (AttributeError, TypeError) as exc:
+            errors.append(_ProviderError(provider_name, "A fonte retornou dados inválidos."))
+            logger.warning("Consulta de ISBN falhou no provedor %s: %s", provider_name, exc)
 
     if result is not None:
         result["area"] = "Geral"

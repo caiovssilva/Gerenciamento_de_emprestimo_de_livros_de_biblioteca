@@ -1,5 +1,20 @@
 📊 RELATÓRIO DE TESTES - APLICAÇÃO EM EXECUÇÃO
 
+## Atualização de estado - 2026-09-22
+
+Foi testada a integração externa de consulta ISBN:
+
+| Fonte | Resultado | Interpretação |
+|---|---|---|
+| Groq | HTTP 403, código 1010 | Secret `GROQ_API` chega ao processo, mas o serviço recusou o acesso |
+| Google Books | HTTP 429 | Limite de requisições atingido |
+| ISBNsearch | HTTP 200 | Fonte respondeu com dados |
+| Open Library | HTTP 404 | Não retornou registro para os ISBNs testados |
+
+O código está preparado para usar o Groq primeiro e manter seus dados quando as fontes de confirmação não retornarem resultado. A integração só será considerada operacional após uma nova chave Groq responder HTTP 200.
+
+Os resultados abaixo são históricos e não substituem a verificação acima.
+
 NOTA DE AUDITORIA (2026-09-14): os resultados abaixo são registros históricos de uma execução específica. Eles não foram tratados como execução atual; confirme cada endpoint no ambiente presente antes de declarar aprovação.
 ═══════════════════════════════════════════════════════════════════════════════
 

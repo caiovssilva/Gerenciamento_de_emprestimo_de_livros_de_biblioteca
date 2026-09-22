@@ -17,8 +17,8 @@ A documentação contém materiais de épocas diferentes. O relatório mais conf
 - Flask serve o frontend e registra blueprints para `/api/auth`, `/api/books`, `/api/students`, `/api/loans`, `/api/reports`, `/api/rooms`, `/api/genres` e `/api/qr`.
 - O frontend usa JavaScript sem framework, com `api.js`, `store.js`, `app.js`, páginas por recurso e `qr-scanner.js`.
 - Livros possuem UUID interno, ISBN opcional, exemplares e QR Code derivado do ID interno ou do exemplar.
-- O cadastro de livro consulta Google Books, ISBNsearch e Open Library em ordem de fallback.
-- A consulta de ISBN atualmente normaliza e valida ISBN-10/ISBN-13, usa retry limitado, identifica o provedor em logs e armazena somente resultados completos no cache com TTL e limite de tamanho.
+- O cadastro de livro consulta o Groq primeiro e Google Books, ISBNsearch e Open Library em paralelo para confirmação e complementação.
+- A consulta de ISBN atualmente normaliza e valida ISBN-10/ISBN-13, usa retry limitado, combina dados, preserva dados parciais do Groq e armazena somente resultados completos no cache com TTL e limite de tamanho.
 - O scanner de navegador usa `getUserMedia`, `jsQR` e `BarcodeDetector`; `/api/qr/decode` é um caminho de decodificação de imagem no backend.
 - O backend possui login por credenciais e resolução de QR, mas não foi encontrada sessão server-side, cookie seguro, token ou middleware de autorização nas rotas de negócio.
 - O SQL define tabelas, índices, FKs, JSONB, views e políticas RLS. As políticas observadas usam `USING (true)`/`WITH CHECK (true)` para várias tabelas.

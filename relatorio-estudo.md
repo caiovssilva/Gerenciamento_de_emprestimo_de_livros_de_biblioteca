@@ -163,7 +163,7 @@ Essas bibliotecas apoiam a leitura e geração de imagens:
 
 A Google Books API é usada para pesquisar um livro a partir do ISBN. Ela pode retornar título, autores e categorias.
 
-A integração está no backend e depende da disponibilidade, quota e qualidade dos metadados externos. O fluxo atual consulta Google Books, ISBNsearch e Open Library, valida o checksum antes da rede, faz retry limitado e usa cache apenas para resultados completos.
+A integração está no backend e depende da disponibilidade, quota e qualidade dos metadados externos. O fluxo atual consulta o Groq primeiro e Google Books, ISBNsearch e Open Library em paralelo, valida o checksum antes da rede, faz retry limitado, preserva dados parciais do Groq e usa cache apenas para resultados completos.
 
 ### Chart.js, jsQR e Tabler Icons
 
@@ -407,7 +407,7 @@ Se a Google Books estiver limitada, o usuário pode preencher os dados manualmen
 
 - **Começa:** ISBN é digitado ou lido.
 - **Arquivos:** `books.js`, `api.js`, `books.py`.
-- **Internamente:** o backend valida o ISBN e consulta Google Books, ISBNsearch e Open Library em sequência, combinando dados quando necessário.
+- **Internamente:** o backend valida o ISBN, consulta o Groq e depois consulta Google Books, ISBNsearch e Open Library em paralelo, combinando dados quando necessário.
 - **Resultado:** preenchimento automático.
 - **Status:** parcialmente dependente de serviços externos; há retry limitado e cache de resultados completos, mas autores/categorias podem continuar ausentes.
 

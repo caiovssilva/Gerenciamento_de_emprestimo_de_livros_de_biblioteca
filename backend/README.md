@@ -75,13 +75,21 @@ pip install -r backend/requirements.txt
 
 ### 4. Configure as variáveis de ambiente
 
-O arquivo `backend/.env` já está incluído com as credenciais do projeto narceu de paiva filho, então **não é necessário configurar nada** para rodar localmente.
+O arquivo `backend/.env` não deve ser versionado. Configure as credenciais por Secrets do Codespaces ou por um arquivo local ignorado pelo Git.
 
 Se quiser usar seu próprio banco Supabase:
 ```bash
 cp backend/.env.example backend/.env
-# Edite backend/.env com sua SUPABASE_URL e SUPABASE_KEY
+# Edite backend/.env com suas credenciais, se não usar Secrets do Codespaces
 ```
+
+### Consulta de ISBN com Groq
+
+O cadastro de livros usa o Groq para obter uma sugestão inicial de metadados e consulta Google Books, ISBNsearch e Open Library em paralelo para confirmar ou complementar o resultado. O sistema preserva os dados do Groq quando as fontes externas não retornam dados.
+
+Configure um Secret do Codespaces chamado `GROQ_API`, `GROQ_API_KEY` ou `API_GROQ`. O nome recomendado é `GROQ_API_KEY`. Também é possível definir `GROQ_MODEL` e `GOOGLE_BOOKS_API_KEY`.
+
+Nunca coloque chaves reais no código, no frontend, em `backend/.env.example` ou em relatórios. Depois de alterar um Secret, reinicie o terminal e o servidor Flask.
 
 ---
 

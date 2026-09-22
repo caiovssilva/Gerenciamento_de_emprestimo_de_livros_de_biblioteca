@@ -161,13 +161,9 @@ O endpoint é `GET /api/books/isbn-lookup?isbn=...`.
 
 O valor é normalizado removendo caracteres que não sejam números ou `X`, com conversão para maiúsculo. O backend valida checksum de ISBN-10 e ISBN-13 antes de consultar fontes externas.
 
-As fontes são tentadas nesta ordem:
+O Groq é consultado primeiro por `_groq_lookup()` usando `GROQ_API_KEY`, `GROQ_API` ou `API_GROQ`, com resposta JSON estruturada. Depois, Google Books, ISBNsearch e Open Library são consultadas em paralelo para confirmação e complementação. O resultado pode conter `isbn`, `titulo`, `autor`, `categorias`, `area`, `genero_id` e `genero_nome`. Dados parciais do Groq são preservados quando as fontes externas não retornam dados. Há duas tentativas para falhas de rede/HTTP consideradas temporárias, timeout de seis segundos por tentativa, pequeno intervalo entre tentativas e cache em memória por quinze minutos, limitado a 128 itens. Resultados incompletos não são colocados no cache.
 
-1. Google Books API, em JSON;
-2. ISBNsearch, interpretando HTML;
-3. Open Library API, em JSON.
-
-O resultado pode conter `isbn`, `titulo`, `autor`, `categorias`, `area`, `genero_id` e `genero_nome`. Campos parciais podem ser complementados por outra fonte. Categorias externas são comparadas com gêneros cadastrados. Há duas tentativas para falhas de rede/HTTP consideradas temporárias, timeout de seis segundos por tentativa, pequeno intervalo entre tentativas e cache em memória por quinze minutos, limitado a 128 itens. Resultados incompletos não são colocados no cache.
+Verificação externa em 2026-09-22: o Secret chegou ao Codespaces, mas o Groq respondeu HTTP 403/código 1010; Google Books respondeu HTTP 429; ISBNsearch respondeu HTTP 200; Open Library respondeu HTTP 404 nos ISBNs testados. A integração está preparada, mas o acesso do Groq ainda depende de uma chave autorizada.
 
 Erros confirmados pelo código:
 
@@ -710,7 +706,7 @@ Ao responder perguntas futuras sobre este projeto, use estas regras factuais:
 - O banco usa PostgreSQL por meio do Supabase; o backend não abre uma conexão PostgreSQL direta.
 - Livro tem UUID interno, ISBN opcional, título, autor, área, gênero e exemplares. ISBN não deve ser descrito como o ID principal.
 - QR de livro/aluno representa normalmente o ID interno; QR de exemplar usa metadado próprio; `ADMIN-*` representa cartão administrativo.
-- ISBN é consultado em Google Books, ISBNsearch e Open Library, com validação, retry, combinação de dados e cache limitado.
+- ISBN usa Groq como fonte inicial e Google Books, ISBNsearch e Open Library em confirmação paralela, com validação, retry, combinação de dados e cache limitado. O Groq preserva dados parciais quando as fontes externas não respondem.
 - Aluno tem UUID, nome, turma, carteirinha, sala e flag `is_librarian`; o QR de aluno usa o ID.
 - Empréstimo relaciona livro e aluno, escolhe exemplar, registra datas, observação, criador e possível `exemplar_id`.
 - Os status de aplicação são `active`, `overdue` e `returned`.

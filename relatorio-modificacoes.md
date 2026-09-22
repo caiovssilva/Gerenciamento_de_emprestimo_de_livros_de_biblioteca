@@ -84,9 +84,9 @@ O sistema **não está pronto para produção**. O maior risco é de segurança:
 
 - **Alteração:** rota `GET /api/books/isbn-lookup`, cliente API, botão de leitura e pesquisa no modal de cadastro.
 - **Local:** [backend/api/books.py](backend/api/books.py), [frontend/assets/js/api.js](frontend/assets/js/api.js), [frontend/assets/js/pages/books.js](frontend/assets/js/pages/books.js), [frontend/index.html](frontend/index.html).
-- **Fluxo implementado:** ler código, normalizar ISBN, consultar Google Books, preencher ISBN/título/autor e tentar associar categorias a gêneros locais.
+- **Fluxo implementado:** ler código, normalizar ISBN, consultar Groq, confirmar/complementar em fontes externas, preencher ISBN/título/autor e tentar associar categorias a gêneros locais.
 - **Regra preservada:** o cadastro continua chamando a rota existente de criação; `new_id()`, exemplares, QR e carteirinha não foram substituídos pelo ISBN.
-- **Estado atual:** `_validate_isbn()` verifica ISBN-10/ISBN-13; `_open_provider()` faz até duas tentativas com timeout de 6 segundos; `_lookup_isbn()` mantém a ordem Google Books, ISBNsearch e Open Library e só armazena no cache resultados com título, autor e categorias.
+- **Estado atual:** `_validate_isbn()` verifica ISBN-10/ISBN-13; `_open_provider()` faz até duas tentativas com timeout de 6 segundos; `_lookup_isbn()` usa Groq primeiro, consulta as demais fontes em paralelo, preserva dados parciais e só armazena no cache resultados com título, autor e categorias.
 - **Pendências:** as fontes externas ainda podem retornar dados incompletos, 404, 429 ou timeout; não há teste E2E de câmera física nem garantia de disponibilidade dos provedores.
 
 ### 2.8 Tema, interface e acessibilidade

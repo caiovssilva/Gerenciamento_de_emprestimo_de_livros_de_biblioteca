@@ -8,13 +8,73 @@ QR Code: geração, decodificação e geração de cartão imprimível (PDF-like
 """
 
 import base64
+import re
 import threading
 import time
 from io import BytesIO
 
+cv2 = None
+np = None
+pyzbar = None
+
+
+def _ensure_scan_deps():
+    global cv2, np, pyzbar
+    if cv2 is not None and np is not None and pyzbar is not None:
+        return cv2, np, pyzbar
+    try:
+        import cv2 as _cv2
+        import numpy as _np
+        from pyzbar import pyzbar as _pyzbar
+    except Exception:  # pragma: no cover - optional in some environments
+        return None, None, None
+    cv2 = _cv2
+    np = _np
+    pyzbar = _pyzbar
+    return cv2, np, pyzbar
+
+
+def _decode_barcode_variants(frame):
+    """Tenta leituras controladas para imagens pequenas, desfocadas ou com baixo contraste."""
+    cv2_local, _, pyzbar_local = _ensure_scan_deps()
+    if cv2_local is None or pyzbar_local is None or frame is None:
+        return []
+
+    variants = [frame]
+    gray = cv2_local.cvtColor(frame, cv2_local.COLOR_BGR2GRAY)
+    variants.append(gray)
+
+    height, width = gray.shape[:2]
+    if max(height, width) < 1200:
+        scale = 2 if max(height, width) < 700 else 1.5
+        enlarged = cv2_local.resize(gray, None, fx=scale, fy=scale, interpolation=cv2_local.INTER_CUBIC)
+        blurred = cv2_local.GaussianBlur(enlarged, (0, 0), 3)
+        sharpened = cv2_local.addWeighted(enlarged, 1.7, blurred, -0.7, 0)
+        clahe = cv2_local.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(enlarged)
+        variants.extend([
+            enlarged,
+            sharpened,
+            clahe,
+            cv2_local.threshold(enlarged, 0, 255, cv2_local.THRESH_BINARY + cv2_local.THRESH_OTSU)[1],
+            cv2_local.threshold(sharpened, 0, 255, cv2_local.THRESH_BINARY + cv2_local.THRESH_OTSU)[1],
+            cv2_local.adaptiveThreshold(enlarged, 255, cv2_local.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        cv2_local.THRESH_BINARY, 31, 7),
+        ])
+
+    for candidate in variants:
+        try:
+            decoded = pyzbar_local.decode(candidate)
+        except Exception:
+            decoded = []
+        if decoded:
+            return decoded
+    return []
+
 from flask import Blueprint, jsonify, request, send_file
 
 qr_bp = Blueprint("qr", __name__)
+
+_FONT_CACHE = {}
 
 # ── Estado câmera servidor ────────────────────────────────────────────
 _lock          = threading.Lock()
@@ -25,14 +85,12 @@ _camera_thread = None
 
 def _scan_loop(camera_index: int = 0):
     global _camera_active, _last_result
-    try:
-        import cv2
-        from pyzbar import pyzbar
-    except ImportError:
+    cv2_local, _, pyzbar_local = _ensure_scan_deps()
+    if cv2_local is None or pyzbar_local is None:
         _camera_active = False
         return
 
-    cap = cv2.VideoCapture(camera_index)
+    cap = cv2_local.VideoCapture(camera_index)
     if not cap.isOpened():
         _camera_active = False
         return
@@ -42,7 +100,7 @@ def _scan_loop(camera_index: int = 0):
         if not ret:
             time.sleep(0.1)
             continue
-        decoded = pyzbar.decode(frame)
+        decoded = pyzbar_local.decode(frame)
         if decoded:
             data = decoded[0].data.decode("utf-8", errors="replace")
             with _lock:
@@ -97,9 +155,7 @@ def decode_image():
     Retorna: { primary, type: 'book'|'student'|'unknown', data: {...} }
     """
     try:
-        import cv2, numpy as np
         from PIL import Image
-        from pyzbar import pyzbar
     except ImportError as e:
         return jsonify({"error": f"Dependência faltando: {e}"}), 500
 
@@ -114,15 +170,33 @@ def decode_image():
             img_bytes = base64.b64decode(b64_data)
 
         pil_img = Image.open(BytesIO(img_bytes)).convert("RGB")
-        frame   = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-        decoded = pyzbar.decode(frame)
+
+        decoded = []
+        try:
+            cv2_local, np_local, _ = _ensure_scan_deps()
+            if cv2_local is not None and np_local is not None:
+                frame = cv2_local.cvtColor(np_local.array(pil_img), cv2_local.COLOR_RGB2BGR)
+                decoded = _decode_barcode_variants(frame)
+        except Exception:
+            decoded = []
+
+        if not decoded:
+            try:
+                import cv2
+                import numpy as np
+                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                detector = cv2.QRCodeDetector()
+                value, _, _ = detector.detectAndDecode(frame)
+                if value:
+                    decoded = [type("Decoded", (), {"data": value.encode("utf-8")})()]
+            except Exception:
+                decoded = []
 
         if not decoded:
             return jsonify({"codes": [], "primary": None, "type": "unknown"})
 
         primary = decoded[0].data.decode("utf-8", errors="replace")
 
-        # Resolve contra o banco
         resolved = _resolve_qr(primary)
         return jsonify({
             "codes":   [d.data.decode("utf-8", errors="replace") for d in decoded],
@@ -134,29 +208,182 @@ def decode_image():
         return jsonify({"error": str(exc)}), 400
 
 
+ADMIN_CARD_PREFIX = "ADMIN-"
+ADMIN_LOGIN_DEFAULT = "admin"
+
+
 def _resolve_qr(code: str) -> dict:
-    """Tenta encontrar o código como ID de livro ou aluno."""
+    """Tenta encontrar o código como ID/ISBN de livro, carteirinha de aluno, QR único por exemplar ou cartão de admin."""
+    from pathlib import Path
+    from api._helpers import read_json
+    DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
+    BOOKS_FILE  = DATA_DIR / "livros.json"
+    ALUNOS_FILE = DATA_DIR / "alunos.json"
+
+    code = (code or "").strip()
+
+    if code.startswith(ADMIN_CARD_PREFIX):
+        login = code[len(ADMIN_CARD_PREFIX):] or ADMIN_LOGIN_DEFAULT
+        return {"type": "admin", "data": {"login": login}}
+
+    book_ref = code
+    exemplar_code = None
+    exemplar_id = None
+    if code.startswith("EXEMPLAR-"):
+        rest = code[len("EXEMPLAR-"):]
+        if "-EX-" in rest:
+            book_part, tail = rest.split("-EX-", 1)
+            tail_parts = tail.split("-", 1)
+            if len(tail_parts) == 2:
+                book_ref = book_part
+                exemplar_code = tail_parts[0]
+                exemplar_id = rest
+
     try:
         from utils import get_client, sb_exec
         sb = get_client()
 
-        # Tenta como livro
-        books = sb_exec(sb.table("livros").select("*").eq("id", code))
+        try:
+            books = sb_exec(sb.table("livros").select("*").eq("id", book_ref))
+        except Exception:
+            books = []
         if not books:
-            books = sb_exec(sb.table("livros").select("*").eq("isbn", code))
+            try:
+                books = sb_exec(sb.table("livros").select("*").eq("isbn", book_ref))
+            except Exception:
+                books = []
         if books:
-            return {"type": "book", "data": books[0]}
+            data = dict(books[0])
+            if exemplar_code or exemplar_id:
+                data["exemplar_code"] = exemplar_code
+                data["exemplar_id"] = exemplar_id
+            return {"type": "book", "data": data}
 
-        # Tenta como aluno
-        students = sb_exec(sb.table("alunos").select("*").eq("id", code))
+        try:
+            students = sb_exec(sb.table("alunos").select("*").eq("id", code))
+        except Exception:
+            students = []
         if not students:
-            students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
+            try:
+                students = sb_exec(sb.table("alunos").select("*").eq("carteirinha", code))
+            except Exception:
+                students = []
         if students:
+            students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
             return {"type": "student", "data": students[0]}
-
-        return {"type": "unknown", "data": None}
     except Exception:
-        return {"type": "unknown", "data": None}
+        pass
+
+    try:
+        books = [b for b in read_json(BOOKS_FILE) if b.get("id") == book_ref or b.get("isbn") == book_ref]
+        if books:
+            data = dict(books[0])
+            if exemplar_code or exemplar_id:
+                data["exemplar_code"] = exemplar_code
+                data["exemplar_id"] = exemplar_id
+            return {"type": "book", "data": data}
+        students = [s for s in read_json(ALUNOS_FILE) if s.get("id") == code or s.get("carteirinha") == code]
+        if students:
+            students[0]["is_librarian"] = bool(students[0].get("is_librarian", False))
+            return {"type": "student", "data": students[0]}
+    except Exception:
+        pass
+
+    return {"type": "unknown", "data": None}
+
+
+def _read_local_record(file_path, record_id, alt_field=None):
+    from api._helpers import read_json
+
+    rows = read_json(file_path)
+    if alt_field:
+        matches = [row for row in rows if row.get("id") == record_id or row.get(alt_field) == record_id]
+    else:
+        matches = [row for row in rows if row.get("id") == record_id]
+    return matches[0] if matches else None
+
+
+# ── Login por QR (carteirinha de admin ou bibliotecário) ──────────────
+@qr_bp.route("/login", methods=["POST"])
+def qr_login():
+    """
+    Recebe o código lido pela câmera (carteirinha) e resolve o tipo de acesso:
+    - admin: cartão administrativo, exige senha validada no backend.
+    - librarian: aluno com is_librarian=True, entra como Bibliotecário.
+    - student: aluno comum, sem acesso ao painel (apenas informativo).
+    - unknown: código não reconhecido.
+    """
+    body = request.get_json(force=True) or {}
+    code = (body.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "Código vazio"}), 400
+
+    resolved = _resolve_qr(code)
+
+    if resolved["type"] == "admin":
+        from api.auth import _get_user_by_login, _verify_password
+
+        login = (resolved.get("data") or {}).get("login", "").strip()
+        password = str(body.get("password") or "")
+        user = _get_user_by_login(login)
+        if not user:
+            return jsonify({"error": "Cartão administrativo inválido."}), 401
+        if not password or not _verify_password(password, user.get("senha", "")):
+            return jsonify({"error": "Senha administrativa incorreta."}), 401
+        resolved["data"] = {
+            "id": user.get("id"),
+            "login": user.get("login"),
+            "nome": user.get("nome"),
+        }
+        return jsonify({"access": "admin", **resolved})
+
+    if resolved["type"] == "student":
+        student = resolved["data"]
+        if student.get("is_librarian"):
+            return jsonify({"access": "librarian", "type": "student", "data": student})
+        return jsonify({"access": "denied", "type": "student", "data": student,
+                         "message": "Este aluno não possui acesso ao painel. Solicite ao administrador para 'Permitir acesso'."})
+
+    return jsonify({"access": "denied", "type": resolved["type"], "data": resolved["data"],
+                     "message": "Código não reconhecido."})
+
+
+# ── Cartão imprimível: Administrador ──────────────────────────────────
+@qr_bp.route("/card/admin/<login>", methods=["POST"])
+def admin_card(login):
+    """Gera a carteirinha administrativa somente após validar a senha real."""
+    try:
+        from api.auth import _get_user_by_login, _verify_password
+
+        password = str((request.get_json(silent=True) or {}).get("password") or "")
+        user = _get_user_by_login(login)
+        if not user or not password or not _verify_password(password, user.get("senha", "")):
+            return jsonify({"error": "Senha administrativa incorreta."}), 401
+
+        stored_login = (user.get("login") or login).strip()
+        normalized_login = stored_login.lower()
+        if normalized_login not in ("admin", "bibliotecario", "biblioteca"):
+            return jsonify({"error": "Usuário não autorizado para carteirinha administrativa."}), 403
+
+        role = "Bibliotecário" if normalized_login in ("bibliotecario", "biblioteca") else "Administrador"
+        qr_data = f"{ADMIN_CARD_PREFIX}{login}"
+
+        img_b64 = _build_card(
+            entity_type = "admin",
+            title       = user.get("nome") or stored_login,
+            subtitle    = "Acesso administrativo",
+            field1      = f"Usuário: {stored_login}",
+            field2      = f"Senha: {password}",
+            field3      = f"Perfil: {role}",
+            qr_data     = qr_data,
+            badge       = "ADMIN",
+            color       = "#1a4f8a",
+        )
+        return jsonify({"image": img_b64, "filename": f"carteirinha-admin-{normalized_login}.png"})
+    except ImportError as e:
+        return jsonify({"error": f"Pillow não instalado: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Geração de QR Code simples ────────────────────────────────────────
@@ -189,30 +416,71 @@ def book_card(book_id):
     Gera imagem PNG do cartão do livro com QR Code para impressão.
     """
     try:
+        from pathlib import Path
+        from api._helpers import read_json
         from utils import get_client, sb_exec
-        import qrcode as qr_lib
-        from PIL import Image, ImageDraw, ImageFont
-        import textwrap
+
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        books_file = data_dir / "livros.json"
+        genres_file = data_dir / "generos.json"
 
         sb    = get_client()
-        books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
-        if not books:
+        book = None
+        try:
+            books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
+        except Exception:
+            books = []
+        if books:
+            book = books[0]
+        if not book:
+            rows = [b for b in read_json(books_file) if b.get("id") == book_id or b.get("isbn") == book_id]
+            if rows:
+                book = rows[0]
+        if not book:
             return jsonify({"error": "Livro não encontrado"}), 404
-        book = books[0]
 
-        img_b64 = _build_card(
-            entity_type = "livro",
-            title       = book.get("titulo", ""),
-            subtitle    = book.get("autor", ""),
-            field1      = f"Área: {book.get('area', '')}",
-            field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
-            field3      = f"Exemplares: {book.get('exemplares', 1)}",
-            qr_data     = book["id"],
-            badge       = book.get("genero_nome", ""),
-            color       = "#1a4f8a",
-        )
+        genres = {g.get("id"): g for g in read_json(genres_file)}
+        genero = genres.get(book.get("genero_id"), {})
+        book["genero_nome"] = book.get("genero_nome") or genero.get("nome", "")
 
-        return jsonify({"image": img_b64, "filename": f"cartao-livro-{book_id[:8]}.png"})
+        exemplares_meta = book.get("exemplares_meta") or []
+        total_exemplares = book.get("exemplares", 1)
+
+        cards = []
+        if exemplares_meta:
+            for item in exemplares_meta:
+                img_b64 = _build_card(
+                    entity_type = "livro",
+                    title       = book.get("titulo", ""),
+                    subtitle    = f"Autor: {book.get('autor', '')}",
+                    field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
+                    field2      = f"Exemplar: {item.get('code','')} de {total_exemplares}",
+                    field3      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
+                    qr_data     = item.get("qr_data") or item.get("id", book["id"]),
+                    badge       = book.get("genero_nome", ""),
+                    color       = "#1a4f8a",
+                )
+                cards.append({
+                    "image": img_b64,
+                    "filename": f"cartao-livro-{book_id[:8]}-ex{item.get('code','001')}.png",
+                    "exemplar": item.get("code", ""),
+                })
+        else:
+            # Livro antigo, sem exemplares_meta ainda — gera um único cartão com o id do livro.
+            img_b64 = _build_card(
+                entity_type = "livro",
+                title       = book.get("titulo", ""),
+                subtitle    = f"Autor: {book.get('autor', '')}",
+                field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
+                field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
+                field3      = f"Exemplares: {total_exemplares}",
+                qr_data     = book["id"],
+                badge       = book.get("genero_nome", ""),
+                color       = "#1a4f8a",
+            )
+            cards.append({"image": img_b64, "filename": f"cartao-livro-{book_id[:8]}.png", "exemplar": ""})
+
+        return jsonify({"cards": cards, "image": cards[0]["image"], "filename": cards[0]["filename"]})
     except ImportError as e:
         return jsonify({"error": f"Pillow não instalado: {e}"}), 500
     except Exception as e:
@@ -226,30 +494,42 @@ def student_card(student_id):
     Gera imagem PNG da carteirinha do aluno com QR Code para impressão.
     """
     try:
+        from pathlib import Path
+        from api._helpers import read_json
         from utils import get_client, sb_exec
 
-        sb       = get_client()
-        students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
-        if not students:
-            return jsonify({"error": "Aluno não encontrado"}), 404
-        student = students[0]
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        students_file = data_dir / "alunos.json"
+        rooms_file = data_dir / "salas.json"
 
-        # Busca sala
-        sala_nome = ""
-        if student.get("sala_id"):
-            salas = sb_exec(sb.table("salas").select("nome").eq("id", student["sala_id"]))
-            if salas:
-                sala_nome = salas[0]["nome"]
+        sb       = get_client()
+        student = None
+        try:
+            students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
+        except Exception:
+            students = []
+        if students:
+            student = students[0]
+        if not student:
+            rows = [s for s in read_json(students_file) if s.get("id") == student_id or s.get("carteirinha") == student_id]
+            if rows:
+                student = rows[0]
+        if not student:
+            return jsonify({"error": "Aluno não encontrado"}), 404
+
+        rooms = {r.get("id"): r for r in read_json(rooms_file)}
+        sala_data = rooms.get(student.get("sala_id"), {})
+        sala_nome = sala_data.get("nome", "") or "Não atribuída"
 
         img_b64 = _build_card(
             entity_type = "aluno",
             title       = student.get("nome", ""),
             subtitle    = f"Turma: {student.get('turma', '')}",
-            field1      = f"Sala: {sala_nome or 'Não atribuída'}",
+            field1      = f"Sala: {sala_nome}",
             field2      = f"Carteirinha: {student.get('carteirinha', '') or 'N/A'}",
             field3      = f"ID: {student['id'][:8].upper()}",
             qr_data     = student["id"],
-            badge       = student.get("turma", ""),
+            badge       = "BIBLIOTECÁRIO" if student.get("is_librarian") else student.get("turma", ""),
             color       = "#166534",
         )
 
@@ -264,126 +544,131 @@ def student_card(student_id):
 def _build_card(entity_type, title, subtitle, field1, field2, field3,
                 qr_data, badge="", color="#1a4f8a"):
     """
-    Constrói um cartão PNG 600x220px profissional com QR Code embutido.
+    Constrói um cartão PNG 600x260px com visual de carteirinha.
     Retorna string base64 "data:image/png;base64,..."
     """
     import qrcode as qr_lib
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
     import textwrap
 
-    W, H = 600, 220
-    MARGIN = 16
+    W, H = 600, 260
+    MARGIN = 18
 
-    # Cores
-    bg_color     = (255, 255, 255)
+    bg_color     = (245, 247, 250)
+    card_color   = (255, 255, 255)
     header_color = tuple(int(color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
-    text_dark    = (15, 23, 42)
-    text_muted   = (100, 116, 139)
-    border_color = (226, 232, 240)
+    text_dark    = (17, 24, 39)
+    text_muted   = (80, 92, 123)
+    border_color = (216, 226, 241)
 
     img  = Image.new("RGB", (W, H), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # Borda
-    draw.rectangle([0, 0, W-1, H-1], outline=border_color, width=2)
+    draw.rounded_rectangle([8, 8, W-8, H-8], radius=22, fill=card_color, outline=border_color, width=2)
+    draw.rounded_rectangle([14, 14, W-14, 72], radius=16, fill=header_color)
+    draw.text((28, 24), "BIBLIOTECA NARCEU DE PAIVA FILHO", fill=(255, 255, 255), font=_load_font(18, bold=True))
+    header_label = "CARTEIRINHA" if entity_type == "aluno" else "CARTÃO DE LIVRO"
+    draw.text((28, 46), header_label, fill=(255, 255, 255), font=_load_font(12, bold=True))
+    draw.rectangle([14, 72, W-14, 76], fill=(255, 255, 255))
 
-    # Faixa lateral colorida
-    draw.rectangle([0, 0, 8, H], fill=header_color)
+    chip_text = "narceu"
+    chip_font = _load_font(11, bold=True)
+    chip_w    = draw.textlength(chip_text, font=chip_font) + 20
+    chip_x    = W - chip_w - 24
+    chip_y    = 24
+    draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + 28], radius=14, fill=(255, 255, 255), outline=(255, 255, 255), width=0)
+    draw.text((chip_x + 10, chip_y + 6), chip_text, fill=header_color, font=chip_font)
 
-    # Header colorido topo
-    draw.rectangle([0, 0, W, 48], fill=header_color)
-
-    # Texto do tipo no header
-    type_label = "📚 BIBLIOTECA IFES" if entity_type == "livro" else "🎓 BIBLIOTECA IFES"
-    try:
-        font_header = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-        font_title  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-        font_sub    = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-        font_field  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-        font_small  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
-    except Exception:
-        font_header = ImageFont.load_default()
-        font_title  = font_header
-        font_sub    = font_header
-        font_field  = font_header
-        font_small  = font_header
-
-    draw.text((20, 14), type_label, fill=(255, 255, 255), font=font_header)
-
-    # Tipo do cartão (direita do header)
-    card_label = "FICHA DO LIVRO" if entity_type == "livro" else "CARTEIRINHA DO ALUNO"
-    draw.text((W - 160, 14), card_label, fill=(255, 255, 255, 180), font=font_small)
-
-    # Gera QR Code
-    qr     = qr_lib.QRCode(version=1, box_size=5, border=1)
+    qr = qr_lib.QRCode(version=1, box_size=4, border=1)
     qr.add_data(qr_data)
     qr.make(fit=True)
-    qr_img = qr.make_image(fill_color=color, back_color="white").convert("RGB")
-    qr_size = 140
-    qr_img  = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
-
-    # Posição QR (direita, centralizado verticalmente na área de conteúdo)
-    qr_x = W - qr_size - MARGIN - 8
-    qr_y = 48 + (H - 48 - qr_size) // 2
+    qr_img = qr.make_image(fill_color=header_color, back_color="white").convert("RGB")
+    qr_size = 134
+    qr_img = qr_img.resize((qr_size, qr_size), getattr(Image, "Resampling", Image).LANCZOS)
+    qr_x = W - qr_size - MARGIN - 4
+    qr_y = 88
     img.paste(qr_img, (qr_x, qr_y))
+    draw.rectangle([qr_x-3, qr_y-3, qr_x+qr_size+3, qr_y+qr_size+3], outline=border_color, width=2)
+    qr_label = "ESCANEAR QR"
+    label_font = _load_font(11)
+    label_w = draw.textlength(qr_label, font=label_font)
+    draw.text((qr_x + (qr_size - label_w) / 2, qr_y + qr_size + 8), qr_label, fill=text_muted, font=label_font)
 
-    # Borda ao redor do QR
-    draw.rectangle(
-        [qr_x - 2, qr_y - 2, qr_x + qr_size + 2, qr_y + qr_size + 2],
-        outline=border_color, width=1
-    )
-
-    # Texto "Escaneie" abaixo do QR
-    draw.text((qr_x + 18, qr_y + qr_size + 4), "Escaneie o QR Code", fill=text_muted, font=font_small)
-
-    # Conteúdo textual (esquerda)
-    cx = 20
-    cy = 58
-
-    # Título (nome do livro / aluno)
-    title_wrapped = textwrap.wrap(title, width=32)
+    cx = 34
+    cy = 90
+    title_font = _load_font(24, bold=True)
+    title_wrapped = textwrap.wrap(title, width=22)
     for line in title_wrapped[:2]:
-        draw.text((cx, cy), line, fill=text_dark, font=font_title)
-        cy += 22
+        draw.text((cx, cy), line, fill=text_dark, font=title_font)
+        cy += 34
+    cy += 4
+    draw.text((cx, cy), subtitle, fill=text_dark, font=_load_font(14, bold=False))
+    cy += 28
 
-    cy += 2
+    details_x = cx
+    details_y = cy
+    details_w = qr_x - details_x - 12
 
-    # Subtítulo
-    draw.text((cx, cy), subtitle, fill=text_muted, font=font_sub)
-    cy += 18
-
-    # Linha divisória
-    draw.line([(cx, cy), (qr_x - 16, cy)], fill=border_color, width=1)
-    cy += 10
-
-    # Campos
+    info_blocks = []
     for field in [field1, field2, field3]:
-        if field and field.split(": ")[1] if ": " in field else field:
+        if field and ("".join(field.split(": ")[1:]).strip() if ": " in field else field).strip():
             label, _, value = field.partition(": ")
-            draw.text((cx, cy), f"{label}:", fill=text_muted, font=font_small)
-            draw.text((cx + 80, cy), value, fill=text_dark, font=font_field)
-            cy += 16
+            wrapped = textwrap.wrap(value, width=26) or [""]
+            info_blocks.append((label, wrapped))
 
-    # Badge / turma
+    block_top_padding = 16
+    block_spacing = 12
+    line_height = 20
+    details_h = max(110, block_top_padding + sum(line_height * (1 + len(wrapped)) + block_spacing for _, wrapped in info_blocks))
+
+    draw.rounded_rectangle([details_x, details_y, details_x + details_w, details_y + details_h], radius=20, fill=(249, 250, 252), outline=border_color, width=1)
+
     if badge:
-        badge_x, badge_y = cx, H - 28
-        badge_w = len(badge) * 7 + 16
-        draw.rounded_rectangle(
-            [badge_x, badge_y, badge_x + badge_w, badge_y + 18],
-            radius=4, fill=header_color
-        )
-        draw.text((badge_x + 8, badge_y + 3), badge, fill=(255, 255, 255), font=font_small)
+        badge_text = badge.upper()
+        badge_font = _load_font(12, bold=True)
+        badge_w = draw.textlength(badge_text, font=badge_font) + 26
+        badge_x = details_x + details_w - badge_w - 18
+        badge_y = details_y + 18
+        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 28], radius=14, fill=header_color)
+        draw.text((badge_x + 13, badge_y + 6), badge_text, fill=(255, 255, 255), font=badge_font)
 
-    # ID no rodapé
+    info_x = details_x + 18
+    info_y = details_y + block_top_padding
+    for label, wrapped_value in info_blocks:
+        draw.text((info_x, info_y), label, fill=text_muted, font=_load_font(10, bold=True))
+        info_y += line_height
+        for line in wrapped_value:
+            draw.text((info_x, info_y), line, fill=text_dark, font=_load_font(15, bold=False))
+            info_y += line_height
+        info_y += block_spacing
+
+    footer_y = details_y + details_h + 18
     id_short = qr_data[:8].upper() if len(qr_data) >= 8 else qr_data
-    draw.text((cx, H - 14), f"ID: {id_short}", fill=text_muted, font=font_small)
+    draw.text((34, footer_y), f"ID: {id_short}", fill=text_muted, font=_load_font(11))
+    draw.text((34, footer_y + 21), "Biblioteca Narceu de Paiva Filho — Carteirinha", fill=text_muted, font=_load_font(10))
 
-    # Linha de corte pontilhada no rodapé
-    for x in range(0, W, 8):
-        draw.point((x, H - 1), fill=border_color)
+    draw.rectangle([0, H - 10, W, H], fill=header_color)
 
-    # Converte para base64
+    if entity_type == "admin":
+        img = img.resize((900, 390), getattr(Image, "Resampling", Image).LANCZOS)
+
     buf = BytesIO()
-    img.save(buf, format="PNG", dpi=(300, 300))
+    img.save(buf, format="PNG", optimize=True)
     b64 = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{b64}"
+
+
+def _load_font(size, bold=False):
+    from PIL import ImageFont
+    font_key = (size, bold)
+    if font_key in _FONT_CACHE:
+        return _FONT_CACHE[font_key]
+    try:
+        if bold:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        else:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+    except Exception:
+        font = ImageFont.load_default()
+    _FONT_CACHE[font_key] = font
+    return font

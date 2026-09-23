@@ -1,241 +1,1167 @@
 /**
- * assets/js/app.js  —  v3
- * Controller principal: auth, navegação, sync, empréstimo, devolução.
+ * assets/js/app.js — Controller principal: auth, navegação, sync, empréstimo, devolução.
  */
 
-const SUPABASE_URL = "https://jwncagbmqipbzoeldlet.supabase.co";
-const SUPABASE_KEY = "sb_publishable_erfwnkHOevFoIX1pHN-9-g_i8xcqPkX";
+// IMPORTANTE: Senhas não devem estar no código do cliente!
+// A autenticação é validada no backend via API.
+// Credenciais padrão para desenvolvimento são carregadas do backend de forma segura.
 
-const USERS = [
-  { login:"admin",      password:"ifes2024", name:"Administrador" },
-  { login:"biblioteca", password:"ifes2024", name:"Bibliotecária"  },
-];
-let currentUser=null, pendingLoan={book:null,exemplar:null,student:null}, pendingDevolutionId=null;
+let currentUser = null; // { role:'admin'|'librarian', login, name, student? }
+let pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
+let pendingDevolutionId = null;
+let pendingDevolutionStudentId = null;
+let pendingReturnLoanId = null;
+let scannedLoanStudentId = null;
+let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
+const THEME_STORAGE_KEY = "biblioteca-theme";
+const SESSION_COOKIE_KEY = "biblioteca-session";
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
-// ── Auth ──────────────────────────────────────────────────────────────
-function doLogin() {
-  const user=Utils.el("login-user").value.trim(), pass=Utils.el("login-pass").value;
-  const errEl=Utils.el("login-err"); errEl.textContent="";
-  const found=USERS.find(u=>u.login===user&&u.password===pass);
-  if (!found) { errEl.textContent="Usuário ou senha incorretos."; Utils.el("login-pass").value=""; return; }
-  currentUser=found;
-  Utils.el("login-screen").style.display="none";
-  Utils.el("app").style.display="flex";
-  const ini=found.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
-  Utils.el("sb-avatar-initials").textContent=ini;
-  Utils.el("sb-user-name").textContent=found.name;
-  Store.loadLocal();
-  syncAll();
-  navigateTo("dashboard");
-}
-function doLogout() {
-  if (!confirm("Sair do sistema?")) return;
-  currentUser=null; Charts.destroy();
-  Utils.el("app").style.display="none";
-  Utils.el("login-screen").style.display="flex";
-  Utils.el("login-user").value=""; Utils.el("login-pass").value="";
+function getSessionCookie() {
+  const value = document.cookie.match(new RegExp('(?:^|; )' + SESSION_COOKIE_KEY + '=([^;]*)'));
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value[1]));
+    if (!parsed || !parsed.login || !parsed.role) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
-// ── Sync ───────────────────────────────────────────────────────────────
+function setSessionCookie(user) {
+  if (!user?.login || !user?.role) return;
+  const payload = encodeURIComponent(JSON.stringify({
+    role: user.role,
+    login: user.login,
+    name: user.name || user.login,
+    student: user.student || null,
+    lastActivity: Date.now(),
+  }));
+  document.cookie = `${SESSION_COOKIE_KEY}=${payload}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+}
+
+function clearSessionCookie() {
+  document.cookie = `${SESSION_COOKIE_KEY}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function isSessionExpired(session) {
+  if (!session?.lastActivity) return true;
+  return Date.now() - Number(session.lastActivity) >= SESSION_TIMEOUT_MS;
+}
+
+function resetSessionActivity() {
+  if (!currentUser?.login) return;
+  const session = getSessionCookie();
+  if (!session) return;
+  session.lastActivity = Date.now();
+  document.cookie = `${SESSION_COOKIE_KEY}=${encodeURIComponent(JSON.stringify({
+    ...session,
+    lastActivity: session.lastActivity,
+  }))}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+}
+
+function scheduleSessionTimeout() {
+  if (!currentUser?.login) return;
+  const session = getSessionCookie();
+  if (!session) return;
+  if (isSessionExpired(session)) {
+    doLogout({ confirmPrompt: false, reason: "Sessão expirada por inatividade." });
+    return;
+  }
+
+  const remaining = SESSION_TIMEOUT_MS - (Date.now() - Number(session.lastActivity || Date.now()));
+  const timeoutMs = Math.max(1000, remaining);
+  clearTimeout(window.__session_timeout_handle);
+  window.__session_timeout_handle = setTimeout(() => {
+    if (!currentUser) return;
+    const currentSession = getSessionCookie();
+    if (currentSession && !isSessionExpired(currentSession)) {
+      scheduleSessionTimeout();
+      return;
+    }
+    doLogout({ confirmPrompt: false, reason: "Sessão expirada por inatividade." });
+  }, timeoutMs);
+}
+
+function getPreferredTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "dark" || stored === "light") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const selectedTheme = theme === "dark" ? "dark" : "light";
+  document.body.classList.toggle("theme-dark", selectedTheme === "dark");
+  document.documentElement.setAttribute("data-theme", selectedTheme);
+  document.body.dataset.theme = selectedTheme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", selectedTheme === "dark" ? "#04030a" : "#1a4f8a");
+
+  const button = Utils.el("theme-toggle-btn");
+  const topbarButton = Utils.el("theme-toggle-topbar-btn");
+
+  const buttonContent = selectedTheme === "dark"
+    ? `<i class="ti ti-sun-high"></i><span class="theme-toggle-text">Usar modo claro</span>`
+    : `<i class="ti ti-moon"></i><span class="theme-toggle-text">Ativar modo escuro</span>`;
+
+  if (button) {
+    button.innerHTML = buttonContent;
+  }
+  if (topbarButton) {
+    topbarButton.innerHTML = selectedTheme === "dark" ? `<i class="ti ti-sun-high"></i>` : `<i class="ti ti-moon"></i>`;
+    topbarButton.title = selectedTheme === "dark" ? "Usar modo claro" : "Ativar modo escuro";
+  }
+
+  localStorage.setItem(THEME_STORAGE_KEY, selectedTheme);
+}
+
+function toggleTheme() {
+  const nextTheme = document.body.classList.contains("theme-dark") ? "light" : "dark";
+  applyTheme(nextTheme);
+  Utils.toast(nextTheme === "dark" ? "Modo escuro ativado." : "Modo claro ativado.", "info");
+}
+
+let _syncInFlight = false;
+let _lastSuccessfulSyncTs = 0;
+const SYNC_COOLDOWN_MS = 7000;
+
+function debounce(fn, wait = 120) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+const renderScheduler = {
+  books: debounce(() => renderBooks(), 140),
+  students: debounce(() => renderStudents(), 140),
+  rooms: debounce(() => renderRooms(), 140),
+  loans: debounce(() => renderLoans(), 140),
+};
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && currentUser) {
+      syncData({ force: false });
+    }
+  });
+}
+
+// ── Auth: login tradicional (usuário/senha) ───────────────────────────
+async function doLogin() {
+  const user  = Utils.el("login-user").value.trim();
+  const pass  = Utils.el("login-pass").value;
+  const errEl = Utils.el("login-err");
+  errEl.textContent = "";
+  
+  if (!user || !pass) {
+    errEl.textContent = "Usuário e senha são obrigatórios.";
+    return;
+  }
+
+  try {
+    // Valida as credenciais no backend de forma segura
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login: user, password: pass })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      if (response.status === 401) {
+        errEl.textContent = error?.error || "Usuário ou senha incorretos.";
+      } else {
+        errEl.textContent = error?.error || "Erro ao fazer login.";
+      }
+      Utils.el("login-pass").value = "";
+      return;
+    }
+
+    const result = await response.json();
+      if (result.access === "admin") {
+      _finishLogin({ role: "admin", login: result.login, name: result.name });
+    } else if (result.access === "librarian") {
+      _finishLogin({ role: "librarian", login: result.login, name: result.name });
+    } else {
+      errEl.textContent = "Nome ou senha incorretos.";
+      Utils.el("login-pass").value = "";
+    }
+  } catch (error) {
+    console.error("Erro ao fazer login:", error);
+    errEl.textContent = "Erro de conexão. Tente novamente.";
+    Utils.el("login-pass").value = "";
+  }
+}
+
+// ── Auth: login por QR Code (carteirinha) ─────────────────────────────
+async function startQRLogin() {
+  await QRScanner.start(null, async (res) => {
+    const code = res.primary;
+    if (!code) { Utils.toast("Código não reconhecido.","error"); return; }
+    try {
+      const password = code.startsWith("ADMIN-")
+        ? window.prompt("Digite a senha administrativa para confirmar o acesso:")
+        : "";
+      if (code.startsWith("ADMIN-") && password === null) return;
+      const r = await API.qr.login(code, password);
+      if (r.access === "admin") {
+        const adminData = r.data || {};
+        const login = adminData.login || "admin";
+        const name = adminData.nome || (login === "bibliotecario" ? "Bibliotecário" : "Administrador");
+        _showQRLoginResult({
+          icon:"ti-shield-check", color:"var(--brand)",
+          title:`Bem-vindo, ${name}`,
+          sub:"Acesso administrativo confirmado.",
+          action:() => _finishLogin({ role:"admin", login, name }),
+        });
+      } else if (r.access === "librarian") {
+        const student = r.data;
+        _showQRLoginResult({
+          icon:"ti-id-badge2", color:"var(--green)",
+          title:"Carteirinha reconhecida!",
+          sub:`${student.nome} — ${student.turma}`,
+          action:() => _finishLogin({ role:"librarian", login:student.carteirinha||student.id, name:student.nome, student }, true),
+        });
+      } else {
+        _showQRLoginResult({
+          icon:"ti-lock", color:"var(--red)",
+          title:"Acesso negado",
+          sub: r.message || "Esta carteirinha não possui acesso ao painel.",
+          action:null,
+        });
+      }
+    } catch(e) { Utils.toast("Erro ao validar QR: "+e.message,"error"); }
+  });
+}
+
+function _showQRLoginResult({icon, color, title, sub, action}) {
+  Utils.el("login-card-form").style.display = "none";
+  const body = Utils.el("login-qr-result-body");
+  body.innerHTML = `
+    <div class="login-qr-success">
+      <i class="ti ${icon}" style="color:${color};"></i>
+      <div class="lqs-title">${title}</div>
+      <div class="lqs-sub">${sub}</div>
+      ${action ? `<button class="btn btn-login" style="margin-top:1.25rem;" id="qr-login-confirm-btn"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>` : ""}
+    </div>`;
+  if (action) Utils.el("qr-login-confirm-btn").onclick = action;
+  Utils.el("login-card-qr-result").style.display = "block";
+}
+
+function cancelQRLoginResult() {
+  Utils.el("login-card-qr-result").style.display = "none";
+  Utils.el("login-qr-result-body").innerHTML = "";
+  Utils.el("login-card-form").style.display = "block";
+}
+
+// ── Finaliza login (qualquer origem) e aplica permissões ──────────────
+async function _finishLogin(user, showRoleToast) {
+  currentUser = user;
+  setSessionCookie(user);
+  scheduleSessionTimeout();
+  Utils.el("login-screen").style.display = "none";
+  Utils.el("login-card-qr-result").style.display = "none";
+  Utils.el("login-qr-result-body").innerHTML = "";
+  Utils.el("login-card-form").style.display = "block";
+  Utils.el("app").style.display = "flex";
+
+  const ini = user.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+  Utils.el("sb-avatar-initials").textContent = ini;
+  Utils.el("sb-user-name").textContent = user.name;
+  const roleBadge = Utils.el("sb-role-badge");
+  roleBadge.innerHTML = user.role === "librarian"
+    ? `<span class="role-badge role-librarian"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
+    : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
+
+  _applyRolePermissions();
+
+  await syncAll();
+  navigateTo(user.role === "librarian" ? "emprestimo" : "dashboard");
+
+  if (showRoleToast) {
+    Utils.el("role-success-icon").style.color = "var(--green)";
+    Utils.el("role-success-title").textContent = "Você entrou como Bibliotecário";
+    Utils.el("role-success-sub").textContent = `${user.name} — acesso liberado para empréstimos, devoluções e renovações.`;
+    Utils.openModal("modal-role-success");
+  }
+}
+
+// ── Permissões por role ────────────────────────────────────────────────
+function _applyRolePermissions() {
+  const isLibrarian = currentUser?.role === "librarian";
+  Utils.qsa('[data-role="admin"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
+  Utils.qsa('[data-role="librarian-hide"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
+  document.body.classList.toggle("role-librarian", isLibrarian);
+  if (isLibrarian) {
+    const active = Utils.qs(".page.active");
+    const adminOnlyPages = ["alunos","salas","generos","relatorios","livros"];
+    if (active && adminOnlyPages.includes(active.id.replace("page-",""))) navigateTo("emprestimo");
+  }
+}
+
+function isLibrarian() { return currentUser?.role === "librarian"; }
+
+function doLogout({ confirmPrompt = true, reason = "" } = {}) {
+  if (confirmPrompt && !confirm("Sair do sistema?")) return;
+  currentUser = null;
+  clearSessionCookie();
+  clearTimeout(window.__session_timeout_handle);
+  Charts.destroy();
+  Utils.el("app").style.display = "none";
+  Utils.el("login-screen").style.display = "flex";
+  Utils.el("login-user").value = "";
+  Utils.el("login-pass").value = "";
+  Utils.el("login-err").textContent = "";
+  cancelQRLoginResult();
+  Utils.qsa('[data-role="admin"]').forEach(el => el.classList.remove("lib-hidden"));
+  document.body.classList.remove("role-librarian");
+  toggleMobileSidebar(false);
+  if (reason) Utils.toast(reason, "info");
+}
+
+function toggleMobileSidebar(force) {
+  const shouldOpen = typeof force === "boolean" ? force : !document.body.classList.contains("sidebar-open");
+  document.body.classList.toggle("sidebar-open", shouldOpen);
+}
+
+function setupNavigationBindings() {
+  Utils.qsa(".nav-btn[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const page = btn.dataset.page;
+      if (!page) return;
+      navigateTo(page);
+      toggleMobileSidebar(false);
+    });
+  });
+
+  Utils.qsa("#emp-tabs .tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      if (!tab) return;
+      Utils.qsa("#emp-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      const novo = Utils.el("tab-novo");
+      const lista = Utils.el("tab-lista");
+      if (novo) novo.style.display = tab === "novo" ? "block" : "none";
+      if (lista) lista.style.display = tab === "lista" ? "block" : "none";
+      if (tab === "lista") renderLoans();
+    });
+  });
+}
+
+
+function improveFormAccessibility() {
+  const controls = Utils.qsa("input, select, textarea");
+
+  controls.forEach((control, idx) => {
+    if (control.type === "hidden" || control.id === "csv-file-input") return;
+
+    if (!control.id) control.id = `field-auto-${idx + 1}`;
+
+    const hasAccessibleName =
+      control.getAttribute("aria-label") ||
+      control.getAttribute("aria-labelledby") ||
+      control.getAttribute("title");
+
+    const explicitLabel = Utils.qs(`label[for="${control.id}"]`);
+    const nearbyLabel = control.closest(".form-group, .form-field")?.querySelector("label");
+    const label = explicitLabel || nearbyLabel;
+
+    if (label && !label.getAttribute("for")) {
+      label.setAttribute("for", control.id);
+    }
+
+    if (!hasAccessibleName) {
+      const baseText = (label?.textContent || control.getAttribute("placeholder") || control.name || control.id || "campo").trim();
+      control.setAttribute("aria-label", baseText.replace(/\*/g, "").trim());
+    }
+  });
+}
+
+
+// ── Sync ──────────────────────────────────────────────────────────────
 async function syncAll() {
   await Promise.all([syncData(), syncRooms(), syncGenres()]);
 }
 
-async function syncData() {
-  const st=Utils.el("cloud-status");
-  if (st) st.innerHTML=`<i class="ti ti-loader" style="animation:spin 1s linear infinite;display:inline-block;"></i> Sincronizando...`;
+function _renderActivePage() {
+  const activePage = Utils.qs(".page.active")?.id?.replace("page-", "") || "dashboard";
+  if (activePage === "dashboard") renderDashboard();
+  if (activePage === "livros") renderBooks();
+  if (activePage === "alunos") renderStudents();
+  if (activePage === "salas") renderRooms();
+  if (activePage === "generos") renderGenres();
+  if (activePage === "emprestimo") {
+    renderLoans();
+    resetLoanForm();
+    renderLoanScanPanel();
+  }
+  if (activePage === "relatorios") Charts.refresh();
+}
+
+async function syncData({ force = false } = {}) {
+  if (document.hidden && !force) return;
+  if (_syncInFlight && !force) return;
+
+  const hasCachedData = !!(Store.books().length || Store.students().length || Store.loans().length);
+  const elapsedSinceLastSync = Date.now() - _lastSuccessfulSyncTs;
+  if (!force && hasCachedData && elapsedSinceLastSync < SYNC_COOLDOWN_MS) {
+    return;
+  }
+
+  _syncInFlight = true;
+
+  const st = Utils.el("cloud-status");
+  if (st) st.innerHTML = `<i class="ti ti-loader" style="animation:spin 1s linear infinite;display:inline-block;"></i> Sincronizando...`;
   try {
-    const [books,students,loans]=await Promise.all([API.books.list(),API.students.list(),API.loans.list()]);
+    const [books, students, loans] = await Promise.all([API.books.list(), API.students.list(), API.loans.list()]);
     Store.setBooks(books); Store.setStudents(students); Store.setLoans(loans);
-    if (st) st.innerHTML=`<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — ${new Date().toLocaleTimeString("pt-BR")}</span>`;
-    renderDashboard(); renderBooks(); renderStudents(); renderLoans();
-  } catch(err) {
-    if (st) st.innerHTML=`<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Offline — cache local</span>`;
-    Store.loadLocal(); renderDashboard(); renderBooks(); renderStudents(); renderLoans();
+    _lastSuccessfulSyncTs = Date.now();
+    if (st) st.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — ${new Date().toLocaleTimeString("pt-BR")}</span>`;
+    _renderActivePage();
+  } catch {
+    if (st) st.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Offline — cache local</span>`;
+    Store.loadLocal();
+    _renderActivePage();
+  } finally {
+    _syncInFlight = false;
   }
 }
 
 // ── Navegação ─────────────────────────────────────────────────────────
 const PAGE_META = {
-  dashboard:  { title:"Painel",          sub:"Visão geral da biblioteca",        action:"" },
-  emprestimo: { title:"Empréstimos",     sub:"Registrar e gerenciar empréstimos", action:"" },
-  livros:     { title:"Acervo",          sub:"Livros por gênero e área",
+  dashboard:  { title:"Painel",           sub:"Visão geral da biblioteca",         action:"" },
+  emprestimo: { title:"Empréstimos",      sub:"Registrar e gerenciar empréstimos", action:"" },
+  livros:     { title:"Acervo",           sub:"Livros por gênero e área",
     action:`<button class="btn btn-primary" onclick="openAddBook()"><i class="ti ti-plus"></i>Novo livro</button>` },
-  alunos:     { title:"Alunos",          sub:"Cadastro de alunos por sala",
+  alunos:     { title:"Alunos",           sub:"Cadastro de alunos por sala",
     action:`<button class="btn btn-primary" onclick="openAddStudent()"><i class="ti ti-plus"></i>Novo aluno</button>` },
-  salas:      { title:"Salas",           sub:"Organização de alunos por sala",
+  salas:      { title:"Salas",            sub:"Organização de alunos por sala",
     action:`<button class="btn btn-primary" onclick="openAddRoom()"><i class="ti ti-plus"></i>Nova sala</button>` },
   generos:    { title:"Gêneros de Livro", sub:"Tipos e categorias do acervo",
     action:`<button class="btn btn-primary" onclick="openAddGenre()"><i class="ti ti-plus"></i>Novo gênero</button>` },
-  relatorios: { title:"Relatórios",      sub:"Gráficos e exportação",
+  relatorios: { title:"Relatórios",       sub:"Gráficos e exportação",
     action:`<button class="btn" onclick="Charts.refresh()"><i class="ti ti-refresh"></i>Atualizar</button>` },
-  config:     { title:"Configurações",   sub:"Sistema e conexão",                action:"" },
+  config:     { title:"Configurações",    sub:"Sistema e conexão", action:"" },
 };
 
 function navigateTo(page) {
-  Utils.qsa(".page").forEach(p=>p.classList.remove("active"));
-  Utils.qsa(".nav-btn[data-page]").forEach(b=>b.classList.remove("active"));
+  toggleMobileSidebar(false);
+  Utils.qsa(".page").forEach(p => p.classList.remove("active"));
+  Utils.qsa(".nav-btn[data-page]").forEach(b => b.classList.remove("active"));
   Utils.el("page-"+page)?.classList.add("active");
   Utils.qs(`.nav-btn[data-page="${page}"]`)?.classList.add("active");
-  const meta=PAGE_META[page]||{};
-  Utils.el("topbar-title").textContent=meta.title||page;
-  Utils.el("topbar-sub").textContent  =meta.sub||"";
-  Utils.el("topbar-actions").innerHTML=meta.action||"";
+  const meta = PAGE_META[page] || {};
+  Utils.el("topbar-title").textContent  = meta.title || page;
+  Utils.el("topbar-sub").textContent    = meta.sub   || "";
+  // Bibliotecário vê o acervo mas não pode cadastrar novos livros
+  Utils.el("topbar-actions").innerHTML  = (page==="livros" && isLibrarian()) ? "" : (meta.action || "");
   if (page==="dashboard")  renderDashboard();
   if (page==="livros")     renderBooks();
   if (page==="alunos")     renderStudents();
   if (page==="salas")      renderRooms();
   if (page==="generos")    renderGenres();
-  if (page==="emprestimo") { renderLoans(); resetLoanForm(); }
+  if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") Charts.init();
+  if (page==="config" && isLibrarian()) {
+    Utils.el("topbar-actions").innerHTML = "";
+  }
 }
 
 // ── Empréstimo ────────────────────────────────────────────────────────
 function updateDueDate() {
-  const days=parseInt(Utils.el("loan-days").value)||7;
-  const base=Utils.el("loan-date").value||Utils.today();
-  Utils.el("due-date-text").textContent=`Devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (em ${days} dias)`;
+  const days = parseInt(Utils.el("loan-days").value) || 7;
+  const base = Utils.el("loan-date").value || Utils.today();
+  Utils.el("due-date-text").textContent = `Devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (em ${days} dias)`;
+}
+
+function normalizeQueryValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function parseExemplarCode(code) {
+  const normalized = String(code || "").trim();
+  if (!normalized.toUpperCase().startsWith("EXEMPLAR-")) return null;
+  const rest = normalized.slice("EXEMPLAR-".length);
+  const exIdx = rest.indexOf("-EX-");
+  if (exIdx === -1) return null;
+  const bookId = rest.slice(0, exIdx);
+  const tail = rest.slice(exIdx + 4); // após "-EX-"
+  const dashIdx = tail.indexOf("-");
+  if (dashIdx === -1) return null;
+  const exemplar = tail.slice(0, dashIdx);
+  return { bookId, exemplar, exemplarId: `EXEMPLAR-${rest}` };
+}
+
+function _findBookByIdOrIsbn(identifier) {
+  const books = Store.books();
+  // Busca exata por ID
+  let found = books.find(b => b.id === identifier);
+  if (found) return found;
+  // Busca exata por ISBN
+  found = books.find(b => (b.isbn || "").trim() === String(identifier).trim());
+  if (found) return found;
+  // Busca case-insensitive se for UUID
+  if (identifier && identifier.length === 36 && identifier.includes("-")) {
+    found = books.find(b => (b.id || "").toLowerCase() === identifier.toLowerCase());
+    if (found) return found;
+  }
+  return null;
+}
+
+function setLoanStudent(student) {
+  if (!student) {
+    pendingLoan.student = null;
+    const infoEl = Utils.el("student-result");
+    if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Aluno não encontrado.</span>`;
+    return;
+  }
+
+  pendingLoan.student = student;
+  const infoEl = Utils.el("student-result");
+  if (!infoEl) return;
+
+  const loans  = Store.loans().filter(l => l.aluno_id === student.id && !l.devolvido_em);
+  const overdue= loans.filter(l => Utils.daysLeft(l.data_devolucao_prevista) < 0);
+  const status = overdue.length ? `<span class="badge badge-red">Irregular — ${overdue.length} atrasado(s)</span>`
+               : loans.length   ? `<span class="badge badge-amber">${loans.length} empréstimo(s) ativo(s)</span>`
+               : `<span class="badge badge-green">Regular</span>`;
+  infoEl.innerHTML = `<div><strong>${student.nome||student.name}</strong> — ${student.turma||student.class} ${status}</div>`;
 }
 
 function lookupBook() {
-  const q=Utils.el("isbn-input").value.trim().toLowerCase();
-  const div=Utils.el("book-result");
-  if (!q) { Utils.toast("Informe o código, ISBN ou ID.","error"); return; }
+  const inputVal = Utils.el("isbn-input").value.trim();
+  const q = normalizeQueryValue(inputVal);
+  if (!q) return;
+  
+  // Verifica se é um QR de exemplar
+  const parsedExemplar = parseExemplarCode(inputVal);
+  let found = null;
+  let scannedExemplar = null;
+  let scannedExemplarId = null;
+  
+  if (parsedExemplar) {
+    found = _findBookByIdOrIsbn(parsedExemplar.bookId);
+    scannedExemplar = parsedExemplar.exemplar;
+    scannedExemplarId = parsedExemplar.exemplarId;
+  } else {
+    const books = Store.books();
+    found = books.find(b =>
+      normalizeQueryValue(b.isbn) === q ||
+      normalizeQueryValue(b.id).startsWith(q) ||
+      normalizeQueryValue(b.titulo || b.title).includes(q)
+    );
+  }
+  
+  const infoEl = Utils.el("book-result");
+  if (!found) {
+    if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Livro não encontrado.</span>`;
+    pendingLoan.book = null;
+    return;
+  }
+  
+  const loans  = Store.loans();
+  const active = loans.filter(l => l.livro_id === found.id && !l.devolvido_em);
+  const total  = found.exemplares||found.copies||1;
+  const avail  = total - active.length;
+  const dispEx = Array.from({length: total}, (_, i) => String(i+1).padStart(3, "0")).filter(ex => !active.find(l => l.exemplar === ex));
+  const genBadge = found.genero_nome ? `<span class="badge" style="background:${found.genero_cor||"#6366f1"}22;color:${found.genero_cor||"#6366f1"}">${found.genero_nome}</span>` : "";
+  
+  // Se foi escaneado um exemplar específico
+  if (scannedExemplar && dispEx.includes(scannedExemplar)) {
+    infoEl.innerHTML = `<div class="book-found"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author} ${genBadge}
+       <br><small>Exemplar #${scannedExemplar} identificado pelo QR</small></div>`;
+    selectExemplar(found.id, scannedExemplar, null, scannedExemplarId);
+    return;
+  } else if (scannedExemplar && !dispEx.includes(scannedExemplar)) {
+    infoEl.innerHTML = `<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> O exemplar #${scannedExemplar} não está disponível ou já foi emprestado.</div>`;
+    pendingLoan.book = null;
+    return;
+  }
+  
+  infoEl.innerHTML = avail > 0
+    ? `<div class="book-found"><strong>${found.titulo||found.title}</strong> — ${found.autor||found.author} ${genBadge}
+       <br><small>${avail} de ${total} disponíveis</small>
+       <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+         ${dispEx.map(ex => `<button class="btn btn-sm ${pendingLoan.exemplar===ex?"btn-primary":""}" onclick="selectExemplar('${found.id}','${ex}',this)">#${ex}</button>`).join("")}
+       </div></div>`
+    : `<div style="color:var(--red)"><i class="ti ti-alert-circle"></i> Todos os exemplares estão emprestados.</div>`;
+  if (avail > 0) {
+    pendingLoan.book = found;
+    if (!pendingLoan.exemplar && dispEx.length) selectExemplar(found.id, dispEx[0]);
+  }
+}
 
-  const book=Store.books().find(b=>
-    (b.isbn||"").toLowerCase()===q||
-    (b.titulo||b.title||"").toLowerCase().includes(q)||
-    (b.id||"").toLowerCase().startsWith(q)
-  );
-  if (!book) {
-    pendingLoan.book=null;
-    div.innerHTML=`<div class="lookup-result error"><i class="ti ti-alert-circle"></i><div><div class="lr-name">Livro não encontrado</div></div></div>`;
-    return;
-  }
-  const used=Store.loans().filter(l=>l.livro_id===book.id&&!l.devolvido_em).map(l=>l.exemplar);
-  const avail=Array.from({length:book.exemplares||book.copies||1},(_,i)=>String(i+1).padStart(3,"0")).filter(c=>!used.includes(c));
-  if (!avail.length) {
-    pendingLoan.book=null;
-    div.innerHTML=`<div class="lookup-result error"><i class="ti ti-books-off"></i><div><div class="lr-name">${book.titulo||book.title}</div><div class="lr-sub">Todos os exemplares estão emprestados.</div></div></div>`;
-    return;
-  }
-  pendingLoan.book=book; pendingLoan.exemplar=avail[0];
-  const genBadge=book.genero_nome?`<span class="badge" style="background:${book.genero_cor||"#6366f1"}22;color:${book.genero_cor||"#6366f1"};">${book.genero_nome}</span>`:"";
-  div.innerHTML=`<div class="lookup-result book"><i class="ti ti-book"></i><div>
-    <div class="lr-name">${book.titulo||book.title} ${genBadge}</div>
-    <div class="lr-sub">${book.autor||book.author} · Exemplar <strong>#${avail[0]}</strong> · ${avail.length} disponível(is)</div>
-  </div></div>`;
+function selectExemplar(bookId, ex, btn, exemplarId) {
+  pendingLoan.book     = Store.bookById(bookId);
+  pendingLoan.exemplar = ex;
+  pendingLoan.exemplarId = exemplarId || null;
+  Utils.qsa(".book-found .btn-sm").forEach(b => b.classList.remove("btn-primary"));
+  btn?.classList.add("btn-primary");
 }
 
 function lookupStudent() {
-  const q=Utils.el("student-input").value.trim().toLowerCase();
-  const div=Utils.el("student-result");
-  if (!q) { Utils.toast("Informe a carteirinha ou ID.","error"); return; }
-  const s=Store.students().find(st=>
-    (st.carteirinha||st.card||"").toLowerCase()===q||
-    (st.nome||st.name||"").toLowerCase().includes(q)||
-    (st.id||"").toLowerCase().startsWith(q)
-  );
-  if (!s) { pendingLoan.student=null; div.innerHTML=`<div class="lookup-result error"><i class="ti ti-user-off"></i><div><div class="lr-name">Aluno não encontrado</div></div></div>`; return; }
-  const overdue=Store.loans().filter(l=>l.aluno_id===s.id&&!l.devolvido_em&&Utils.daysLeft(l.data_devolucao_prevista)<0);
-  const warn=overdue.length?`<div class="alert alert-red" style="margin-top:.5rem;"><i class="ti ti-alert-triangle"></i>${overdue.length} empréstimo(s) em atraso!</div>`:"";
-  const room=Store.rooms().find(r=>r.id===s.sala_id);
-  pendingLoan.student=s;
-  div.innerHTML=`<div class="lookup-result student"><i class="ti ti-user-check"></i><div>
-    <div class="lr-name">${s.nome||s.name}</div>
-    <div class="lr-sub">Turma ${s.turma||s.class}${room?" · Sala: "+room.nome:""}${s.carteirinha?" · "+s.carteirinha:""}</div>
-  </div></div>${warn}`;
+  const q = normalizeQueryValue(Utils.el("student-input").value);
+  if (!q) return;
+  const studs = Store.students();
+  const found = studs.find(s => {
+    const id    = normalizeQueryValue(s.id);
+    const card  = normalizeQueryValue(s.card || s.carteirinha);
+    const name  = normalizeQueryValue(s.nome || s.name);
+    return id === q || card === q || id.startsWith(q) || name.includes(q);
+  });
+  if (!found) {
+    setLoanStudent(null);
+    return;
+  }
+  setLoanStudent(found);
+}
+
+async function scanLoanStudent() {
+  await QRScanner.start('student-input', async (res) => {
+    const code = (res?.primary || '').trim();
+    if (!code) {
+      Utils.toast('Não foi possível ler o código. Tente novamente.', 'error');
+      return;
+    }
+
+    const input = Utils.el('student-input');
+    if (input) input.value = code;
+
+    const scanned = await resolveQRCodeAsync(code);
+    if (scanned.type === 'student' && scanned.data?.id) {
+      const student = scanned.data;
+      if (!Store.studentById(student.id)) {
+        Store.setStudents([...Store.students(), student]);
+      }
+      if (input) input.value = student.carteirinha||student.card||student.id;
+      setLoanStudent(student);
+      showStudentHistory(student.id);
+      Utils.toast(`Aluno identificado: ${student.nome||student.name}`, 'success');
+      return;
+    }
+
+    if (scanned.type === 'admin') {
+      Utils.toast('Este QR é de administrador. Use a tela de login por QR.', 'error');
+      return;
+    }
+
+    if (scanned.type === 'book') {
+      Utils.toast('Este QR é de livro. Escaneie a carteirinha do aluno.', 'error');
+      return;
+    }
+
+    setLoanStudent(null);
+  });
 }
 
 async function confirmLoan() {
-  if (!pendingLoan.book||!pendingLoan.student) { Utils.toast("Localize o livro e o aluno primeiro.","error"); return; }
-  const loanDate=Utils.el("loan-date").value||Utils.today();
-  const days=parseInt(Utils.el("loan-days").value)||7;
+  if (!pendingLoan.book)    { Utils.toast("Selecione um livro.",  "error"); return; }
+  if (!pendingLoan.exemplar){ Utils.toast("Selecione um exemplar.","error"); return; }
+  if (!pendingLoan.student) { Utils.toast("Selecione um aluno.", "error"); return; }
+  const days = parseInt(Utils.el("loan-days").value) || 7;
+  const date = Utils.el("loan-date").value || Utils.today();
+  const obsEl = Utils.el("loan-obs");
+  const obs = obsEl ? obsEl.value.trim() : "";
   try {
-    await API.loans.create({ livro_id:pendingLoan.book.id, aluno_id:pendingLoan.student.id, dias:days, data_emprestimo:loanDate, criado_por:currentUser?.login||"system" });
-    Utils.toast(`Empréstimo registrado! Devolução: ${Utils.fmtDate(Utils.addDays(loanDate,days))}`,"success");
-    resetLoanForm(); await syncData(); Charts.refresh();
+    const payload = {
+      livro_id: pendingLoan.book.id,
+      aluno_id: pendingLoan.student.id,
+      exemplar: pendingLoan.exemplar,
+      dias: days, data_emprestimo: date,
+      observacao: obs, criado_por: currentUser?.login||"sistema",
+    };
+    if (pendingLoan.exemplarId) payload.exemplar_id = pendingLoan.exemplarId;
+    await API.loans.create(payload);
+    Utils.toast(`Empréstimo registrado — ${pendingLoan.book.titulo||pendingLoan.book.title}`, "success");
+    resetLoanForm();
+    await syncData();
+    Charts.refresh();
+    renderLoanScanPanel();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
 function resetLoanForm() {
-  pendingLoan={book:null,exemplar:null,student:null};
-  Utils.el("isbn-input").value=""; Utils.el("student-input").value="";
-  Utils.el("book-result").innerHTML=""; Utils.el("student-result").innerHTML="";
-  Utils.el("loan-date").value=Utils.today(); updateDueDate();
+  pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
+  ["isbn-input","student-input","loan-obs"].forEach(id => { const el=Utils.el(id); if(el) el.value=""; });
+  Utils.el("loan-date").value = Utils.today();
+  Utils.el("loan-days").value = 7;
+  Utils.el("book-result").innerHTML    = "";
+  Utils.el("student-result").innerHTML = "";
+  updateDueDate();
 }
 
-// ── Devolução ──────────────────────────────────────────────────────────
-function openDevolution(loanId) {
-  const loan=Store.loans().find(l=>l.id===loanId); if (!loan) return;
-  pendingDevolutionId=loanId;
-  const b=Store.books().find(x=>x.id===loan.livro_id);
-  const s=Store.students().find(x=>x.id===loan.aluno_id);
-  const dl=Utils.daysLeft(loan.data_devolucao_prevista);
-  const late=dl<0?`<div class="row"><span>Atraso</span><strong style="color:var(--red);">${Math.abs(dl)} dia(s)</strong></div>`:"";
-  Utils.el("dev-info").innerHTML=`
-    <div class="row"><span>Aluno</span><strong>${s?.nome||s?.name||"—"}</strong></div>
-    <div class="row"><span>Turma</span><strong>${s?.turma||s?.class||"—"}</strong></div>
-    <div class="row"><span>Livro</span><strong>${b?.titulo||b?.title||"—"}</strong></div>
-    <div class="row"><span>Exemplar</span><strong>#${loan.exemplar}</strong></div>
-    <div class="row"><span>Devolução prevista</span><strong>${Utils.fmtDate(loan.data_devolucao_prevista)}</strong></div>${late}`;
-  Utils.el("dev-obs").value="";
+// ── Devolução ─────────────────────────────────────────────────────────
+function openDevolution(loanId, studentId = null) {
+  const loan = Store.loanById(loanId);
+  if (!loan) return;
+  const book = Store.bookById(loan.livro_id);
+  const stud = Store.studentById(loan.aluno_id);
+  pendingDevolutionId = loanId;
+  pendingDevolutionStudentId = studentId || null;
+  Utils.el("dev-info").innerHTML = `
+    <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
+    <br><small>Exemplar #${loan.exemplar} · Previsto: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
+  Utils.el("dev-obs").value = "";
   Utils.openModal("modal-devolution");
 }
 
 async function confirmDevolution() {
   if (!pendingDevolutionId) return;
+  const obs = Utils.el("dev-obs").value.trim();
   try {
-    await API.loans.return(pendingDevolutionId,{observacao:Utils.el("dev-obs").value.trim()});
-    Utils.toast("Devolução registrada!","success");
-    Utils.closeModal("modal-devolution"); pendingDevolutionId=null;
+    await API.loans.return(pendingDevolutionId, {
+      observacao: obs,
+      student_id: pendingDevolutionStudentId || null,
+    });
+    Utils.toast("Devolução registrada!", "success");
+    Utils.closeModal("modal-devolution");
+    pendingDevolutionId = null;
+    pendingDevolutionStudentId = null;
     await syncData(); Charts.refresh();
+    _refreshOpenStudentHistory();
+    renderLoanScanPanel();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
-// ── Leitor QR (câmera do browser) ────────────────────────────────────
-// Quando o QR é lido, o backend resolve o tipo (livro/aluno) automaticamente
-// e o frontend preenche o campo correto ou exibe informações
-async function handleQRResolved(result) {
-  if (!result || !result.primary) return;
-  if (result.type==="book" && result.data) {
-    Utils.el("isbn-input").value = result.data.id;
-    lookupBook();
-  } else if (result.type==="student" && result.data) {
-    Utils.el("student-input").value = result.data.id;
-    lookupStudent();
-  } else {
-    // Tenta como texto genérico
-    Utils.toast("Código lido: "+result.primary,"info");
+// ── Renovação ─────────────────────────────────────────────────────────
+let pendingRenewalId = null;
+
+function openRenewal(loanId) {
+  const loan = Store.loanById(loanId);
+  if (!loan) return;
+  const book = Store.bookById(loan.livro_id);
+  const stud = Store.studentById(loan.aluno_id);
+  pendingRenewalId = loanId;
+  Utils.el("renew-info").innerHTML = `
+    <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
+    <br><small>Exemplar #${loan.exemplar} · Prazo atual: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
+  Utils.el("renew-days").value = 7;
+  _updateRenewalPreview();
+  Utils.openModal("modal-renewal");
+}
+
+function _updateRenewalPreview() {
+  const loan = Store.loanById(pendingRenewalId);
+  if (!loan) return;
+  const days = parseInt(Utils.el("renew-days").value)||7;
+  const base = loan.data_devolucao_prevista || Utils.today();
+  Utils.el("renew-new-date-text").textContent = `Nova devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (+${days} dias)`;
+}
+
+async function confirmRenewal() {
+  if (!pendingRenewalId) return;
+  const days = parseInt(Utils.el("renew-days").value)||7;
+  try {
+    await API.loans.renew(pendingRenewalId, { dias: days });
+    Utils.toast(`Empréstimo renovado por +${days} dias!`, "success");
+    Utils.closeModal("modal-renewal");
+    pendingRenewalId = null;
+    await syncData(); Charts.refresh();
+    _refreshOpenStudentHistory();
+    renderLoanScanPanel();
+  } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
+}
+
+// Se o modal de histórico do aluno estiver aberto, redesenha com dados atualizados
+function _refreshOpenStudentHistory() {
+  if (Utils.el("modal-student-history")?.classList.contains("open") && _historyStudentId) {
+    showStudentHistory(_historyStudentId);
   }
 }
 
-// ── Init ───────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  Utils.el("login-user")?.focus();
-  ["login-user","login-pass"].forEach(id=>Utils.el(id)?.addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();}));
+function resolveQRCode(code) {
+  if (!code || typeof code !== "string") return { type: "unknown", data: null };
+  const normalized = code.trim();
+  if (normalized.startsWith("ADMIN-")) {
+    return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
+  }
+  const parsedExemplar = parseExemplarCode(normalized);
+  if (parsedExemplar) {
+    const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
+    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+  }
+  const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
+  if (student) return { type: "student", data: student };
+  const book = _findBookByIdOrIsbn(normalized);
+  if (book) return { type: "book", data: book };
+  return { type: "unknown", data: null };
+}
 
-  Utils.qsa(".nav-btn[data-page]").forEach(btn=>btn.addEventListener("click",()=>navigateTo(btn.dataset.page)));
+async function resolveQRCodeAsync(code) {
+  const normalized = (code || "").trim();
+  if (!normalized) return { type: "unknown", data: null };
+  const local = resolveQRCode(normalized);
+  if (local.type !== "unknown") return local;
 
-  Utils.qsa("#emp-tabs .tab-btn").forEach(btn=>{
-    btn.addEventListener("click",()=>{
-      Utils.qsa("#emp-tabs .tab-btn").forEach(b=>b.classList.remove("active")); btn.classList.add("active");
-      Utils.el("tab-novo").style.display  =btn.dataset.tab==="novo"  ?"block":"none";
-      Utils.el("tab-lista").style.display =btn.dataset.tab==="lista" ?"block":"none";
-      if (btn.dataset.tab==="lista") renderLoans();
-    });
+  if (normalized.startsWith("ADMIN-")) {
+    return { type: "admin", data: { login: normalized.substring(6) || "admin" } };
+  }
+
+  const parsedExemplar = parseExemplarCode(normalized);
+  if (parsedExemplar) {
+    const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
+    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+  }
+
+  try {
+    const student = await API.students.get(normalized);
+    if (student?.id) {
+      return { type: "student", data: student };
+    }
+  } catch (_err) {
+    // Não encontrou aluno no backend.
+  }
+
+  try {
+    const book = await API.books.get(normalized);
+    if (book?.id) {
+      return { type: "book", data: book };
+    }
+  } catch (_err) {
+    // Não encontrou livro no backend.
+  }
+
+  return { type: "unknown", data: null };
+}
+
+async function openLoanScanner() {
+  QRScanner.start(null, async (res) => {
+    const code = (res?.primary || "").trim();
+    if (!code) {
+      Utils.toast("Não foi possível ler o código. Tente novamente.", "error");
+      return;
+    }
+
+    const scanned = await resolveQRCodeAsync(code);
+    if (scanned.type === "student" && scanned.data?.id) {
+      if (pendingReturnLoanId) {
+        const loan = Store.loanById(pendingReturnLoanId);
+        if (loan && !loan.devolvido_em && String(loan.aluno_id) === String(scanned.data.id)) {
+          await API.loans.return(pendingReturnLoanId, { student_id: scanned.data.id, observacao: "" });
+          Utils.toast(`Devolução registrada para ${scanned.data.nome||scanned.data.name}.`, "success");
+          pendingReturnLoanId = null;
+          await syncData(); Charts.refresh(); _refreshOpenStudentHistory(); renderLoanScanPanel();
+          return;
+        }
+        if (loan && !loan.devolvido_em) {
+          const borrower = Store.studentById(loan.aluno_id);
+          Utils.toast(`Este exemplar pertence a ${borrower?.nome||borrower?.name||"outro aluno"}.`, "error");
+          return;
+        }
+      }
+      scannedLoanStudentId = scanned.data.id;
+      if (!Store.studentById(scanned.data.id)) await syncData();
+      renderLoanScanPanel();
+      Utils.qs('#emp-tabs .tab-btn[data-tab="novo"]')?.click();
+      return;
+    }
+    if (scanned.type === "book" && scanned.data?.id) {
+      const targetExemplar = scanned.data.exemplar || null;
+      const targetExemplarId = scanned.data.exemplarId || null;
+      const activeLoan = Store.loans().find((loan) => {
+        if (loan.livro_id !== scanned.data.id || loan.devolvido_em) return false;
+        if (targetExemplar && String(loan.exemplar) !== String(targetExemplar)) return false;
+        if (targetExemplarId && String(loan.exemplar_id || "") !== String(targetExemplarId)) return false;
+        return true;
+      });
+      if (activeLoan) {
+        const borrower = Store.studentById(activeLoan.aluno_id);
+        pendingReturnLoanId = activeLoan.id;
+        scannedLoanStudentId = activeLoan.aluno_id;
+        renderLoanScanPanel();
+        Utils.toast(`📖 Exemplar emprestado para ${borrower?.nome||borrower?.name||"o aluno responsável"}. Leia a carteirinha do aluno para devolver.`, "info");
+        return;
+      }
+      pendingReturnLoanId = null;
+      const total = scanned.data.exemplares||scanned.data.copies||1;
+      const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
+      Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
+      return;
+    }
+    if (scanned.type === "admin") {
+      Utils.toast("Cartão administrativo lido. Use-o na tela de login.", "info");
+      return;
+    }
+    Utils.toast("Código não reconhecido — tente outro QR ou digite manualmente.", "error");
+  });
+}
+
+function selectLoanStudent(studentId) {
+  const student = Store.studentById(studentId);
+  if (!student) return;
+  scannedLoanStudentId = studentId;
+  const studentInput = Utils.el("student-input");
+  if (studentInput) studentInput.value = student.card||student.carteirinha||student.id||"";
+  lookupStudent();
+}
+
+function clearLoanScanStudent() {
+  scannedLoanStudentId = null;
+  pendingReturnLoanId = null;
+  renderLoanScanPanel();
+}
+
+function renderLoanScanPanel() {
+  const panel = Utils.el("loan-scan-panel");
+  if (!panel) return;
+  if (!scannedLoanStudentId) {
+    panel.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+      <i class="ti ti-info-circle" style="font-size:1.3rem;color:var(--muted);"></i>
+      <span>Use o botão "Escanear aluno" para ler a carteirinha de um aluno e exibir suas informações e histórico.</span>
+    </div>`;
+    return;
+  }
+
+  const student = Store.studentById(scannedLoanStudentId);
+  if (!student) {
+    panel.innerHTML = `<div style="color:var(--red)">Aluno não encontrado. Atualize os dados e tente novamente.</div>`;
+    return;
+  }
+
+  const lockLoan = pendingReturnLoanId ? Store.loanById(pendingReturnLoanId) : null;
+  const lockStudent = lockLoan ? Store.studentById(lockLoan.aluno_id) : null;
+  const loans = Store.loans().filter(l => l.aluno_id === student.id).sort((a,b)=>b.data_emprestimo.localeCompare(a.data_emprestimo));
+  const active = loans.filter(l => !l.devolvido_em);
+  const overdue = active.filter(l => Utils.daysLeft(l.data_devolucao_prevista) < 0);
+  const room = Store.rooms().find(r => r.id === student.sala_id);
+  const status = overdue.length ? `Irregular — ${overdue.length} atraso(s)` : active.length ? `${active.length} empréstimo(s) ativo(s)` : `Regular`;
+  const badgeClass = overdue.length ? "badge-red" : active.length ? "badge-amber" : "badge-green";
+
+  const lockBlock = lockLoan && !lockLoan.devolvido_em
+    ? `<div style="margin-bottom:0.9rem;padding:0.8rem;border:1px solid var(--amber);background:rgba(245,158,11,0.12);border-radius:10px;">
+        <div style="font-weight:700;color:var(--amber);margin-bottom:0.25rem;"><i class="ti ti-lock"></i> Exemplar travado para devolução</div>
+        <div><strong>${lockStudent?.nome||lockStudent?.name||"—"}</strong> está com este exemplar.</div>
+        <div style="font-size:0.9rem;color:var(--muted);margin-top:0.2rem;">Leia a carteirinha do aluno para registrar a devolução.</div>
+      </div>`
+    : "";
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
+      <div style="min-width:240px;flex:1;">
+        ${lockBlock}
+        <div style="padding:0.75rem;border:1px solid var(--border);border-radius:10px;">
+          <div style="font-weight:600;font-size:1rem;margin-bottom:0.25rem;">${student.nome||student.name||"—"}</div>
+          <div style="font-size:0.9rem;color:var(--muted);">${student.carteirinha||student.card||student.id.slice(0,8)} · ${student.turma||student.class||"Sem turma"}${room?` · ${room.nome}`:""}</div>
+          <div style="margin-top:0.75rem;"><span class="badge ${badgeClass}">${status}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" onclick="selectLoanStudent('${student.id}')"><i class="ti ti-plus"></i> Usar aluno</button>
+        <button class="btn btn-secondary" onclick="clearLoanScanStudent()"><i class="ti ti-x"></i> Limpar</button>
+      </div>
+    </div>
+    <div style="margin-top:1rem;">
+      <div style="font-size:0.95rem;font-weight:600;margin-bottom:0.5rem;">Empréstimos ativos</div>
+      ${active.length ? active.map(l => {
+        const book = Store.bookById(l.livro_id);
+        const dl = Utils.daysLeft(l.data_devolucao_prevista);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+          <div style="min-width:0;">
+            <strong style="display:block;margin-bottom:0.2rem;">${book?.titulo||book?.title||"—"} #${l.exemplar}</strong>
+            <small style="color:var(--muted);">${Utils.fmtDate(l.data_devolucao_prevista)} · ${Utils.statusBadge(Store.loanStatus(l), dl)}</small>
+          </div>
+          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="openRenewal('${l.id}')"><i class="ti ti-rotate-clockwise"></i>Renovar</button>
+            <button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>
+          </div>
+        </div>`;
+      }).join("") : `<div class="empty-state" style="padding:1rem;">Nenhum empréstimo ativo para este aluno.</div>`}
+    </div>
+    <div style="margin-top:1rem;font-size:0.92rem;color:var(--muted);">Histórico total: ${loans.length} empréstimo(s). Último registro: ${loans.length ? Utils.fmtDate(loans[0].data_emprestimo) : "—"}.</div>
+  `;
+}
+
+
+// ── Config ────────────────────────────────────────────────────────────
+async function testConnection() {
+  const btn = Utils.el("test-conn-btn");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await API.health();
+    Utils.toast(r.database === "conectado" ? "Supabase conectado!" : "Banco indisponível.", r.database==="conectado"?"success":"error");
+  } catch { Utils.toast("Banco de dados indisponível.","error"); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+// Gera e abre para impressão a carteirinha do usuário admin logado
+async function printAdminCard() {
+  if (!currentUser?.login) return;
+  const password = window.prompt("Digite sua senha atual para gerar a carteirinha administrativa:");
+  if (password === null) return;
+  if (!password) {
+    Utils.toast("Informe sua senha para gerar a carteirinha.", "error");
+    return;
+  }
+  Utils.toast("Gerando carteirinha...","info");
+  const w = window.open("","_blank","width=700,height=350");
+  if (!w) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
+
+  const loading = `<!DOCTYPE html><html><head><title>Gerando carteirinha...</title><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;} .loading{padding:20px 28px;border-radius:12px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.12);font-weight:600;}</style></head><body><div class="loading">Gerando carteirinha... Aguarde.</div></body></html>`;
+  w.document.write(loading);
+  w.document.close();
+
+  try {
+    const res = await API.qr.cardAdmin(currentUser.login, password);
+    requestAnimationFrame(() => _showPrintCard([{ image: res.image, filename: res.filename }], w));
+  } catch(e) {
+    Utils.toast("Erro ao gerar carteirinha: "+e.message,"error");
+    if (!w.closed) {
+      w.document.write(`<!DOCTYPE html><html><head><title>Erro</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#0f172a;">Erro ao gerar carteirinha.</body></html>`);
+      w.document.close();
+    }
+  }
+}
+
+// ── Câmera global (topbar) — ler QR de carteirinha de aluno ────────────
+async function openGlobalScanner() {
+  await QRScanner.start(null, async (res) => {
+    const scanned = await resolveQRCodeAsync(res.primary);
+    const currentPage = Utils.qs(".page.active")?.id;
+
+    if (scanned.type === "student" && scanned.data?.id) {
+      if (!Store.studentById(scanned.data.id)) await syncData();
+      const student = Store.studentById(scanned.data.id) || scanned.data;
+
+      if (currentPage !== "dashboard") navigateTo("dashboard");
+      showStudentHistory(student.id);
+      Utils.toast(`Histórico aberto para ${student.nome||student.name}.`, "success");
+      return;
+    }
+
+    if (scanned.type === "book" && scanned.data?.id) {
+      const targetExemplar = scanned.data.exemplar || null;
+      const activeLoan = Store.loans().find((loan) => loan.livro_id === scanned.data.id && !loan.devolvido_em && (!targetExemplar || loan.exemplar === targetExemplar));
+      if (activeLoan) {
+        const student = Store.studentById(activeLoan.aluno_id);
+        Utils.toast(`Este exemplar já está emprestado. Use o histórico do aluno para devolver ou renovar.`, "info");
+        if (student) showStudentHistory(student.id);
+        return;
+      }
+      Utils.toast(`Livro lido: ${scanned.data.titulo||scanned.data.title} — ${Math.max((scanned.data.exemplares||scanned.data.copies||1) - Store.loans().filter((loan) => loan.livro_id === scanned.data.id && !loan.devolvido_em).length, 0)} disponível(is).`, "info");
+      return;
+    }
+
+    if (scanned.type === "admin") {
+      Utils.toast("Este é um cartão administrativo. Faça login com ele na tela inicial.","info");
+      return;
+    }
+
+    Utils.toast("Código não reconhecido — não corresponde a um aluno ou livro cadastrado.","error");
+  });
+}
+
+function decodeQrPayload(code) {
+  return resolveQRCode(code);
+}
+
+async function waitForDatabase() {
+  const screen = Utils.el("database-wait-screen");
+  const status = Utils.el("database-wait-status");
+  while (true) {
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.database === "conectado") {
+        screen.style.display = "none";
+        return;
+      }
+      status.textContent = "Banco indisponível. Nova tentativa em 3 segundos...";
+    } catch {
+      status.textContent = "Backend indisponível. Nova tentativa em 3 segundos...";
+    }
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  await waitForDatabase();
+  loadSupabaseConfig?.().then((config) => {
+    if (!config) {
+      const status = Utils.el("cloud-status");
+      if (status) {
+        status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-cloud-off"></i> Aguardando conexão com o Supabase</span>`;
+      }
+    }
   });
 
-  // Drag&drop CSV
-  const zone=Utils.el("import-zone");
-  if (zone) {
-    zone.addEventListener("dragover", e=>{e.preventDefault();zone.classList.add("drag-over");});
-    zone.addEventListener("dragleave",()=>zone.classList.remove("drag-over"));
-    zone.addEventListener("drop",e=>{
-      e.preventDefault();zone.classList.remove("drag-over");
-      const file=e.dataTransfer.files[0];
-      if (file?.name.endsWith(".csv")) importCSV({target:{files:[file]}});
-      else Utils.toast("Apenas .csv são aceitos.","error");
-    });
+  const savedSession = getSessionCookie();
+  if (savedSession?.login && savedSession?.role) {
+    if (isSessionExpired(savedSession)) {
+      clearSessionCookie();
+    } else {
+      currentUser = {
+        role: savedSession.role,
+        login: savedSession.login,
+        name: savedSession.name || savedSession.login,
+        student: savedSession.student || null,
+      };
+      Utils.el("login-screen").style.display = "none";
+      Utils.el("app").style.display = "flex";
+
+      const ini = currentUser.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+      Utils.el("sb-avatar-initials").textContent = ini;
+      Utils.el("sb-user-name").textContent = currentUser.name;
+      const roleBadge = Utils.el("sb-role-badge");
+      roleBadge.innerHTML = currentUser.role === "librarian"
+        ? `<span class="role-badge role-librarian"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
+        : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
+
+      _applyRolePermissions();
+      scheduleSessionTimeout();
+      await syncAll();
+      navigateTo(currentUser.role === "librarian" ? "emprestimo" : "dashboard");
+    }
   }
+
+  document.addEventListener("click", () => resetSessionActivity());
+  document.addEventListener("keydown", () => resetSessionActivity());
+  document.addEventListener("mousemove", () => resetSessionActivity());
+  document.addEventListener("touchstart", () => resetSessionActivity());
+  document.addEventListener("scroll", () => resetSessionActivity(), { passive: true });
+
+  // Login ao pressionar Enter
+  Utils.el("login-pass")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
+  Utils.el("login-user")?.addEventListener("keydown", e => { if (e.key==="Enter") doLogin(); });
+  Utils.el("login-password-toggle")?.addEventListener("click", () => {
+    const passwordInput = Utils.el("login-pass");
+    const toggleButton = Utils.el("login-password-toggle");
+    const showing = passwordInput.type === "text";
+    passwordInput.type = showing ? "password" : "text";
+    toggleButton.setAttribute("aria-label", showing ? "Mostrar senha" : "Ocultar senha");
+    toggleButton.title = showing ? "Mostrar senha" : "Ocultar senha";
+    toggleButton.innerHTML = `<i class="ti ${showing ? "ti-eye" : "ti-eye-off"}"></i>`;
+  });
+
+  // Botão login — apenas um handler
+  Utils.el("login-btn")?.addEventListener("click", doLogin);
+
+  // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)
+  Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);
+  Utils.el("app")?.querySelector(".logout-btn")?.addEventListener("click", doLogout);
+  Utils.el("app")?.querySelector(".topbar-cam-btn")?.addEventListener("click", openGlobalScanner);
+  Utils.el("mobile-nav-toggle")?.addEventListener("click", () => toggleMobileSidebar());
+  Utils.el("sidebar-backdrop")?.addEventListener("click", () => toggleMobileSidebar(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") toggleMobileSidebar(false);
+  });
+
+  setupNavigationBindings();
+  improveFormAccessibility();
+  applyTheme(getPreferredTheme());
+
+  // Atualiza prévia da nova data ao trocar o prazo de renovação
+  Utils.el("renew-days")?.addEventListener("change", _updateRenewalPreview);
+
+  // Data inicial
+  const ld = Utils.el("loan-date");
+  if (ld) { ld.value = Utils.today(); updateDueDate(); }
 });

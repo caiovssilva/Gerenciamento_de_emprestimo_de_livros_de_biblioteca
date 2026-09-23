@@ -71,6 +71,18 @@ Você saberá que o ambiente está ativo quando o terminal mostrar `(venv)` no i
 pip install -r backend/requirements.txt
 ```
 
+Para usar a biblioteca oficial da OpenAI com a API compatível do Groq:
+
+```bash
+pip install openai
+```
+
+Para carregar variáveis de ambiente a partir de um arquivo `.env` (opcional):
+
+```bash
+pip install python-dotenv
+```
+
 > ⏳ Pode demorar 2–3 minutos na primeira vez. Os pacotes `opencv` e `pillow` são pesados.
 
 ### 4. Configure as variáveis de ambiente
@@ -88,6 +100,13 @@ cp backend/.env.example backend/.env
 O cadastro de livros usa o Groq para obter uma sugestão inicial de metadados e consulta Google Books, ISBNsearch e Open Library em paralelo para confirmar ou complementar o resultado. O sistema preserva os dados do Groq quando as fontes externas não retornam dados.
 
 Configure um Secret do Codespaces chamado `GROQ_API`, `GROQ_API_KEY` ou `API_GROQ`. O nome recomendado é `GROQ_API_KEY`. Também é possível definir `GROQ_MODEL` e `GOOGLE_BOOKS_API_KEY`.
+
+Para usar a biblioteca OpenAI com a API compatível do Groq, utilize:
+
+```text
+Base URL: https://api.groq.com/openai/v1
+API Key: variável de ambiente GROQ_API_KEY
+```
 
 Nunca coloque chaves reais no código, no frontend, em `backend/.env.example` ou em relatórios. Depois de alterar um Secret, reinicie o terminal e o servidor Flask.
 

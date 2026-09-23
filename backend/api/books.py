@@ -12,6 +12,7 @@ from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from openai import OpenAI, OpenAIError
 from flask import Blueprint, request, jsonify
 from pathlib import Path
 from utils import get_client, sb_exec, new_id, today_str
@@ -31,7 +32,8 @@ _PROVIDER_TIMEOUT_SECONDS = 6
 _PROVIDER_ATTEMPTS = 2
 _PROVIDER_RETRY_DELAY_SECONDS = 0.2
 _GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+_GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+_GROQ_DEFAULT_MODEL = "allam-2-7b"
 
 
 def _normalize_isbn(value: str) -> str:
@@ -143,7 +145,6 @@ def _groq_lookup(isbn: str) -> dict:
         "model": model,
         "temperature": 0,
         "max_tokens": 300,
-        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "system",
@@ -159,20 +160,18 @@ def _groq_lookup(isbn: str) -> dict:
             },
         ],
     }
-    request_obj = Request(
-        _GROQ_ENDPOINT,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + api_key,
-        },
-        method="POST",
-    )
     try:
-        with _open_provider(request_obj, "Groq") as response:
-            body = json.load(response)
-        content = body["choices"][0]["message"]["content"]
+        client = OpenAI(
+            api_key=api_key,
+            base_url=_GROQ_BASE_URL,
+            timeout=_PROVIDER_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
+        response = client.chat.completions.create(**payload)
+        content = response.choices[0].message.content
+    except (OpenAIError, OSError) as exc:
+        raise _ProviderError("Groq", "Não foi possível consultar o Groq agora.") from exc
+    try:
         result = json.loads(content)
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise _ProviderError("Groq", "O Groq retornou uma resposta inválida.") from exc

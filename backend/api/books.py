@@ -1,5 +1,6 @@
 """api/books.py — CRUD de livros com fallback JSON local."""
 import json
+import base64
 import logging
 import os
 import re
@@ -34,6 +35,8 @@ _PROVIDER_RETRY_DELAY_SECONDS = 0.2
 _GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 _GROQ_DEFAULT_MODEL = "allam-2-7b"
+_GROQ_DEFAULT_VISION_MODEL = "qwen/qwen3.8-27b"
+_VISION_FRAME_MAX_BYTES = 2 * 1024 * 1024
 
 
 def _normalize_isbn(value: str) -> str:
@@ -185,6 +188,85 @@ def _groq_lookup(isbn: str) -> dict:
     if not any((result["titulo"], result["autor"], result["categorias"])):
         raise LookupError("Groq não encontrou dados para este ISBN.")
     return result
+
+
+def _groq_isbn_from_image(image_data: str) -> dict:
+    """Extrai um ISBN de um frame temporário usando um modelo Groq com visão."""
+    if not isinstance(image_data, str) or not image_data.startswith("data:image/") or "," not in image_data:
+        raise ValueError("Frame de imagem inválido.")
+
+    header, encoded = image_data.split(",", 1)
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Frame de imagem inválido.") from exc
+    if not image_bytes or len(image_bytes) > _VISION_FRAME_MAX_BYTES:
+        raise ValueError("Frame de imagem inválido.")
+
+    api_key = (
+        os.getenv("GROQ_API_KEY")
+        or os.getenv("API_GROQ")
+        or os.getenv("GROQ_API")
+        or ""
+    ).strip()
+    if not api_key:
+        raise LookupError("Groq não configurado.")
+
+    model = (
+        os.getenv("GROQ_VISION_MODEL")
+        or _GROQ_DEFAULT_VISION_MODEL
+    ).strip()
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": 80,
+        "response_format": {"type": "json_object"},
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Analise esta imagem procurando somente um ISBN impresso. "
+                        "Nao invente numeros. Responda somente JSON no formato "
+                        '{"encontrado":true,"isbn":"978..."} ou '
+                        '{"encontrado":false,"isbn":""}. O ISBN pode conter hifens ou espacos.'
+                    ),
+                },
+                {"type": "image_url", "image_url": {"url": image_data}},
+            ],
+        }],
+    }
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=_GROQ_BASE_URL,
+            timeout=_PROVIDER_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
+        response = client.chat.completions.create(**payload)
+        content = response.choices[0].message.content or "{}"
+    except (OpenAIError, OSError) as exc:
+        message = (
+            "Modelo Groq Vision indisponível. Configure GROQ_VISION_MODEL."
+            if "model_not_found" in str(exc)
+            else "Não foi possível analisar o frame agora."
+        )
+        raise _ProviderError("Groq Vision", message) from exc
+
+    try:
+        parsed = json.loads(content)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise _ProviderError("Groq Vision", "O Groq Vision retornou uma resposta inválida.") from exc
+
+    isbn = _normalize_isbn(parsed.get("isbn", "")) if parsed.get("encontrado") else ""
+    if not isbn:
+        return {"encontrado": False, "isbn": ""}
+    try:
+        _validate_isbn(isbn)
+    except ValueError:
+        return {"encontrado": False, "isbn": ""}
+    return {"encontrado": True, "isbn": isbn}
 
 
 class _IsbnSearchParser(HTMLParser):
@@ -474,6 +556,23 @@ def lookup_isbn():
     source = request.args.get("source", "manual").strip().lower()
     try:
         return jsonify(_lookup_isbn(isbn, use_groq=source == "scanner"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@books_bp.route("/isbn-vision", methods=["POST"])
+def lookup_isbn_from_image():
+    body = request.get_json(silent=True) or {}
+    try:
+        vision_result = _groq_isbn_from_image(body.get("image", ""))
+        if not vision_result["encontrado"]:
+            return jsonify(vision_result)
+        result = _lookup_isbn(vision_result["isbn"], use_groq=False)
+        return jsonify({"encontrado": True, **result})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except LookupError as exc:

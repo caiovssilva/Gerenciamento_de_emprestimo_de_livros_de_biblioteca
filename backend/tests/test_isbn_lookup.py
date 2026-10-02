@@ -1,3 +1,4 @@
+import base64
 import sys
 from pathlib import Path
 
@@ -257,6 +258,81 @@ def test_google_priority_wins_without_bibliographic_consensus(monkeypatch):
     result = books._lookup_isbn("9788532511010")
 
     assert result["titulo"] == "Livro A"
+
+
+def _vision_frame():
+    return "data:image/jpeg;base64," + base64.b64encode(b"temporary-frame").decode()
+
+
+def _mock_groq_vision(monkeypatch, content, calls=None):
+    class Completion:
+        def create(self, **payload):
+            if calls is not None:
+                calls.append(payload)
+            return type("Response", (), {
+                "choices": [type("Choice", (), {
+                    "message": type("Message", (), {"content": content})()
+                })()]
+            })()
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": Completion()})()})
+    monkeypatch.setattr(books, "OpenAI", lambda **kwargs: client())
+
+
+def test_groq_vision_extracts_and_normalizes_isbn(monkeypatch):
+    calls = []
+    _mock_groq_vision(monkeypatch, '{"encontrado": true, "isbn": "978-85-3251-101-0"}', calls)
+
+    result = books._groq_isbn_from_image(_vision_frame())
+
+    assert result == {"encontrado": True, "isbn": "9788532511010"}
+    assert calls[0]["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg")
+
+
+def test_groq_vision_returns_empty_when_image_has_no_isbn(monkeypatch):
+    _mock_groq_vision(monkeypatch, '{"encontrado": false, "isbn": ""}')
+
+    assert books._groq_isbn_from_image(_vision_frame()) == {"encontrado": False, "isbn": ""}
+
+
+def test_groq_vision_rejects_invalid_isbn(monkeypatch):
+    _mock_groq_vision(monkeypatch, '{"encontrado": true, "isbn": "978853251101X"}')
+
+    assert books._groq_isbn_from_image(_vision_frame()) == {"encontrado": False, "isbn": ""}
+
+
+def test_vision_endpoint_uses_normalized_isbn_without_metadata_groq(monkeypatch):
+    calls = []
+    monkeypatch.setattr(books, "_groq_isbn_from_image", lambda image: {"encontrado": True, "isbn": "9788532511010"})
+
+    def lookup(isbn, use_groq=False):
+        calls.append((isbn, use_groq))
+        return {"isbn": isbn, "titulo": "Harry Potter e a Pedra Filosofal", "autor": "J. K. Rowling", "categorias": []}
+
+    monkeypatch.setattr(books, "_lookup_isbn", lookup)
+    from app import app
+
+    with app.test_client() as client:
+        response = client.post("/api/books/isbn-vision", json={"image": _vision_frame()})
+
+    assert response.status_code == 200
+    assert calls == [("9788532511010", False)]
+    assert response.get_json()["titulo"] == "Harry Potter e a Pedra Filosofal"
+
+
+def test_manual_route_does_not_call_groq_vision(monkeypatch):
+    from app import app
+    monkeypatch.setattr(books, "_groq_isbn_from_image", lambda image: pytest.fail("Vision não deve ser usado no modo manual"))
+    complete = {"isbn": "9788532511010", "titulo": "Livro", "autor": "Autor", "categorias": ["History"]}
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    with app.test_client() as client:
+        response = client.get("/api/books/isbn-lookup?isbn=9788532511010&source=manual")
+
+    assert response.status_code == 200
 
 
 def test_groq_data_is_preserved_when_verification_sources_find_nothing(monkeypatch):

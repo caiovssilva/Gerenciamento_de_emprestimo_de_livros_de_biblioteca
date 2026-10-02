@@ -26,6 +26,11 @@ const QRScanner = (() => {
   let _refreshBtnEl = null;
   let _lastDecodedValue = "";
   let _lastReadAt = 0;
+  let _frameHandler = null;
+  let _onStop = null;
+  let _frameRequestActive = false;
+  let _frameIntervalMs = 1000;
+  let _nextFrameAt = 0;
 
   function _getBarcodeDetector() {
     if (_barcodeDetector !== null) return _barcodeDetector;
@@ -237,6 +242,33 @@ const QRScanner = (() => {
     ctx.drawImage(_videoEl, 0, 0, width, height);
     const imageData = ctx.getImageData(0, 0, width, height);
 
+    if (_frameHandler && !_frameRequestActive && now >= _nextFrameAt) {
+      _frameRequestActive = true;
+      _nextFrameAt = now + _frameIntervalMs;
+      _decoding = true;
+      try {
+        const found = await _frameHandler(_canvasEl.toDataURL("image/jpeg", 0.72));
+        if (found?.disableVision) {
+          _frameHandler = null;
+          if (_statusEl) _statusEl.textContent = found.message || "Tentando leitura local...";
+        }
+        if (found?.primary) {
+          _lastDecodedValue = found.primary;
+          _lastReadAt = Date.now();
+          _onFound(found);
+          return;
+        }
+        if (_statusEl) _statusEl.textContent = "Procurando ISBN...";
+      } catch (error) {
+        if (error?.name !== "AbortError" && _statusEl) {
+          _statusEl.textContent = "Procurando ISBN...";
+        }
+      } finally {
+        _frameRequestActive = false;
+        _decoding = false;
+      }
+    }
+
     const jsQr = typeof window.jsQR === "function" ? window.jsQR : null;
     if (jsQr) {
       _decoding = true;
@@ -317,6 +349,7 @@ const QRScanner = (() => {
   }
 
   function stop() {
+    if (typeof _onStop === "function") _onStop();
     clearInterval(_timer);
     _timer = null;
 
@@ -339,6 +372,11 @@ const QRScanner = (() => {
     _retryAt = 0;
     _lastDecodedValue = "";
     _lastReadAt = 0;
+    _frameHandler = null;
+    _onStop = null;
+    _frameRequestActive = false;
+    _frameIntervalMs = 1000;
+    _nextFrameAt = 0;
     _barcodeDetector = null;
     _videoEl = null;
     _canvasEl = null;
@@ -349,10 +387,14 @@ const QRScanner = (() => {
   }
 
   return {
-    async start(inputId, cb) {
+    async start(inputId, cb, options = {}) {
       if (_stream || _container) stop();
       _inputId = inputId;
       _callback = cb;
+      _frameHandler = typeof options.frameHandler === "function" ? options.frameHandler : null;
+      _onStop = typeof options.onStop === "function" ? options.onStop : null;
+      _frameIntervalMs = Math.max(500, Number(options.frameIntervalMs) || 1000);
+      _nextFrameAt = 0;
       _buildUI();
 
       _escHandler = (event) => {

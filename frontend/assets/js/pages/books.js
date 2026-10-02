@@ -114,6 +114,24 @@ function _genreIdFromCategories(categories) {
   return match?.id || "";
 }
 
+async function applyBookLookupResult(result, isbn) {
+  if (!Store.genres().length && typeof syncGenres === "function") {
+    await syncGenres();
+  }
+  const genreSelect = Utils.el("book-genre");
+  const currentGenre = genreSelect.value;
+  _populateGenreSelect("book-genre");
+  Utils.el("book-isbn").value = result.isbn || isbn;
+  Utils.el("book-title").value = result.titulo || "";
+  Utils.el("book-author").value = result.autor || "";
+  Utils.el("book-area").value = result.area || "Geral";
+  if (!currentGenre && result.genero_id) genreSelect.value = result.genero_id;
+  Utils.el("book-isbn-status").textContent = result.categorias?.length
+    ? `Encontrado: ${result.categorias.join(", ")}`
+    : "Livro encontrado. Escolha o gênero manualmente, se necessário.";
+  Utils.toast("Dados do livro preenchidos. Confira antes de salvar.", "success");
+}
+
 async function lookupBookIsbn(source = "manual") {
   const input = Utils.el("book-isbn");
   const status = Utils.el("book-isbn-status");
@@ -126,24 +144,7 @@ async function lookupBookIsbn(source = "manual") {
   status.textContent = "Pesquisando informações do livro...";
   try {
     const result = await API.books.lookupIsbn(isbn, source);
-    if (!Store.genres().length && typeof syncGenres === "function") {
-      await syncGenres();
-    }
-    const genreSelect = Utils.el("book-genre");
-    const currentGenre = genreSelect.value;
-    _populateGenreSelect("book-genre");
-    input.value = result.isbn || isbn;
-    const titleInput = Utils.el("book-title");
-    const authorInput = Utils.el("book-author");
-    const areaInput = Utils.el("book-area");
-    titleInput.value = result.titulo || "";
-    authorInput.value = result.autor || "";
-    areaInput.value = result.area || "Geral";
-    if (!currentGenre && result.genero_id) genreSelect.value = result.genero_id;
-    status.textContent = result.categorias?.length
-      ? `Encontrado: ${result.categorias.join(", ")}`
-      : "Livro encontrado. Escolha o gênero manualmente, se necessário.";
-    Utils.toast("Dados do livro preenchidos. Confira antes de salvar.", "success");
+    await applyBookLookupResult(result, isbn);
   } catch (error) {
     const message = error.message || "Livro não encontrado.";
     status.textContent = message.includes("ISBN")
@@ -154,10 +155,29 @@ async function lookupBookIsbn(source = "manual") {
 }
 
 function scanBookIsbn() {
+  let visionController = null;
   QRScanner.start("book-isbn", result => {
     const value = _normalizeIsbn(result.primary);
-    Utils.el("book-isbn").value = value;
-    lookupBookIsbn("scanner");
+    if (result.data?.titulo || result.source === "groq-vision") {
+      applyBookLookupResult(result.data || result, value);
+    } else {
+      lookupBookIsbn("manual");
+    }
+  }, {
+    frameIntervalMs: 1000,
+    onStop: () => visionController?.abort(),
+    frameHandler: async image => {
+      visionController?.abort();
+      visionController = new AbortController();
+      try {
+        const result = await API.books.lookupIsbnVision(image, visionController.signal);
+        if (!result.encontrado) return null;
+        return { primary: result.isbn, type: "book", data: result, source: "groq-vision" };
+      } catch (error) {
+        Utils.toast("Groq Vision indisponível; tentando leitura local.", "error");
+        return { disableVision: true, message: "Tentando leitura local..." };
+      }
+    },
   });
 }
 

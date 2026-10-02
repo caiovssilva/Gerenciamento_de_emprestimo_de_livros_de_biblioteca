@@ -95,6 +95,7 @@ def require_database_for_api():
         "/api/config/supabase",
         "/api/auth/supabase-config",
         "/api/supabase-config",
+        "/api/books/isbn-lookup",
     }:
         return None
     try:

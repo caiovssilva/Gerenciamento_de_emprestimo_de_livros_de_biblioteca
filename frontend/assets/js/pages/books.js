@@ -114,7 +114,7 @@ function _genreIdFromCategories(categories) {
   return match?.id || "";
 }
 
-async function lookupBookIsbn() {
+async function lookupBookIsbn(source = "manual") {
   const input = Utils.el("book-isbn");
   const status = Utils.el("book-isbn-status");
   const isbn = _normalizeIsbn(input?.value);
@@ -125,7 +125,7 @@ async function lookupBookIsbn() {
 
   status.textContent = "Pesquisando informações do livro...";
   try {
-    const result = await API.books.lookupIsbn(isbn);
+    const result = await API.books.lookupIsbn(isbn, source);
     if (!Store.genres().length && typeof syncGenres === "function") {
       await syncGenres();
     }
@@ -157,7 +157,7 @@ function scanBookIsbn() {
   QRScanner.start("book-isbn", result => {
     const value = _normalizeIsbn(result.primary);
     Utils.el("book-isbn").value = value;
-    lookupBookIsbn();
+    lookupBookIsbn("scanner");
   });
 }
 

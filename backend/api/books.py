@@ -290,14 +290,13 @@ def _match_genre(categories: list[str]) -> tuple[str, str]:
         "autoajuda": ["self help", "self improvement"],
         "tecnico didatico": ["textbook", "technical", "educational"],
     }
-    try:
-        sb = get_client()
+    genres = read_json(GENR_FILE)
+    if not genres:
         try:
+            sb = get_client()
             genres = sb_exec(sb.table("generos").select("id,nome").order("nome"))
         except Exception:
-            genres = read_json(GENR_FILE)
-    except Exception:
-        genres = read_json(GENR_FILE)
+            genres = []
 
     normalized_categories = [normalize(category) for category in categories or []]
     for genre in genres:
@@ -310,7 +309,47 @@ def _match_genre(categories: list[str]) -> tuple[str, str]:
     return "", ""
 
 
-def _lookup_isbn(isbn: str) -> dict:
+def _normalize_metadata_text(value: str) -> str:
+    without_accents = unicodedata.normalize("NFKD", str(value or ""))
+    without_accents = "".join(char for char in without_accents if not unicodedata.combining(char))
+    return re.sub(r"\s+", " ", without_accents).strip().casefold()
+
+
+def _select_metadata_field(results: list[dict], field: str, groq_result: dict | None = None) -> str:
+    candidates = []
+    for provider_name, result in results:
+        value = str(result.get(field) or "").strip()
+        if value:
+            candidates.append((provider_name, value, _normalize_metadata_text(value)))
+
+    if candidates:
+        counts = {}
+        for _, _, normalized in candidates:
+            counts[normalized] = counts.get(normalized, 0) + 1
+        consensus = max(counts.values())
+        if consensus >= 2:
+            for provider_name, value, normalized in candidates:
+                if counts[normalized] == consensus:
+                    return value
+        return candidates[0][1]
+
+    return str((groq_result or {}).get(field) or "").strip()
+
+
+def _combine_metadata_categories(results: list[dict], groq_result: dict | None = None) -> list[str]:
+    categories = []
+    for _, result in results:
+        for category in result.get("categorias") or []:
+            value = str(category).strip()
+            if value and not any(_normalize_metadata_text(value) == _normalize_metadata_text(existing)
+                                 for existing in categories):
+                categories.append(value)
+    if categories:
+        return categories
+    return [str(category).strip() for category in (groq_result or {}).get("categorias") or [] if str(category).strip()]
+
+
+def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
     normalized = _normalize_isbn(isbn)
     _validate_isbn(normalized)
     cached = _ISBN_CACHE.get(normalized)
@@ -322,23 +361,15 @@ def _lookup_isbn(isbn: str) -> dict:
         _ISBN_CACHE.pop(normalized, None)
         _ISBN_CACHE_TIMESTAMPS.pop(normalized, None)
 
-    errors = []
-    result = None
-    unavailable_provider = False
-    try:
-        result = deepcopy(_groq_lookup(normalized))
-    except LookupError:
-        pass
-    except _ProviderError as exc:
-        unavailable_provider = True
-        errors.append(exc)
-        logger.warning("Consulta de ISBN falhou no provedor %s: %s", exc.source, exc)
-
     providers = (
         ("Google Books", _google_books_lookup),
         ("ISBNsearch", _isbnsearch_lookup),
         ("Open Library", _openlibrary_lookup),
     )
+    providers_to_call = (("Groq", _groq_lookup), *providers) if use_groq else providers
+    errors = []
+    groq_result = None
+    unavailable_provider = False
 
     def call_provider(item):
         provider_name, provider = item
@@ -348,9 +379,10 @@ def _lookup_isbn(isbn: str) -> dict:
             return provider_name, None, exc
 
     # As fontes de confirmação são independentes; consultá-las juntas reduz a latência.
-    with ThreadPoolExecutor(max_workers=len(providers)) as executor:
-        responses = list(executor.map(call_provider, providers))
+    with ThreadPoolExecutor(max_workers=len(providers_to_call)) as executor:
+        responses = list(executor.map(call_provider, providers_to_call))
 
+    bibliographic_results = []
     for provider_name, found, error in responses:
         if error:
             errors.append(error)
@@ -359,21 +391,23 @@ def _lookup_isbn(isbn: str) -> dict:
                 logger.warning("Consulta de ISBN falhou no provedor %s: %s", error.source, error)
             continue
         try:
-            if result is None:
-                result = deepcopy(found)
-            else:
-                result["titulo"] = result.get("titulo") or found.get("titulo", "")
-                result["autor"] = result.get("autor") or found.get("autor", "")
-                categories = list(result.get("categorias") or [])
-                for category in found.get("categorias") or []:
-                    if category not in categories:
-                        categories.append(category)
-                result["categorias"] = categories
-            if result.get("titulo") and result.get("autor") and result.get("categorias"):
-                break
+            if isinstance(found, dict):
+                if provider_name == "Groq":
+                    groq_result = deepcopy(found)
+                else:
+                    bibliographic_results.append((provider_name, found))
         except (AttributeError, TypeError) as exc:
             errors.append(_ProviderError(provider_name, "A fonte retornou dados inválidos."))
             logger.warning("Consulta de ISBN falhou no provedor %s: %s", provider_name, exc)
+
+    result = None
+    if bibliographic_results or groq_result is not None:
+        result = {
+            "isbn": normalized,
+            "titulo": _select_metadata_field(bibliographic_results, "titulo", groq_result),
+            "autor": _select_metadata_field(bibliographic_results, "autor", groq_result),
+            "categorias": _combine_metadata_categories(bibliographic_results, groq_result),
+        }
 
     if result is not None:
         result["area"] = "Geral"
@@ -437,8 +471,9 @@ def list_books():
 @books_bp.route("/isbn-lookup", methods=["GET"])
 def lookup_isbn():
     isbn = request.args.get("isbn", "")
+    source = request.args.get("source", "manual").strip().lower()
     try:
-        return jsonify(_lookup_isbn(isbn))
+        return jsonify(_lookup_isbn(isbn, use_groq=source == "scanner"))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except LookupError as exc:

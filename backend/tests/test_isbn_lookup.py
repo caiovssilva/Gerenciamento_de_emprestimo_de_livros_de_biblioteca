@@ -47,6 +47,7 @@ def test_fallback_complements_partial_data_and_caches_only_complete_result(monke
     monkeypatch.setattr(books, "_google_books_lookup", google)
     monkeypatch.setattr(books, "_isbnsearch_lookup", isbnsearch)
     monkeypatch.setattr(books, "_openlibrary_lookup", openlibrary)
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: (_ for _ in ()).throw(LookupError()))
     monkeypatch.setattr(books, "_match_genre", lambda categories: ("genre-id", "História"))
 
     result = books._lookup_isbn("978-85-7683-130-3")
@@ -69,11 +70,12 @@ def test_complete_result_avoids_later_provider(monkeypatch):
     monkeypatch.setattr(books, "_google_books_lookup", provider)
     monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: calls.append("isbnsearch"))
     monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: calls.append("openlibrary"))
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: (_ for _ in ()).throw(LookupError()))
     monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
 
     books._lookup_isbn("9788576831303")
 
-    assert calls == ["google"]
+    assert sorted(calls) == ["google", "isbnsearch", "openlibrary"]
 
 
 def test_temporary_provider_failure_is_retried_and_falls_back(monkeypatch):
@@ -99,6 +101,164 @@ def test_temporary_provider_failure_is_retried_and_falls_back(monkeypatch):
     assert sorted(calls) == ["google", "isbnsearch", "openlibrary"]
 
 
+def test_manual_lookup_does_not_call_groq(monkeypatch):
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: pytest.fail("Groq não deve ser usado no modo manual"))
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: {
+        "isbn": "9788576831303", "titulo": "Livro", "autor": "Autora", "categorias": ["History"]
+    })
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: {
+        "isbn": "9788576831303", "titulo": "", "autor": "", "categorias": []
+    })
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: {
+        "isbn": "9788576831303", "titulo": "", "autor": "", "categorias": []
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788576831303")
+
+    assert result["titulo"] == "Livro"
+
+
+def test_groq_conflict_is_replaced_by_bibliographic_consensus(monkeypatch):
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Araucária", "autor": "Autor Groq", "categorias": ["Groq"]
+    })
+    bibliographic = {
+        "isbn": "9788532511010",
+        "titulo": "Harry Potter e a Pedra Filosofal",
+        "autor": "J. K. Rowling",
+        "categorias": ["Fantasy"],
+    }
+    for provider in ("_google_books_lookup", "_isbnsearch_lookup", "_openlibrary_lookup"):
+        monkeypatch.setattr(books, provider, lambda _isbn, value=bibliographic: value)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("978-8532511010", use_groq=True)
+
+    assert result["titulo"] == "Harry Potter e a Pedra Filosofal"
+    assert result["autor"] == "J. K. Rowling"
+
+
+def test_groq_is_fallback_when_bibliographic_sources_find_nothing(monkeypatch):
+    groq_result = {"isbn": "9788532511010", "titulo": "Livro X", "autor": "Autor X", "categorias": []}
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: groq_result)
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", not_found)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788532511010", use_groq=True)
+
+    assert result["titulo"] == "Livro X"
+    assert result["autor"] == "Autor X"
+
+
+def test_bibliographic_sources_complete_fields_from_each_other(monkeypatch):
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "", "autor": "", "categorias": []
+    })
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro X", "autor": "", "categorias": []
+    })
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "", "autor": "Autor X", "categorias": []
+    })
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "", "autor": "", "categorias": []
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788532511010", use_groq=True)
+
+    assert result["titulo"] == "Livro X"
+    assert result["autor"] == "Autor X"
+
+
+def test_route_manual_does_not_call_groq(monkeypatch):
+    from app import app
+
+    monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: pytest.fail("Groq não deve ser chamado no modo manual"))
+    complete = {"isbn": "9788532511010", "titulo": "Livro", "autor": "Autor", "categorias": ["History"]}
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: complete)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    with app.test_client() as client:
+        response = client.get("/api/books/isbn-lookup?isbn=9788532511010&source=manual")
+
+    assert response.status_code == 200
+
+
+def test_route_scanner_uses_groq(monkeypatch):
+    from app import app
+    calls = []
+
+    def groq(_isbn):
+        calls.append(_isbn)
+        return {"isbn": _isbn, "titulo": "Livro Groq", "autor": "Autor Groq", "categorias": []}
+
+    monkeypatch.setattr(books, "_groq_lookup", groq)
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", not_found)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    with app.test_client() as client:
+        response = client.get("/api/books/isbn-lookup?isbn=978-8532511010&source=scanner")
+
+    assert response.status_code == 200
+    assert calls == ["9788532511010"]
+
+
+def test_all_sources_receive_the_same_normalized_isbn(monkeypatch):
+    received = []
+    result = {"isbn": "9788532511010", "titulo": "Livro", "autor": "Autor", "categorias": ["History"]}
+    for provider in ("_groq_lookup", "_google_books_lookup", "_isbnsearch_lookup", "_openlibrary_lookup"):
+        monkeypatch.setattr(books, provider, lambda isbn, value=result: (received.append(isbn) or value))
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    books._lookup_isbn("978-8532511010", use_groq=True)
+
+    assert received == ["9788532511010"] * 4
+
+
+def test_bibliographic_consensus_beats_google_priority(monkeypatch):
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro A", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro B", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro B", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788532511010")
+
+    assert result["titulo"] == "Livro B"
+
+
+def test_google_priority_wins_without_bibliographic_consensus(monkeypatch):
+    monkeypatch.setattr(books, "_google_books_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro A", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_isbnsearch_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "Livro B", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: {
+        "isbn": "9788532511010", "titulo": "", "autor": "Autor", "categorias": []
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788532511010")
+
+    assert result["titulo"] == "Livro A"
+
+
 def test_groq_data_is_preserved_when_verification_sources_find_nothing(monkeypatch):
     groq_result = {
         "isbn": "9788576831303",
@@ -107,13 +267,13 @@ def test_groq_data_is_preserved_when_verification_sources_find_nothing(monkeypat
         "categorias": [],
     }
     monkeypatch.setattr(books, "_groq_lookup", lambda _isbn: groq_result)
-    not_found = lambda _isbn: (_ for _ in ()).throw(books.LookupError("não encontrado"))
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
     monkeypatch.setattr(books, "_google_books_lookup", not_found)
     monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
     monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
     monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
 
-    result = books._lookup_isbn("9788576831303")
+    result = books._lookup_isbn("9788576831303", use_groq=True)
 
     assert result["titulo"] == "Livro sugerido"
     assert result["autor"] == "Autora sugerida"
@@ -121,7 +281,7 @@ def test_groq_data_is_preserved_when_verification_sources_find_nothing(monkeypat
 
 
 def test_all_not_found_providers_return_lookup_error(monkeypatch):
-    not_found = lambda _isbn: (_ for _ in ()).throw(books.LookupError("não encontrado"))
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
     monkeypatch.setattr(books, "_google_books_lookup", not_found)
     monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
     monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
@@ -134,7 +294,11 @@ def test_route_distinguishes_invalid_and_not_found(monkeypatch):
     from app import app
 
     app.config.update(TESTING=True)
-    monkeypatch.setattr(books, "_lookup_isbn", lambda _isbn: (_ for _ in ()).throw(LookupError("Livro não encontrado")))
+    def not_found(isbn, use_groq=False):
+        books._validate_isbn(books._normalize_isbn(isbn))
+        raise LookupError("Livro não encontrado")
+
+    monkeypatch.setattr(books, "_lookup_isbn", not_found)
     with app.test_client() as client:
         not_found = client.get("/api/books/isbn-lookup?isbn=9788576831303")
         invalid = client.get("/api/books/isbn-lookup?isbn=9788576831302")

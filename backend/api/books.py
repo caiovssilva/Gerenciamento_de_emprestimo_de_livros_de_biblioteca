@@ -68,6 +68,28 @@ class _ProviderError(RuntimeError):
         self.source = source
 
 
+def _describe_groq_error(exc: Exception, *, source: str, key_name: str, model_name: str) -> str:
+    status_code = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    if response is not None and status_code is None:
+        status_code = getattr(response, "status_code", None)
+    if status_code is None:
+        match = re.search(r"(401|403|404|429)", str(exc) or "")
+        if match:
+            status_code = int(match.group(1))
+
+    text = str(exc).lower()
+    if status_code in (401, 403) or "unauthorized" in text or "forbidden" in text:
+        return f"{source} não autorizada. Verifique {key_name}."
+    if status_code == 404 or "model_not_found" in text or "not found" in text:
+        return f"Modelo {source} indisponível. Configure {model_name}."
+    if status_code == 429 or "rate limit" in text:
+        return f"{source} excedeu o limite de chamadas. Tente novamente em instantes."
+    if "timeout" in text or "timed out" in text or "network" in text or "connection" in text:
+        return f"Não foi possível acessar {source} agora. Verifique a conexão e tente novamente."
+    return f"Não foi possível analisar o frame agora."
+
+
 def _open_provider(request_obj: Request, source: str):
     for attempt in range(_PROVIDER_ATTEMPTS):
         try:
@@ -173,7 +195,7 @@ def _groq_lookup(isbn: str) -> dict:
         response = client.chat.completions.create(**payload)
         content = response.choices[0].message.content
     except (OpenAIError, OSError) as exc:
-        raise _ProviderError("Groq", "Não foi possível consultar o Groq agora.") from exc
+        raise _ProviderError("Groq", _describe_groq_error(exc, source="Groq", key_name="GROQ_API_KEY", model_name="GROQ_MODEL")) from exc
     try:
         result = json.loads(content)
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -247,12 +269,7 @@ def _groq_isbn_from_image(image_data: str) -> dict:
         response = client.chat.completions.create(**payload)
         content = response.choices[0].message.content or "{}"
     except (OpenAIError, OSError) as exc:
-        message = (
-            "Modelo Groq Vision indisponível. Configure GROQ_VISION_MODEL."
-            if "model_not_found" in str(exc)
-            else "Não foi possível analisar o frame agora."
-        )
-        raise _ProviderError("Groq Vision", message) from exc
+        raise _ProviderError("Groq Vision", _describe_groq_error(exc, source="Groq Vision", key_name="GROQ_API_KEY", model_name="GROQ_VISION_MODEL")) from exc
 
     try:
         parsed = json.loads(content)

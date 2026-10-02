@@ -249,8 +249,8 @@ const QRScanner = (() => {
       try {
         const found = await _frameHandler(_canvasEl.toDataURL("image/jpeg", 0.72));
         if (found?.disableVision) {
-          _frameHandler = null;
           if (_statusEl) _statusEl.textContent = found.message || "Tentando leitura local...";
+          return;
         }
         if (found?.primary) {
           _lastDecodedValue = found.primary;

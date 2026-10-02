@@ -295,6 +295,23 @@ def test_groq_vision_returns_empty_when_image_has_no_isbn(monkeypatch):
     assert books._groq_isbn_from_image(_vision_frame()) == {"encontrado": False, "isbn": ""}
 
 
+def test_groq_vision_reports_auth_error(monkeypatch):
+    class AuthError(books.OpenAIError):
+        def __init__(self, message="Unauthorized", status_code=401):
+            self.status_code = status_code
+            super().__init__(message)
+
+    class Completion:
+        def create(self, **payload):
+            raise AuthError("401 Unauthorized")
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": Completion()})()})
+    monkeypatch.setattr(books, "OpenAI", lambda **kwargs: client())
+
+    with pytest.raises(books._ProviderError, match="GROQ_API_KEY|autoriz"):
+        books._groq_isbn_from_image(_vision_frame())
+
+
 def test_groq_vision_rejects_invalid_isbn(monkeypatch):
     _mock_groq_vision(monkeypatch, '{"encontrado": true, "isbn": "978853251101X"}')
 

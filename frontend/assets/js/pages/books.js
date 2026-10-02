@@ -164,7 +164,7 @@ function scanBookIsbn() {
       lookupBookIsbn("manual");
     }
   }, {
-    frameIntervalMs: 1000,
+    frameIntervalMs: 600,
     onStop: () => visionController?.abort(),
     frameHandler: async image => {
       visionController?.abort();
@@ -175,7 +175,7 @@ function scanBookIsbn() {
         return { primary: result.isbn, type: "book", data: result, source: "groq-vision" };
       } catch (error) {
         Utils.toast("Groq Vision indisponível; tentando leitura local.", "error");
-        return { disableVision: true, message: "Tentando leitura local..." };
+        return null;
       }
     },
   });

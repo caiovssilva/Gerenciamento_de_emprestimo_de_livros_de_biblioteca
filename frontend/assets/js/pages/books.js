@@ -156,6 +156,9 @@ async function lookupBookIsbn(source = "manual") {
 
 function scanBookIsbn() {
   let visionController = null;
+  let visionRetryAt = 0;
+  let visionFailures = 0;
+  let visionErrorNotified = false;
   QRScanner.start("book-isbn", result => {
     const value = _normalizeIsbn(result.primary);
     if (result.data?.titulo || result.source === "groq-vision") {
@@ -164,17 +167,29 @@ function scanBookIsbn() {
       lookupBookIsbn("manual");
     }
   }, {
-    frameIntervalMs: 600,
+    frameIntervalMs: 5000,
     onStop: () => visionController?.abort(),
     frameHandler: async image => {
+      if (Date.now() < visionRetryAt) return null;
       visionController?.abort();
       visionController = new AbortController();
       try {
         const result = await API.books.lookupIsbnVision(image, visionController.signal);
+        visionFailures = 0;
+        visionRetryAt = 0;
+        visionErrorNotified = false;
         if (!result.encontrado) return null;
         return { primary: result.isbn, type: "book", data: result, source: "groq-vision" };
       } catch (error) {
-        Utils.toast("Groq Vision indisponível; tentando leitura local.", "error");
+        visionFailures += 1;
+        const isRateLimited = /limite de chamadas|\b429\b|rate limit/i.test(error.message || "");
+        const baseDelay = isRateLimited ? 30000 : 10000;
+        const maxDelay = isRateLimited ? 120000 : 60000;
+        visionRetryAt = Date.now() + Math.min(maxDelay, baseDelay * (2 ** (visionFailures - 1)));
+        if (!visionErrorNotified) {
+          Utils.toast(error.message || "Groq Vision indisponível; tentando leitura local.", "error");
+          visionErrorNotified = true;
+        }
         return null;
       }
     },

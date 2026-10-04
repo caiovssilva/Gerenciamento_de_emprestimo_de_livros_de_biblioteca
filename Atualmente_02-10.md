@@ -1,28 +1,33 @@
-# Relatorio atual do projeto - 02/10/2026
+# Relatorio atual do projeto - atualizado em 04/10/2026
+
+## Registro de atualizacao
+
+**Data e hora:** domingo, 04/10/2026, 20:59:52 UTC.
+
+**Branch/revisao:** `fix/login-error-message` / `71eab32`.
+
+Este registro atualiza fatos verificados nesta data. As secoes seguintes preservam o snapshot de 02/10/2026 e nao foram todas retestadas em 04/10. Quando houver divergencia, este registro e as secoes de testes e Vision abaixo prevalecem. Nenhuma chave ou valor de Secret foi registrado.
+
+- `backend/.env` nao e necessario no Codespace: `load_environment()` usa `override=False`, preserva variaveis injetadas pelo ambiente e aceita `.env` como fallback. O teste correspondente passou com arquivo temporario e valores ficticios.
+- Testes atuais: backend ISBN/Vision `25 passed`; frontend `books ISBN form test passed` e `qr-scanner callback test passed`; backend completo `32 passed, 6 failed, 3 warnings`.
+- As seis falhas do backend completo estao em quatro testes de login e dois de reconexao do Supabase. O teste antigo que exigia `backend/.env` foi adaptado e passou.
+- Uma chamada real isolada ao Groq Vision em 04/10 reconheceu `9788532511010` em um frame sintetico criado em memoria. Isso nao comprova leitura pela camera fisica.
+- O navegador reportou limite de chamadas do Groq; uma chamada Vision isolada posterior funcionou. O scanner agora consulta a cada 5 segundos e aplica espera crescente apos erros. A leitura local continua disponivel.
+- Os endpoints POST de QR decode e ISBN Vision existem no codigo atual. Antes de iniciar o Flask local, a porta 5000 recusou conexao; depois do inicio, ambos responderam `400` a payload invalido, nao `404`. Uma sondagem sem sessao da URL publica do Codespace respondeu `401`; a origem exata dos `404` do navegador nao foi confirmada.
+- Em consulta real registrada em 02/10, o ISBN `9788532511010` nos modos manual e scanner respondeu HTTP 200 e retornou o mesmo titulo e autor. No modo scanner, os dados podem combinar Groq e fontes bibliograficas; nao e possivel atribuir cada campo exclusivamente ao Groq.
 
 ## 1. Resumo executivo
 
-O projeto esta funcionando com backend Flask, frontend servido pelo proprio backend e banco Supabase conectado. O fluxo de consulta de ISBN foi ampliado para diferenciar pesquisa manual e leitura pela camera.
+Em 04/10/2026, os testes focados de ISBN/Vision passaram, assim como os dois testes frontend disponiveis. Uma chamada isolada ao Groq Vision reconheceu o ISBN de um frame sintetico; isso nao comprova leitura com webcam real. A suite backend completa teve 32 aprovados, 6 falhas e 3 avisos; as falhas estao em testes de login e reconexao do Supabase.
 
-O fluxo de ISBN isolado esta aprovado:
-
-- Backend ISBN e Vision: 24 testes aprovados.
-- Frontend do cadastro de livros: teste aprovado.
-- Scanner frontend existente: teste aprovado.
-- Banco: conectado.
-- Groq: chave carregada e modelo Vision configurado.
-
-A suite completa ainda possui 7 falhas em testes antigos ou dependentes da configuracao local. Elas nao estao relacionadas ao fluxo de consulta ISBN validado.
+O navegador havia reportado excesso de chamadas ao Groq. O scanner foi ajustado para aguardar 5 segundos entre requisicoes Vision e usar espera crescente apos falhas. O estado da camera fisica e da URL publica do Codespace permanece nao confirmado.
 
 ## 2. Estado atual do ambiente
 
 - Branch: `fix/login-error-message`
-- Revisao atual: `d9d64cf`
-- Worktree: limpo, sem alteracoes pendentes no Git.
-- Servidor Flask: ativo na porta 5000.
-- URL local: `http://localhost:5000`
-- Banco Supabase: conectado.
-- `GROQ_API_KEY`: configurada por Codespace Secret.
+- Revisao de referencia desta atualizacao: `71eab32`.
+- O Flask foi iniciado na porta 5000 durante a verificacao; os endpoints locais foram testados depois da inicializacao.
+- O valor do Secret nao foi lido nem incluido neste relatorio. Uma chamada real ao endpoint de chat do Groq respondeu HTTP 200 em verificacao registrada em 02/10; isso confirma a chamada textual naquele momento, nao todas as capacidades da conta.
 - `GROQ_VISION_MODEL`: `qwen/qwen3.8-27b` por padrao.
 - O arquivo `backend/.env` nao existe; a configuracao vem dos Secrets do Codespace.
 
@@ -83,7 +88,7 @@ O endpoint:
 
 Os frames nao sao salvos permanentemente.
 
-A camera captura frames automaticamente, sem botao de foto e sem seletor de galeria. O intervalo inicial entre analises e de aproximadamente 1 segundo. Nao sao iniciadas requisicoes simultaneas: a proxima analise aguarda a anterior.
+A camera captura frames automaticamente, sem botao de foto e sem seletor de galeria. O intervalo configurado entre chamadas Vision e de 5 segundos. As chamadas sao sequenciais; depois de erros, ha espera crescente para reduzir chamadas repetidas e respeitar limites do provedor. A leitura local continua enquanto Vision aguarda.
 
 Ao encontrar um ISBN valido:
 
@@ -158,7 +163,11 @@ API_GROQ
 GROQ_API
 ```
 
-Foi testado um frame valido de 100x100 pixels. Sem ISBN na imagem, o retorno foi corretamente:
+Em 04/10, uma chamada real isolada ao Groq Vision recebeu um frame sintetico com `9788532511010` e retornou o ISBN normalizado. Isso confirma uma chamada funcional naquele momento, mas nao testa a webcam real nem a leitura continua no navegador.
+
+O navegador havia reportado HTTP 502 com mensagem de limite de chamadas. Uma chamada isolada posterior foi bem-sucedida. O scanner passou a usar intervalo de 5 segundos e backoff crescente apos falhas.
+
+Teste anterior com resposta simulada, sem ISBN na imagem:
 
 ```json
 {
@@ -169,7 +178,7 @@ Foi testado um frame valido de 100x100 pixels. Sem ISBN na imagem, o retorno foi
 
 Um teste anterior com imagem 1x1 retornou erro porque o Groq exige pelo menos 32x32 pixels. Isso nao era falha do modelo.
 
-Quando o modelo Vision ficou temporariamente indisponivel, o sistema passou a interromper as tentativas repetidas e continuar com os leitores locais do navegador.
+Os leitores locais do navegador permanecem disponiveis. As tentativas Vision nao sao encerradas permanentemente na primeira falha.
 
 ## 8. Leitura local de codigo de barras
 
@@ -183,6 +192,10 @@ O scanner existente continua usando:
 O ambiente virtual `.venv312` possui os pacotes Python necessarios. O pyzbar tambem precisa da biblioteca nativa `zbar` (`libzbar0`). A instalacao via `apt-get` foi tentada, mas o usuario atual nao tem permissao para modificar o sistema.
 
 Com isso, BarcodeDetector do navegador pode funcionar, mas o fallback backend de EAN depende do `libzbar0`.
+
+### Verificacao dos endpoints 404 em 04/10
+
+O codigo atual registra `POST /api/qr/decode` e `POST /api/books/isbn-vision`. Antes de iniciar o Flask local, uma conexao na porta 5000 foi recusada. Depois da inicializacao, os dois endpoints responderam `400` a payloads deliberadamente invalidos, demonstrando que o processo local reconheceu as rotas. A sondagem da URL publica do Codespace sem sessao retornou `401`; nao foi possivel confirmar se o host publicado servia a mesma revisao nem determinar a origem exata dos `404` vistos no navegador.
 
 ## 9. Autenticacao
 
@@ -203,7 +216,7 @@ O SQL enviado pelo usuario define credenciais diferentes das encontradas no banc
 ### Testes especificos de ISBN e Vision
 
 ```text
-24 passed
+25 passed (04/10/2026)
 ```
 
 Cobertura inclui:
@@ -233,14 +246,15 @@ qr-scanner callback test passed
 Resultado no `.venv312`:
 
 ```text
-30 passed, 7 failed, 3 warnings
+32 passed, 6 failed, 3 warnings (04/10/2026)
 ```
 
-As 7 falhas sao:
+As 6 falhas da execucao de 04/10 sao:
 
-1. quatro testes de autenticacao dependem de mocks antigos e entram em conflito com a verificacao global atual do Supabase;
-2. um teste exige `backend/.env`, mas o projeto usa Codespace Secrets;
-3. dois testes de reconexao esperam a variavel interna `_offline`, que nao existe na implementacao atual.
+1. quatro testes de autenticacao falham com os clientes simulados usados por esses testes;
+2. dois testes de reconexao esperam atributos offline que nao existem no cliente Supabase atual.
+
+O teste `test_env_loading.py`, que antes exigia o arquivo real `backend/.env`, foi atualizado para testar Secrets e fallback dotenv sem valores reais e passou.
 
 Avisos observados:
 
@@ -250,11 +264,11 @@ Avisos observados:
 ## 11. Arquivos relacionados as alteracoes
 
 - `backend/api/books.py`: modelos Groq separados, Groq Vision, endpoint Vision, composicao de resultados, prioridade, paralelizacao e desempenho ISBN.
-- `backend/app.py`: isencao das rotas ISBN da verificacao previa desnecessaria do Supabase.
+- `backend/app.py`: prioridade para Secrets ja presentes no ambiente (`override=False`) e isencao das rotas ISBN da verificacao previa desnecessaria do Supabase.
 - `backend/.env.example`: documentacao de `GROQ_VISION_MODEL`.
-- `backend/tests/test_isbn_lookup.py`: testes de prioridade, Vision, normalizacao e origem manual/scanner.
+- `backend/tests/test_isbn_lookup.py`: testes de prioridade, Vision, normalizacao, erros de autenticacao e origem manual/scanner.
 - `frontend/assets/js/api.js`: chamada do endpoint Vision.
-- `frontend/assets/js/pages/books.js`: integracao exclusiva no Cadastro de Livro.
+- `frontend/assets/js/pages/books.js`: integracao no Cadastro de Livro, intervalo Vision de 5 segundos e backoff crescente apos erros/limites.
 - `frontend/assets/js/qr-scanner.js`: callback opcional de frames e cancelamento.
 
 As demais telas e funcionalidades nao foram alteradas intencionalmente.
@@ -268,4 +282,4 @@ As demais telas e funcionalidades nao foram alteradas intencionalmente.
 
 ## Conclusao
 
-O projeto esta operacional para consulta ISBN, cadastro, frontend, Supabase e integracao Groq. O fluxo manual esta preservado sem Groq Vision. O fluxo da camera esta implementado de forma continua e restrita ao Cadastro de Livro, mas a qualidade final da leitura Vision depende do modelo habilitado na conta Groq e o fallback backend de barcode depende da biblioteca nativa `zbar`.
+Em 04/10, os testes focados de ISBN/Vision e os dois testes frontend passaram; a suite backend completa ainda teve seis falhas descritas acima. Uma chamada isolada real ao Groq Vision reconheceu ISBN em frame sintetico, mas a camera fisica nao foi testada. O fallback backend de barcode depende da biblioteca nativa `zbar`. A origem dos `404` vistos na URL publica permanece nao confirmada: o codigo local tem as rotas, e o Flask iniciado respondeu `400` aos payloads de teste invalidos.

@@ -1,7 +1,9 @@
 # Guia técnico e de estudo do projeto de biblioteca
 
 **Arquivo:** `TCC_valibe.md`  
-**Data da análise:** 02/10/2026  
+**Data da análise inicial:** 02/10/2026
+
+**Última atualização verificada:** domingo, 04/10/2026, 20:59:52 UTC
 **Natureza do documento:** documentação técnica, guia de estudo e preparação para relatório escolar.
 
 > Apesar do nome do arquivo, este documento não afirma que o projeto é um TCC. O repositório apresenta um projeto escolar de gerenciamento de empréstimos de uma biblioteca. Quando uma informação não pôde ser comprovada, este documento usa a frase: **"Não foi possível confirmar esta informação no estado atual do projeto."**
@@ -21,6 +23,18 @@ A análise seguiu esta ordem de confiança:
 7. relatórios antigos somente como contexto.
 
 Quando uma documentação antiga divergia do código, o código atual foi considerado a referência principal. Números, estatísticas, credenciais, tokens e chaves não foram incluídos.
+
+## Atualização verificada em 04/10/2026
+
+Este adendo registra a atualização feita em **domingo, 04/10/2026, às 20:59:52 UTC**, no branch `fix/login-error-message`, revisão `71eab32`. A suíte completa, os testes frontend e a chamada Vision sintética foram verificados em 04/10. As consultas reais textual manual/scanner mencionadas abaixo ocorreram em 02/10. Quando divergirem, este adendo e os quadros atualizados prevalecem sobre os snapshots anteriores. Nenhuma chave ou valor de Secret foi registrado.
+
+- O arquivo `backend/.env` não é necessário no Codespace. `load_environment()` usa `override=False`, preservando variáveis injetadas pelo ambiente e deixando `.env` como fallback. O teste correspondente usa arquivo temporário e valores fictícios.
+- Os testes backend de ISBN/Vision passaram: `25 passed`. Os dois testes frontend disponíveis passaram: formulário ISBN e callback do scanner.
+- A suíte backend completa terminou com `32 passed, 6 failed, 3 warnings`. As seis falhas estão em quatro testes de login e dois de reconexão do Supabase.
+- Em consulta real registrada em 02/10, o ISBN `9788532511010` nos modos scanner e manual respondeu HTTP 200 e retornou o mesmo título e autor. No modo scanner a resposta pode combinar Groq e fontes bibliográficas; não é possível atribuir cada campo exclusivamente ao Groq.
+- Uma chamada isolada ao Groq Vision, com frame sintético criado em memória, retornou `9788532511010`. Isso confirma uma chamada funcional naquele momento, mas não valida câmera física, foco, iluminação ou leitura contínua no navegador.
+- O navegador havia recebido HTTP 502 com mensagem de limite de chamadas do Groq. Uma chamada isolada posterior teve sucesso. O scanner agora consulta Vision a cada 5 segundos e aplica espera crescente após erros; a leitura local permanece disponível.
+- Os caminhos `POST /api/qr/decode` e `POST /api/books/isbn-vision` estão registrados no código atual. Antes de iniciar o Flask local, a porta 5000 recusou conexão; depois de iniciá-lo, ambos responderam `400` a payloads deliberadamente inválidos, em vez de `404`. A URL pública do Codespace não foi confirmada: uma sondagem sem sessão recebeu `401`, portanto a origem exata dos `404` vistos no navegador permanece desconhecida.
 
 ---
 
@@ -83,12 +97,12 @@ O backend calcula papéis no login, mas não há middleware que obrigue as chama
 
 - A aplicação Flask inicia e serve o frontend.
 - O endpoint `/api/health` respondeu com banco `conectado` durante a análise.
-- Os testes específicos de ISBN/Vision passaram: `24 passed`.
+- Os testes específicos de ISBN/Vision passaram na análise inicial: `24 passed`; na atualização de 04/10 foram `25 passed`.
 - Os dois testes JavaScript executados passaram:
   - `books ISBN form test passed`;
   - `qr-scanner callback test passed`.
-- A suíte completa Python executada no `.venv312` terminou com `30 passed, 7 failed, 3 warnings`.
-- A leitura Vision recebeu um frame válido sem ISBN e retornou `encontrado: false`.
+- A suíte completa Python em 04/10 terminou com `32 passed, 6 failed, 3 warnings`; ver a seção 25.2 atualizada.
+- Uma chamada isolada real ao Vision reconheceu o ISBN de um frame sintético. A leitura por câmera física continua não confirmada.
 
 ## 2.5 Limitações principais
 
@@ -1382,8 +1396,8 @@ Documentos antigos citam Render e workflows, mas não há esses arquivos na árv
 | Login admin/bibliotecário | `test_auth_librarian_login.py` | Verificação de senha, alias e fallback esperado | Falhas na execução completa por incompatibilidade com estado atual/mocks |
 | Fallback de livros | `test_books_fallback.py` | Listagem quando Supabase falha | Executado na suíte geral; resultado individual não foi isolado nesta etapa |
 | Performance de cartão | `test_card_generation_performance.py` | 20 cartões em menos de 1,5 s | Executado na suíte geral; dependente de qrcode/Pillow |
-| Ambiente | `test_env_loading.py` | Carregamento de `backend/.env` | Falha porque ambiente usa Secrets e arquivo não existe |
-| ISBN | `test_isbn_lookup.py` | validação, cache, fontes, prioridade, Vision e endpoint | `24 passed` |
+| Ambiente | `test_env_loading.py` | Prioridade das variáveis do ambiente e fallback `.env` | Passou com valores fictícios e arquivo temporário |
+| ISBN | `test_isbn_lookup.py` | validação, cache, fontes, prioridade, Vision e endpoint | `25 passed` em 04/10/2026 |
 | QR/ID | `test_qr_id_resolution.py` | CRUD e resolução QR | Executado na suíte geral; depende de qrcode/OpenCV/PyZbar |
 | Relatório | `test_reports_student_status.py` | CSV de situação dos alunos | Executado na suíte geral |
 | Reconexão | `test_supabase_reconnect.py` | estado offline/reconexão esperado pelo teste | Falha porque `_offline` não existe no cliente atual |
@@ -1391,16 +1405,18 @@ Documentos antigos citam Render e workflows, mas não há esses arquivos na árv
 | Formulário ISBN | `frontend/tests/books-isbn.test.js` | preenchimento de título, autor, gênero e área | Passou |
 | Scanner JS | `frontend/tests/qr-scanner.test.js` | callback e foco da câmera | Passou |
 
-## 25.2 Resultado atual reproduzido
+## 25.2 Resultado reproduzido em 04/10/2026
 
 Com `.venv312`:
 
 ```text
-Backend completo: 30 passed, 7 failed, 3 warnings
-ISBN isolado: 24 passed, 1 warning
+Backend completo: 32 passed, 6 failed, 3 warnings
+ISBN/Vision isolado: 25 passed, 1 warning
 Frontend books ISBN: passed
 Frontend qr scanner: passed
 ```
+
+As seis falhas na execução completa foram quatro testes de login e dois testes de reconexão do Supabase. O teste que antes exigia um `backend/.env` foi atualizado para representar Secrets do Codespace e passou. O teste real de Vision usou frame sintético, não a câmera física.
 
 Os testes não comprovam câmera física, deploy, carga real ou segurança completa.
 
@@ -1433,9 +1449,9 @@ Exemplo: `test_env_loading.py` exige um arquivo `.env`, mas o ambiente real usa 
 | Health check Supabase | Implementada e comprovada | `app.py` | `/api/health` retornou banco conectado |
 | CRUD de livros | Implementada, mas E2E não totalmente testada | `books.py`, `books.js` | rotas e UI presentes; testes de IDs/fallback |
 | Cadastro de exemplares | Implementada e testada parcialmente | `_build_exemplar_meta()` | teste de IDs distintos |
-| Busca manual ISBN | Implementada e comprovada | `books.py`, `books.js` | 24 testes e teste frontend |
-| Groq textual | Implementada parcialmente | `_groq_lookup()` | código e testes mockados; disponibilidade depende da chave |
-| Groq Vision | Implementada parcialmente | `_groq_isbn_from_image()`, endpoint | frame sem ISBN testado; foto real não confirmada |
+| Busca manual ISBN | Implementada e comprovada | `books.py`, `books.js` | 25 testes backend, teste frontend e consulta real HTTP 200 |
+| Groq textual | Chamada real confirmada nesta sessão | `_groq_lookup()` | modo scanner recebeu HTTP 200; os dados finais também combinam fontes bibliográficas |
+| Groq Vision | Chamada isolada confirmada com frame sintético | `_groq_isbn_from_image()`, endpoint | reconheceu `9788532511010`; câmera física não confirmada |
 | Prioridade bibliográfica | Implementada e comprovada por testes | helpers de metadata | consenso/conflito testados |
 | Scanner navegador | Implementada parcialmente | `qr-scanner.js` | teste callback; câmera física não confirmada |
 | Fallback PyZbar | Implementada condicionalmente | `scanner/routes.py` | requer `libzbar0` no sistema |
@@ -1547,9 +1563,9 @@ Exemplo: `test_env_loading.py` exige um arquivo `.env`, mas o ambiente real usa 
 
 **Problema:** um modelo Vision pode retornar `model_not_found`.  
 **Causa:** catálogo/permissão da conta pode não incluir o modelo escolhido.  
-**Impacto:** endpoint Vision retorna 502 e o frontend desativa novas tentativas Vision naquela sessão.  
-**Tratamento:** modelo foi separado em `GROQ_VISION_MODEL`, erros repetidos foram interrompidos e fallback local foi mantido.  
-**Estado:** o modelo deve existir e estar habilitado na conta.
+**Impacto observado:** modelos indisponíveis podem causar 502. Em 04/10, o navegador também reportou limite de chamadas do Groq.
+**Estado verificado em 04/10:** uma chamada isolada posterior foi aceita e reconheceu um ISBN num frame sintético; câmera física e disponibilidade contínua não foram confirmadas.
+**Tratamento atual:** intervalo Vision de 5 segundos e espera crescente após falha; os leitores locais permanecem disponíveis. A conta ainda precisa permitir o modelo configurado.
 
 ## 29.5 Falta de autorização server-side
 
@@ -1797,9 +1813,9 @@ Use a seção 32, separando claramente evoluções futuras do que já existe.
 | Backend inicia | CONCLUÍDO | `app.py` executado |
 | Supabase acessível no ambiente | CONCLUÍDO nesta execução | `/api/health` retornou conectado |
 | Cadastro de livros | PARCIAL | Código e rotas existem; E2E remoto não foi completo |
-| Busca manual ISBN | CONCLUÍDO e testado | `24 passed`, teste frontend passou |
+| Busca manual ISBN | CONCLUÍDO e testado | `25 passed` em 04/10; teste frontend passou |
 | Scanner QR/barcode | PARCIAL | código e callback testados; câmera física não confirmada |
-| Groq Vision | PARCIAL | endpoint e frame sem ISBN testados; leitura real não confirmada |
+| Groq Vision | PARCIAL | chamada isolada reconheceu ISBN em frame sintético; webcam física não confirmada |
 | Empréstimos | PARCIAL | código e rotas existem; suíte não é E2E completa |
 | Devoluções | PARCIAL | regra e rota existem; conferência do aluno é opcional |
 | Renovações | CONCLUÍDO no código | rota implementada; limite não existe |
@@ -2509,10 +2525,10 @@ blueprint
 | Área | Estado | Observação |
 |---|---|---|
 | Cadastro de livros | ✅ confirmado/parcial | Código completo; E2E remoto não completo |
-| ISBN manual | ✅ confirmado | 24 testes específicos e teste frontend passaram |
-| Scanner | ⚠️ parcial | callback testado; câmera física/barcode real não confirmados |
-| Groq textual | ⚠️ parcial | código integrado; depende de chave/modelo e fonte externa |
-| Groq Vision | ⚠️ parcial | endpoint e frame vazio testados; ISBN real em câmera não confirmado |
+| ISBN manual | ✅ confirmado | 25 testes específicos, teste frontend e consulta real HTTP 200 |
+| Scanner | ⚠️ parcial | callback testado; câmera física não confirmada |
+| Groq textual | ✅ chamada real confirmada | modo scanner e manual responderam HTTP 200 para o mesmo ISBN |
+| Groq Vision | ⚠️ parcial | chamada real isolada reconheceu ISBN em frame sintético; câmera física não testada |
 | Empréstimos | ⚠️ parcial | rotas/regras presentes; cobertura E2E limitada |
 | Devoluções | ⚠️ parcial | implementada; conferência de aluno é opcional |
 | Renovações | ✅ no código | sem limite máximo observado |
@@ -2523,8 +2539,8 @@ blueprint
 | Supabase | ✅ confirmado no ambiente | health retornou conectado em 02/10/2026 |
 | QR Code | ⚠️ parcial | geração/resolução implementadas; dependências/câmera variam |
 | Relatórios | ⚠️ parcial | JSON, gráficos, mensal e CSV implementados |
-| Testes específicos | ✅ confirmado | ISBN 24 passed; frontend 2 passed |
-| Testes completos | ⚠️ parcial | 30 passed, 7 failed |
+| Testes específicos | ✅ confirmado | ISBN/Vision 25 passed; frontend 2 passed |
+| Testes completos | ⚠️ parcial | 32 passed, 6 failed, 3 warnings em 04/10/2026 |
 | Deploy | ❓ não confirmado | sem configuração operacional encontrada |
 | Fallback JSON | ⚠️ parcial | existe em módulos, mas pode ser bloqueado pelo guard do app |
 | Autorização server-side | ❌ não implementada no código observado | UI esconde menus, APIs não impõem papel |

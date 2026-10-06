@@ -21,3 +21,51 @@ def test_list_books_falls_back_to_local_data_when_supabase_is_unavailable(monkey
     data = json.loads(response.get_data(as_text=True))
     assert isinstance(data, list)
     assert data
+
+
+def test_delete_book_with_loan_history_does_not_delete_book_or_touch_students(monkeypatch):
+    queried_tables = []
+
+    class Query:
+        def __init__(self, table):
+            self.table = table
+            self.action = "select"
+
+        def select(self, *_columns):
+            self.action = "select"
+            return self
+
+        def eq(self, *_args):
+            return self
+
+        def update(self, _payload):
+            self.action = "update"
+            return self
+
+        def delete(self):
+            self.action = "delete"
+            return self
+
+    class Client:
+        def table(self, name):
+            queried_tables.append(name)
+            return Query(name)
+
+    def fake_sb_exec(query):
+        if query.table == "emprestimos":
+            return [{"id": "loan-1", "devolvido_em": "2026-10-01"}]
+        if query.action == "delete":
+            raise AssertionError("A exclusão física apagaria o histórico em cascata")
+        return []
+
+    monkeypatch.setattr(books_module, "get_client", lambda: Client())
+    monkeypatch.setattr(books_module, "sb_exec", fake_sb_exec)
+    monkeypatch.setattr(books_module, "table_ok", lambda *_args: True)
+    monkeypatch.setattr(books_module, "has_deleted_at", lambda *_args: False)
+
+    with app_module.app.test_request_context("/api/books/book-1", method="DELETE"):
+        response, status = books_module.delete_book("book-1")
+
+    assert status == 409
+    assert "histórico" in response.get_json()["error"]
+    assert "alunos" not in queried_tables

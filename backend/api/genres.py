@@ -1,4 +1,5 @@
 """api/genres.py — CRUD de gêneros com fallback JSON local."""
+from collections import Counter
 from flask import Blueprint, request, jsonify
 from pathlib import Path
 from utils import get_client, sb_exec, new_id
@@ -17,11 +18,14 @@ def list_genres():
         try: genres = sb_exec(sb.table("generos").select("*").order("nome"))
         except: genres = read_json(GENR_FILE)
     else: genres = read_json(GENR_FILE)
-    books = read_json(BOOKS_FILE)
+
+    try:
+        books = sb_exec(sb.table("livros").select("genero_id"))
+    except Exception:
+        books = read_json(BOOKS_FILE)
+    book_counts = Counter(book.get("genero_id") for book in books if book.get("genero_id"))
     for g in genres:
-        try: count = len(sb_exec(sb.table("livros").select("id").eq("genero_id",g["id"])))
-        except: count = sum(1 for b in books if b.get("genero_id")==g["id"])
-        g["total_livros"] = count
+        g["total_livros"] = book_counts.get(g["id"], 0)
     return jsonify(genres)
 
 

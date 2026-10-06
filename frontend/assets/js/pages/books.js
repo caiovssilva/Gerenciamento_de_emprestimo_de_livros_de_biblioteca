@@ -251,12 +251,32 @@ async function saveBook() {
 }
 
 async function deleteBook(id) {
-  if (!confirm("Excluir este livro do acervo?")) return;
+  const book = Store.bookById(id);
+  const title = book?.titulo || book?.title || "este livro";
+  if (!confirm(`Excluir "${title}" do acervo?`)) return;
   try {
     await API.books.delete(id);
     Utils.toast("Livro excluído.","info");
     await syncData(); Charts.refresh();
   } catch(e) { Utils.toast(e.message,"error"); }
+}
+
+async function deleteExemplar(bookId, exemplarCode) {
+  const book = Store.bookById(bookId);
+  if (!book) return;
+  const title = book.titulo || book.title || "este livro";
+  if (!confirm(`Excluir somente o exemplar #${exemplarCode} de "${title}"? O QR desta cópia deixará de ser aceito; os demais exemplares serão mantidos.`)) return;
+
+  try {
+    await API.books.deleteExemplar(bookId, exemplarCode);
+    await syncData();
+    Charts.refresh();
+    if (Store.bookById(bookId)) showExemplares(bookId);
+    else Utils.closeModal("modal-exemplares");
+    Utils.toast(`Exemplar #${exemplarCode} excluído.`, "success");
+  } catch (error) {
+    Utils.toast(error.message || "Não foi possível excluir o exemplar.", "error");
+  }
 }
 
 function showExemplares(bookId) {
@@ -269,8 +289,10 @@ function showExemplares(bookId) {
   const loanMap = {};
   loans.filter(l=>l.livro_id===bookId&&!l.devolvido_em).forEach(l=>{loanMap[l.exemplar]=l;});
 
-  const total = book.exemplares||book.copies||1;
-  const all   = Array.from({length:total},(_,i)=>String(i+1).padStart(3,"0"));
+  const all = Array.isArray(book.exemplares_meta) && book.exemplares_meta.length
+    ? book.exemplares_meta.map(item => String(item.code))
+    : Array.from({length:book.exemplares||book.copies||1},(_,i)=>String(i+1).padStart(3,"0"));
+  const canDelete = !isLibrarian();
 
   const html = all.map(ex => {
     const loan = loanMap[ex];
@@ -285,10 +307,14 @@ function showExemplares(bookId) {
         <div style="display:flex;align-items:center;gap:6px;">
           ${tag}
           <button class="btn btn-sm btn-success" onclick="openDevolution('${loan.id}');Utils.closeModal('modal-exemplares')">Devolver</button>
+          ${canDelete ? `<button class="btn btn-sm btn-danger" type="button" title="Devolva antes de excluir" aria-label="Exemplar #${ex} emprestado" disabled><i class="ti ti-trash"></i></button>` : ""}
         </div>
       </div>`;
     }
-    return `<div class="exemplar-item"><span class="exemplar-code">#${ex}</span><span class="badge badge-green" style="margin-left:8px;">Disponível</span></div>`;
+    return `<div class="exemplar-item">
+      <span><span class="exemplar-code">#${ex}</span><span class="badge badge-green" style="margin-left:8px;">Disponível</span></span>
+      ${canDelete ? `<button class="btn btn-sm btn-danger" type="button" title="Excluir somente o exemplar #${ex}" aria-label="Excluir exemplar #${ex}" onclick="deleteExemplar('${bookId}','${ex}')"><i class="ti ti-trash"></i></button>` : ""}
+    </div>`;
   }).join("");
 
   Utils.el("exemplares-list").innerHTML = `<div class="exemplar-list">${html}</div>`;

@@ -45,6 +45,7 @@ const API = {
     create: body             => apiFetch("/books/",      { method:"POST",   body:JSON.stringify(body) }),
     update: (id,body)        => apiFetch(`/books/${id}`, { method:"PUT",    body:JSON.stringify(body) }),
     delete: id               => apiFetch(`/books/${id}`, { method:"DELETE" }),
+    deleteExemplar: (id,code) => apiFetch(`/books/${id}/exemplars/${encodeURIComponent(code)}`, { method:"DELETE" }),
   },
   students: {
     list:      (q="",cls="",sala="") => apiFetch(`/students/?q=${encodeURIComponent(q)}&class=${encodeURIComponent(cls)}&sala_id=${encodeURIComponent(sala)}`),

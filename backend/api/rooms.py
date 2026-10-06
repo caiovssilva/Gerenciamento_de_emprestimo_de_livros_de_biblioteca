@@ -1,8 +1,9 @@
 """api/rooms.py — CRUD de salas com fallback JSON local."""
+from collections import Counter
 from flask import Blueprint, request, jsonify
 from pathlib import Path
 from utils import get_client, sb_exec, new_id
-from api._helpers import read_json, write_json, table_ok, is_offline_error
+from api._helpers import read_json, write_json, table_ok, has_deleted_at, is_offline_error
 
 rooms_bp    = Blueprint("rooms", __name__)
 DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
@@ -17,11 +18,17 @@ def list_rooms():
         try: rooms = sb_exec(sb.table("salas").select("*").order("nome"))
         except: rooms = read_json(ROOMS_FILE)
     else: rooms = read_json(ROOMS_FILE)
-    alunos = read_json(ALUNOS_FILE)
+
+    try:
+        students_query = sb.table("alunos").select("sala_id")
+        if has_deleted_at(sb, "alunos"):
+            students_query = students_query.is_("deleted_at", "null")
+        students = sb_exec(students_query)
+    except Exception:
+        students = [student for student in read_json(ALUNOS_FILE) if not student.get("deleted_at")]
+    student_counts = Counter(student.get("sala_id") for student in students if student.get("sala_id"))
     for r in rooms:
-        try: count = len(sb_exec(sb.table("alunos").select("id").eq("sala_id",r["id"])))
-        except: count = sum(1 for a in alunos if a.get("sala_id")==r["id"])
-        r["total_alunos"] = count
+        r["total_alunos"] = student_counts.get(r["id"], 0)
     return jsonify(rooms)
 
 

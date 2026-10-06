@@ -537,6 +537,31 @@ def _build_exemplar_meta(book_id: str, total: int) -> list[dict]:
     return copies
 
 
+def _metadata_for_existing_copies(book: dict) -> list[dict]:
+    book_id = str(book.get("id", ""))
+    total = max(1, int(book.get("exemplares", 1) or 1))
+    exemplar_ids = book.get("exemplares_ids") or []
+    metadata = [dict(item) for item in (book.get("exemplares_meta") or [])]
+
+    if not metadata:
+        for index in range(total):
+            default_code = str(index + 1).zfill(3)
+            exemplar_id = str(exemplar_ids[index]) if index < len(exemplar_ids) else f"{book_id}-EX-{default_code}-{new_id()}"
+            match = re.search(r"-EX-(\d+)-", exemplar_id)
+            code = match.group(1) if match else default_code
+            qr_data = f"EXEMPLAR-{exemplar_id}" if match else f"EXEMPLAR-{book_id}-EX-{code}-{exemplar_id}"
+            metadata.append({"id": exemplar_id, "code": code, "qr_data": qr_data})
+
+    for item in metadata:
+        code = str(item.get("code", "")).zfill(3)
+        item["code"] = code
+        if not item.get("id"):
+            item["id"] = f"{book_id}-EX-{code}-{new_id()}"
+        if not item.get("qr_data"):
+            item["qr_data"] = f"EXEMPLAR-{item['id']}"
+    return metadata
+
+
 @books_bp.route("/", methods=["GET"])
 def list_books():
     q     = request.args.get("q", "").strip().lower()
@@ -662,34 +687,162 @@ def update_book(book_id):
     for k in ["id","criado_em","generos","genero_nome","genero_cor","genero_icone"]: body.pop(k,None)
     sb = get_client()
     if table_ok(sb, "livros"):
-        try: rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
+        try:
+            current_rows = sb_exec(sb.table("livros").select("*").eq("id", book_id))
+            if not current_rows: return jsonify({"error": "Livro não encontrado"}), 404
+            book = current_rows[0]
+            if "exemplares" in body:
+                try:
+                    body = _prepare_copy_count_update(book, body)
+                except ValueError as exc:
+                    return jsonify({"error": str(exc)}), 409
+            rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
         except Exception as e:
             if "genero_id" in str(e): body.pop("genero_id",None); rows = sb_exec(sb.table("livros").update(body).eq("id", book_id))
             elif is_offline_error(e):
                 books=read_json(BOOKS_FILE); rows=[]
                 for b in books:
-                    if b.get("id")==book_id: b.update(body); rows=[b]; break
+                    if b.get("id")==book_id:
+                        if "exemplares" in body:
+                            try:
+                                body = _prepare_copy_count_update(b, body)
+                            except ValueError as exc:
+                                return jsonify({"error": str(exc)}), 409
+                        b.update(body); rows=[b]; break
                 write_json(BOOKS_FILE,books)
             else: raise
         if not rows: return jsonify({"error": "Livro não encontrado"}), 404
         return jsonify(rows[0])
     books=read_json(BOOKS_FILE)
     for b in books:
-        if b.get("id")==book_id: b.update(body); write_json(BOOKS_FILE,books); return jsonify(b)
+        if b.get("id")==book_id:
+            if "exemplares" in body:
+                try:
+                    body = _prepare_copy_count_update(b, body)
+                except ValueError as exc:
+                    return jsonify({"error": str(exc)}), 409
+            b.update(body); write_json(BOOKS_FILE,books); return jsonify(b)
     return jsonify({"error": "Livro não encontrado"}), 404
+
+
+def _prepare_copy_count_update(book: dict, body: dict) -> dict:
+    try:
+        requested_total = max(1, int(body.get("exemplares", book.get("exemplares", 1))))
+    except (TypeError, ValueError):
+        requested_total = max(1, int(book.get("exemplares", 1) or 1))
+
+    metadata = _metadata_for_existing_copies(book)
+    if requested_total < len(metadata):
+        raise ValueError("Reduza a quantidade removendo cada exemplar pelo modal de exemplares para preservar seus QRs.")
+
+    used_codes = {str(item["code"]) for item in metadata}
+    next_code = max((int(code) for code in used_codes if code.isdigit()), default=0) + 1
+    while len(metadata) < requested_total:
+        code = str(next_code).zfill(3)
+        next_code += 1
+        if code in used_codes:
+            continue
+        exemplar_id = f"{book['id']}-EX-{code}-{new_id()}"
+        metadata.append({"id": exemplar_id, "code": code, "qr_data": f"EXEMPLAR-{exemplar_id}"})
+        used_codes.add(code)
+
+    return {
+        **body,
+        "exemplares": len(metadata),
+        "exemplares_meta": metadata,
+        "exemplares_ids": [item["id"] for item in metadata],
+    }
 
 
 @books_bp.route("/<book_id>", methods=["DELETE"])
 def delete_book(book_id):
     sb = get_client()
-    try: ativos = sb_exec(sb.table("emprestimos").select("id").eq("livro_id",book_id).is_("devolvido_em","null"))
-    except: ativos = [l for l in read_json(LOAN_FILE) if l.get("livro_id")==book_id and not l.get("devolvido_em")]
+    try: loans = sb_exec(sb.table("emprestimos").select("id", "devolvido_em").eq("livro_id",book_id))
+    except: loans = [l for l in read_json(LOAN_FILE) if l.get("livro_id")==book_id]
+    ativos = [loan for loan in loans if not loan.get("devolvido_em")]
     if ativos: return jsonify({"error": "Livro possui empréstimos ativos."}), 409
     if table_ok(sb, "livros"):
         try:
-            if has_deleted_at(sb, "livros"): sb_exec(sb.table("livros").update({"deleted_at":today_str()}).eq("id",book_id))
-            else: sb_exec(sb.table("livros").delete().eq("id",book_id))
+            if has_deleted_at(sb, "livros"):
+                sb_exec(sb.table("livros").update({"deleted_at":today_str()}).eq("id",book_id))
+            else:
+                if loans:
+                    return jsonify({"error": "Livro possui histórico de empréstimos e não pode ser excluído sem apagar o histórico."}), 409
+                sb_exec(sb.table("livros").delete().eq("id",book_id))
             return jsonify({"success": True})
         except: pass
+    if loans:
+        return jsonify({"error": "Livro possui histórico de empréstimos e não pode ser excluído sem apagar o histórico."}), 409
     books=read_json(BOOKS_FILE); write_json(BOOKS_FILE,[b for b in books if b.get("id")!=book_id])
     return jsonify({"success": True})
+
+
+@books_bp.route("/<book_id>/exemplars/<exemplar_code>", methods=["DELETE"])
+def delete_exemplar(book_id, exemplar_code):
+    sb = get_client()
+    book = None
+    if table_ok(sb, "livros"):
+        try:
+            rows = sb_exec(sb.table("livros").select("*").eq("id", book_id))
+            book = rows[0] if rows else None
+        except Exception:
+            book = None
+    if book is None:
+        book = next((item for item in read_json(BOOKS_FILE) if item.get("id") == book_id), None)
+    if book is None:
+        return jsonify({"error": "Livro não encontrado."}), 404
+
+    total = max(1, int(book.get("exemplares", 1) or 1))
+    exemplar_ids = book.get("exemplares_ids") or []
+    metadata = book.get("exemplares_meta") or [
+        {
+            "id": exemplar_ids[index] if index < len(exemplar_ids) else f"{book_id}-{str(index + 1).zfill(3)}",
+            "code": str(index + 1).zfill(3),
+            "qr_data": f"EXEMPLAR-{book_id}-EX-{str(index + 1).zfill(3)}-{exemplar_ids[index] if index < len(exemplar_ids) else f'{book_id}-{str(index + 1).zfill(3)}'}",
+        }
+        for index in range(total)
+    ]
+    target = next((item for item in metadata if str(item.get("code", "")) == str(exemplar_code)), None)
+    if target is None:
+        return jsonify({"error": f"Exemplar #{exemplar_code} não encontrado."}), 404
+    if len(metadata) <= 1:
+        return jsonify({"error": "Não é possível remover o último exemplar. Exclua o livro pelo acervo, se apropriado."}), 409
+
+    try:
+        loans = sb_exec(sb.table("emprestimos").select("exemplar", "exemplar_id", "devolvido_em").eq("livro_id", book_id))
+    except Exception:
+        loans = [loan for loan in read_json(LOAN_FILE) if loan.get("livro_id") == book_id]
+    target_ids = {str(target.get("id", "")), str(target.get("qr_data", "")), f"EXEMPLAR-{target.get('id', '')}"}
+    has_active_loan = any(
+        not loan.get("devolvido_em")
+        and (str(loan.get("exemplar", "")) == str(exemplar_code) or str(loan.get("exemplar_id", "")) in target_ids)
+        for loan in loans
+    )
+    if has_active_loan:
+        return jsonify({"error": f"O exemplar #{exemplar_code} está emprestado e não pode ser removido."}), 409
+
+    remaining = [item for item in metadata if str(item.get("code", "")) != str(exemplar_code)]
+    payload = {
+        "exemplares": len(remaining),
+        "exemplares_meta": remaining,
+        "exemplares_ids": [item.get("id") for item in remaining if item.get("id")],
+    }
+
+    if table_ok(sb, "livros"):
+        try:
+            sb_exec(sb.table("livros").update(payload).eq("id", book_id))
+        except Exception as exc:
+            if not is_offline_error(exc):
+                raise
+    updated_book = {**book, **payload}
+    local_books = read_json(BOOKS_FILE)
+    local_match = False
+    for local_book in local_books:
+        if local_book.get("id") == book_id:
+            local_book.update(payload)
+            local_match = True
+            break
+    if local_match or not table_ok(sb, "livros"):
+        write_json(BOOKS_FILE, local_books)
+
+    return jsonify(updated_book)

@@ -502,6 +502,18 @@ function parseExemplarCode(code) {
   return { bookId, exemplar, exemplarId: `EXEMPLAR-${rest}` };
 }
 
+function isKnownExemplarQr(book, parsed, scannedCode) {
+  const metadata = Array.isArray(book?.exemplares_meta) ? book.exemplares_meta : [];
+  if (metadata.length) {
+    return metadata.some(item => String(item.code) === parsed.exemplar &&
+      (String(item.qr_data || "") === scannedCode || `EXEMPLAR-${item.id}` === scannedCode));
+  }
+
+  const total = Number(book?.exemplares || book?.copies || 1);
+  const codeNumber = Number(parsed.exemplar);
+  return Number.isInteger(codeNumber) && codeNumber >= 1 && codeNumber <= total;
+}
+
 function _findBookByIdOrIsbn(identifier) {
   const books = Store.books();
   // Busca exata por ID
@@ -571,10 +583,19 @@ function lookupBook() {
   
   const loans  = Store.loans();
   const active = loans.filter(l => l.livro_id === found.id && !l.devolvido_em);
-  const total  = found.exemplares||found.copies||1;
+  const copyCodes = Array.isArray(found.exemplares_meta) && found.exemplares_meta.length
+    ? found.exemplares_meta.map(item => String(item.code))
+    : Array.from({length:found.exemplares||found.copies||1}, (_, i) => String(i + 1).padStart(3, "0"));
+  const total  = copyCodes.length;
   const avail  = total - active.length;
-  const dispEx = Array.from({length: total}, (_, i) => String(i+1).padStart(3, "0")).filter(ex => !active.find(l => l.exemplar === ex));
+  const dispEx = copyCodes.filter(ex => !active.find(l => String(l.exemplar) === ex));
   const genBadge = found.genero_nome ? `<span class="badge" style="background:${found.genero_cor||"#6366f1"}22;color:${found.genero_cor||"#6366f1"}">${found.genero_nome}</span>` : "";
+
+  if (parsedExemplar && !isKnownExemplarQr(found, parsedExemplar, inputVal)) {
+    if (infoEl) infoEl.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> QR do exemplar removido ou inválido.</span>`;
+    pendingLoan.book = null;
+    return;
+  }
   
   // Se foi escaneado um exemplar específico
   if (scannedExemplar && dispEx.includes(scannedExemplar)) {
@@ -831,7 +852,10 @@ function resolveQRCode(code) {
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
     const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
-    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+    if (book && isKnownExemplarQr(book, parsedExemplar, normalized)) {
+      return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+    }
+    return { type: "unknown", data: null };
   }
   const student = Store.students().find(s => s.id === normalized || (s.card||s.carteirinha||"") === normalized);
   if (student) return { type: "student", data: student };
@@ -853,7 +877,10 @@ async function resolveQRCodeAsync(code) {
   const parsedExemplar = parseExemplarCode(normalized);
   if (parsedExemplar) {
     const book = _findBookByIdOrIsbn(parsedExemplar.bookId);
-    if (book) return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+    if (book && isKnownExemplarQr(book, parsedExemplar, normalized)) {
+      return { type: "book", data: { ...book, exemplar: parsedExemplar.exemplar, exemplarId: parsedExemplar.exemplarId, uniqueQrCode: normalized } };
+    }
+    return { type: "unknown", data: null };
   }
 
   try {

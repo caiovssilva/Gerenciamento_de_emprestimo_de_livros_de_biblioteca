@@ -212,6 +212,20 @@ ADMIN_CARD_PREFIX = "ADMIN-"
 ADMIN_LOGIN_DEFAULT = "admin"
 
 
+def _is_known_exemplar_qr(book: dict, code: str, exemplar_code: str) -> bool:
+    metadata = book.get("exemplares_meta") or []
+    if metadata:
+        return any(
+            str(item.get("code", "")) == exemplar_code
+            and code in {str(item.get("qr_data", "")), f"EXEMPLAR-{item.get('id', '')}"}
+            for item in metadata
+        )
+    try:
+        return 1 <= int(exemplar_code) <= max(1, int(book.get("exemplares", 1) or 1))
+    except (TypeError, ValueError):
+        return False
+
+
 def _resolve_qr(code: str) -> dict:
     """Tenta encontrar o código como ID/ISBN de livro, carteirinha de aluno, QR único por exemplar ou cartão de admin."""
     from pathlib import Path
@@ -255,6 +269,8 @@ def _resolve_qr(code: str) -> dict:
         if books:
             data = dict(books[0])
             if exemplar_code or exemplar_id:
+                if not _is_known_exemplar_qr(data, code, exemplar_code):
+                    return {"type": "unknown", "data": None}
                 data["exemplar_code"] = exemplar_code
                 data["exemplar_id"] = exemplar_id
             return {"type": "book", "data": data}
@@ -279,6 +295,8 @@ def _resolve_qr(code: str) -> dict:
         if books:
             data = dict(books[0])
             if exemplar_code or exemplar_id:
+                if not _is_known_exemplar_qr(data, code, exemplar_code):
+                    return {"type": "unknown", "data": None}
                 data["exemplar_code"] = exemplar_code
                 data["exemplar_id"] = exemplar_id
             return {"type": "book", "data": data}

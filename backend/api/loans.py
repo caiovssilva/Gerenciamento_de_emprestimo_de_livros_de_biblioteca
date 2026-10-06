@@ -11,7 +11,7 @@ BOOKS_FILE  = DATA_DIR / "livros.json"
 ALUNOS_FILE = DATA_DIR / "alunos.json"
 
 
-def _available_copies(sb, book_id, total, exemplar_ids=None):
+def _available_copies(sb, book_id, total, exemplar_ids=None, exemplares_meta=None):
     try:
         rows = sb_exec(sb.table("emprestimos").select("exemplar","exemplar_id").eq("livro_id",book_id).is_("devolvido_em","null"))
     except:
@@ -19,6 +19,14 @@ def _available_copies(sb, book_id, total, exemplar_ids=None):
 
     usados_codigos = {str(r.get("exemplar", "")).strip() for r in rows if str(r.get("exemplar", "")).strip()}
     usados_ids = {str(r.get("exemplar_id", "")).strip() for r in rows if str(r.get("exemplar_id", "")).strip()}
+
+    if exemplares_meta:
+        return [
+            {"code": str(item.get("code") or str(idx + 1).zfill(3)), "id": item.get("id")}
+            for idx, item in enumerate(exemplares_meta)
+            if str(item.get("id", "")) not in usados_ids
+            and str(item.get("code") or str(idx + 1).zfill(3)) not in usados_codigos
+        ]
 
     if exemplar_ids:
         return [
@@ -118,7 +126,13 @@ def create_loan():
     try:    books = sb_exec(sb.table("livros").select("*").eq("id",book_id))
     except: books = [b for b in read_json(BOOKS_FILE) if b.get("id")==book_id]
     if not books: return jsonify({"error":"Livro não encontrado"}),404
-    avail = _available_copies(sb, book_id, books[0].get("exemplares", 1), books[0].get("exemplares_ids"))
+    avail = _available_copies(
+        sb,
+        book_id,
+        books[0].get("exemplares", 1),
+        books[0].get("exemplares_ids"),
+        books[0].get("exemplares_meta"),
+    )
     if not avail: return jsonify({"error":"Nenhum exemplar disponível no momento"}),409
     exemplar_escolhido = str(body.get("exemplar","")).strip()
     if exemplar_escolhido:

@@ -17,7 +17,6 @@ const QRScanner = (() => {
   let _decoding = false;
   let _retryAt = 0;
   let _barcodeDetector = null;
-  let _escHandler = null;
   let _videoEl = null;
   let _canvasEl = null;
   let _statusEl = null;
@@ -52,26 +51,29 @@ const QRScanner = (() => {
 
   function _buildUI() {
     const root = document.createElement("div");
-    root.id = "cam-container";
+    root.id = "cam-overlay";
+    root.className = "overlay camera-overlay";
     root.innerHTML = `
-      <h3><i class="ti ti-scan"></i> Aponte para o código</h3>
-      <div class="cam-toolbar">
-        <label for="cam-device-select">Câmera</label>
-        <select id="cam-device-select"></select>
-        <button class="cam-switch-btn" type="button" title="Trocar câmera">
-          <span class="cam-switch-icon"><i class="ti ti-switch-vertical"></i></span>
-          <span>Trocar câmera</span>
+      <section id="cam-container" class="modal cam-dialog">
+        <h3><i class="ti ti-scan"></i> Aponte para o código</h3>
+        <div class="cam-toolbar">
+          <label for="cam-device-select">Câmera</label>
+          <select id="cam-device-select"></select>
+          <button class="cam-switch-btn" type="button" title="Trocar câmera">
+            <span class="cam-switch-icon"><i class="ti ti-switch-vertical"></i></span>
+            <span>Trocar câmera</span>
+          </button>
+        </div>
+        <div class="cam-viewport">
+          <video id="cam-video" autoplay playsinline muted></video>
+          <canvas id="cam-canvas" style="display:none;"></canvas>
+          <div class="cam-reticle"></div>
+        </div>
+        <p class="cam-status">Inicializando câmera...</p>
+        <button class="btn btn-danger cam-cancel-btn" type="button" aria-label="Fechar câmera">
+          <i class="ti ti-x"></i> Cancelar
         </button>
-      </div>
-      <div class="cam-viewport">
-        <video id="cam-video" autoplay playsinline muted></video>
-        <canvas id="cam-canvas" style="display:none;"></canvas>
-        <div class="cam-reticle"></div>
-      </div>
-      <p class="cam-status">Inicializando câmera...</p>
-      <button class="btn btn-danger cam-cancel-btn" type="button">
-        <i class="ti ti-x"></i> Cancelar
-      </button>`;
+      </section>`;
 
     document.body.appendChild(root);
     _container = root;
@@ -90,6 +92,7 @@ const QRScanner = (() => {
       await switchCamera(deviceId);
     });
 
+    Utils.openModal(root.id);
     return root;
   }
 
@@ -353,15 +356,15 @@ const QRScanner = (() => {
     clearInterval(_timer);
     _timer = null;
 
-    if (_escHandler) document.removeEventListener("keydown", _escHandler);
-    _escHandler = null;
-
     if (_stream) {
       _stream.getTracks().forEach((track) => track.stop());
       _stream = null;
     }
 
-    _container?.remove();
+    if (_container) {
+      if (_container.classList.contains("open")) Utils.closeModal(_container.id);
+      _container.remove();
+    }
     _container = null;
     _callback = null;
     _inputId = null;
@@ -396,11 +399,6 @@ const QRScanner = (() => {
       _frameIntervalMs = Math.max(500, Number(options.frameIntervalMs) || 1000);
       _nextFrameAt = 0;
       _buildUI();
-
-      _escHandler = (event) => {
-        if (event.key === "Escape") stop();
-      };
-      document.addEventListener("keydown", _escHandler);
 
       try {
         if (_statusEl) _statusEl.textContent = "Solicitando permissão da câmera...";

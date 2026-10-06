@@ -466,19 +466,27 @@ def book_card(book_id):
                     "exemplar": item.get("code", ""),
                 })
         else:
-            # Livro antigo, sem exemplares_meta ainda — gera um único cartão com o id do livro.
-            img_b64 = _build_card(
-                entity_type = "livro",
-                title       = book.get("titulo", ""),
-                subtitle    = f"Autor: {book.get('autor', '')}",
-                field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
-                field2      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
-                field3      = f"Exemplares: {total_exemplares}",
-                qr_data     = book["id"],
-                badge       = book.get("genero_nome", ""),
-                color       = "#1a4f8a",
-            )
-            cards.append({"image": img_b64, "filename": f"cartao-livro-{book_id[:8]}.png", "exemplar": ""})
+            exemplar_ids = book.get("exemplares_ids") or []
+            for index in range(max(1, int(total_exemplares or 1))):
+                exemplar_code = str(index + 1).zfill(3)
+                exemplar_id = exemplar_ids[index] if index < len(exemplar_ids) else f"{book_id}-{exemplar_code}"
+                qr_data = f"EXEMPLAR-{book_id}-EX-{exemplar_code}-{exemplar_id}"
+                img_b64 = _build_card(
+                    entity_type = "livro",
+                    title       = book.get("titulo", ""),
+                    subtitle    = f"Autor: {book.get('autor', '')}",
+                    field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
+                    field2      = f"Exemplar: {exemplar_code} de {total_exemplares}",
+                    field3      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
+                    qr_data     = qr_data,
+                    badge       = book.get("genero_nome", ""),
+                    color       = "#1a4f8a",
+                )
+                cards.append({
+                    "image": img_b64,
+                    "filename": f"cartao-livro-{book_id[:8]}-ex{exemplar_code}.png",
+                    "exemplar": exemplar_code,
+                })
 
         return jsonify({"cards": cards, "image": cards[0]["image"], "filename": cards[0]["filename"]})
     except ImportError as e:
@@ -653,7 +661,7 @@ def _build_card(entity_type, title, subtitle, field1, field2, field3,
         img = img.resize((900, 390), getattr(Image, "Resampling", Image).LANCZOS)
 
     buf = BytesIO()
-    img.save(buf, format="PNG", optimize=True)
+    img.save(buf, format="PNG", optimize=False, compress_level=3)
     b64 = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{b64}"
 

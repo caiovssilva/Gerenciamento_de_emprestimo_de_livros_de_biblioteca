@@ -59,6 +59,33 @@ def _find_student_by_ref(sb, student_ref):
     return local_students[0] if local_students else None
 
 
+def _matches_loan_exemplar_qr(loan, scanned_qr):
+    code = str(scanned_qr or "").strip()
+    prefix = "EXEMPLAR-"
+    if not code.startswith(prefix):
+        return False
+
+    rest = code[len(prefix):]
+    if "-EX-" not in rest:
+        return False
+    book_id, tail = rest.split("-EX-", 1)
+    parts = tail.split("-", 1)
+    exemplar_code = parts[0]
+    exemplar_id_suffix = parts[1] if len(parts) == 2 else ""
+
+    if book_id != str(loan.get("livro_id", "")) or exemplar_code != str(loan.get("exemplar", "")):
+        return False
+
+    loan_exemplar_id = str(loan.get("exemplar_id", "")).strip()
+    if loan_exemplar_id.startswith(prefix):
+        return code == loan_exemplar_id
+    if "-EX-" in loan_exemplar_id:
+        return rest == loan_exemplar_id
+    if loan_exemplar_id:
+        return exemplar_id_suffix == loan_exemplar_id
+    return True
+
+
 @loans_bp.route("/", methods=["GET"])
 def list_loans():
     sb     = get_client()
@@ -161,6 +188,12 @@ def return_loan(loan_id):
     except: loans = [l for l in read_json(LOANS_FILE) if l.get("id")==loan_id]
     if not loans: return jsonify({"error":"Empréstimo não encontrado"}),404
     if loans[0].get("devolvido_em"): return jsonify({"error":"Empréstimo já foi devolvido"}),409
+
+    exemplar_qr = body.get("exemplar_qr")
+    if not exemplar_qr:
+        return jsonify({"error":"Leia o QR do exemplar emprestado para confirmar a devolução."}),400
+    if not _matches_loan_exemplar_qr(loans[0], exemplar_qr):
+        return jsonify({"error":"O QR lido não corresponde ao exemplar deste empréstimo."}),403
 
     student_ref = body.get("student_id") or body.get("student_qr") or body.get("student_card") or body.get("carteirinha")
     if student_ref:

@@ -11,6 +11,7 @@ let pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
 let pendingDevolutionId = null;
 let pendingDevolutionStudentId = null;
 let pendingReturnLoanId = null;
+let pendingDevolutionQr = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 const THEME_STORAGE_KEY = "biblioteca-theme";
@@ -277,9 +278,8 @@ async function _finishLogin(user, showRoleToast) {
     : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
 
   _applyRolePermissions();
-
-  await syncAll();
   navigateTo(user.role === "librarian" ? "emprestimo" : "dashboard");
+  await syncAll();
 
   if (showRoleToast) {
     Utils.el("role-success-icon").style.color = "var(--green)";
@@ -385,7 +385,12 @@ function improveFormAccessibility() {
 
 // ── Sync ──────────────────────────────────────────────────────────────
 async function syncAll() {
-  await Promise.all([syncData(), syncRooms(), syncGenres()]);
+  await Promise.all([
+    syncData({ render: false }),
+    syncRooms({ render: false }),
+    syncGenres({ render: false }),
+  ]);
+  _renderActivePage();
 }
 
 function _renderActivePage() {
@@ -403,7 +408,7 @@ function _renderActivePage() {
   if (activePage === "relatorios") Charts.refresh();
 }
 
-async function syncData({ force = false } = {}) {
+async function syncData({ force = false, render = true } = {}) {
   if (document.hidden && !force) return;
   if (_syncInFlight && !force) return;
 
@@ -422,11 +427,11 @@ async function syncData({ force = false } = {}) {
     Store.setBooks(books); Store.setStudents(students); Store.setLoans(loans);
     _lastSuccessfulSyncTs = Date.now();
     if (st) st.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — ${new Date().toLocaleTimeString("pt-BR")}</span>`;
-    _renderActivePage();
+    if (render) _renderActivePage();
   } catch {
     if (st) st.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Offline — cache local</span>`;
     Store.loadLocal();
-    _renderActivePage();
+    if (render) _renderActivePage();
   } finally {
     _syncInFlight = false;
   }
@@ -703,25 +708,68 @@ function openDevolution(loanId, studentId = null) {
   const stud = Store.studentById(loan.aluno_id);
   pendingDevolutionId = loanId;
   pendingDevolutionStudentId = studentId || null;
+  pendingDevolutionQr = null;
   Utils.el("dev-info").innerHTML = `
     <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
     <br><small>Exemplar #${loan.exemplar} · Previsto: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
   Utils.el("dev-obs").value = "";
+  Utils.el("dev-qr-status").textContent = "Leia o QR do exemplar emprestado para liberar a confirmação.";
+  Utils.el("dev-confirm-btn").disabled = true;
   Utils.openModal("modal-devolution");
+}
+
+function _matchesDevolutionQr(loan, code) {
+  const parsed = parseExemplarCode(code);
+  if (!parsed || parsed.bookId !== String(loan.livro_id) || parsed.exemplar !== String(loan.exemplar)) return false;
+
+  const exemplarId = String(loan.exemplar_id || "").trim();
+  if (!exemplarId) return true;
+  if (exemplarId.startsWith("EXEMPLAR-")) return code === exemplarId;
+  if (exemplarId.includes("-EX-")) return code === `EXEMPLAR-${exemplarId}`;
+  return code === `EXEMPLAR-${exemplarId}` || code.endsWith(`-${exemplarId}`);
+}
+
+async function scanDevolutionQr() {
+  const loan = Store.loanById(pendingDevolutionId);
+  if (!loan || loan.devolvido_em) return;
+
+  const status = Utils.el("dev-qr-status");
+  status.textContent = "Aponte a câmera para o QR do exemplar emprestado.";
+  await QRScanner.start(null, (result) => {
+    const code = String(result?.primary || "").trim();
+    if (!_matchesDevolutionQr(loan, code)) {
+      pendingDevolutionQr = null;
+      status.textContent = "QR não corresponde a este exemplar. Tente novamente.";
+      Utils.el("dev-confirm-btn").disabled = true;
+      Utils.toast("Leia o QR do exemplar indicado na devolução.", "error");
+      return;
+    }
+
+    pendingDevolutionQr = code;
+    status.textContent = "QR do exemplar confirmado.";
+    Utils.el("dev-confirm-btn").disabled = false;
+    Utils.toast("Exemplar confirmado pelo QR.", "success");
+  });
 }
 
 async function confirmDevolution() {
   if (!pendingDevolutionId) return;
+  if (!pendingDevolutionQr) {
+    Utils.toast("Leia o QR do exemplar antes de confirmar.", "error");
+    return;
+  }
   const obs = Utils.el("dev-obs").value.trim();
   try {
     await API.loans.return(pendingDevolutionId, {
       observacao: obs,
       student_id: pendingDevolutionStudentId || null,
+      exemplar_qr: pendingDevolutionQr,
     });
     Utils.toast("Devolução registrada!", "success");
     Utils.closeModal("modal-devolution");
     pendingDevolutionId = null;
     pendingDevolutionStudentId = null;
+    pendingDevolutionQr = null;
     await syncData(); Charts.refresh();
     _refreshOpenStudentHistory();
     renderLoanScanPanel();
@@ -1117,8 +1165,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       _applyRolePermissions();
       scheduleSessionTimeout();
-      await syncAll();
       navigateTo(currentUser.role === "librarian" ? "emprestimo" : "dashboard");
+      await syncAll();
     }
   }
 

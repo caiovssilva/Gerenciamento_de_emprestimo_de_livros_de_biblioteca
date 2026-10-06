@@ -407,9 +407,13 @@
   <div class="modal-head"><h2>Registrar devolução</h2><button class="modal-close" onclick="Utils.closeModal('modal-devolution')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <div class="dev-info" id="dev-info"></div>
+    <div class="form-group">
+      <button class="btn btn-primary" type="button" onclick="scanDevolutionQr()"><i class="ti ti-scan"></i> Ler QR do exemplar</button>
+      <div id="dev-qr-status" role="status" aria-live="polite" style="margin-top:0.5rem;color:var(--muted);">Leia o QR do exemplar emprestado para liberar a confirmação.</div>
+    </div>
     <div class="form-group"><label>Observação (opcional)</label><input type="text" id="dev-obs" placeholder="Ex: livro em bom estado..."></div>
   </div>
-  <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-devolution')">Cancelar</button><button class="btn btn-success" onclick="confirmDevolution()"><i class="ti ti-check"></i>Confirmar devolução</button></div>
+  <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-devolution')">Cancelar</button><button class="btn btn-success" id="dev-confirm-btn" onclick="confirmDevolution()" disabled><i class="ti ti-check"></i>Confirmar devolução</button></div>
 </div></div>
 
 <!-- Renovação -->

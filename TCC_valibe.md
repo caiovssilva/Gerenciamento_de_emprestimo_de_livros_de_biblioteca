@@ -3,7 +3,7 @@
 **Arquivo:** `TCC_valibe.md`  
 **Data da análise inicial:** 02/10/2026
 
-**Última atualização verificada:** domingo, 04/10/2026, 20:59:52 UTC
+**Última atualização verificada:** terça-feira, 06/10/2026
 **Natureza do documento:** documentação técnica, guia de estudo e preparação para relatório escolar.
 
 > Apesar do nome do arquivo, este documento não afirma que o projeto é um TCC. O repositório apresenta um projeto escolar de gerenciamento de empréstimos de uma biblioteca. Quando uma informação não pôde ser comprovada, este documento usa a frase: **"Não foi possível confirmar esta informação no estado atual do projeto."**
@@ -23,6 +23,15 @@ A análise seguiu esta ordem de confiança:
 7. relatórios antigos somente como contexto.
 
 Quando uma documentação antiga divergia do código, o código atual foi considerado a referência principal. Números, estatísticas, credenciais, tokens e chaves não foram incluídos.
+
+## Atualização verificada em 06/10/2026
+
+Esta atualização registra a exigência de QR do exemplar no processo de devolução e os testes focados executados nessa data.
+
+- `openDevolution()` abre a confirmação com o botão desabilitado. `scanDevolutionQr()` só o habilita quando o QR lido identifica o mesmo livro e o mesmo número de exemplar do empréstimo.
+- `POST /api/loans/<loan_id>/return` exige `exemplar_qr` e valida livro, código do exemplar e identificador individual antes de gravar a devolução. QR ausente retorna HTTP 400; QR de outro exemplar retorna HTTP 403.
+- A geração de cartões para livros sem `exemplares_meta` agora produz um QR por cópia. Cartões físicos antigos com QR genérico precisam ser gerados/impressos novamente para atender à confirmação por exemplar.
+- Os testes focados de devolução, resolução QR e geração de cartões passaram: `7 passed`. Os quatro testes frontend disponíveis também passaram. A suíte backend completa não foi executada nesta atualização; o último resultado completo registrado continua sendo o de 04/10 (`32 passed, 6 failed, 3 warnings`).
 
 ## Atualização verificada em 04/10/2026
 
@@ -1030,7 +1039,7 @@ O cadastro de livro gera QR com o ID do livro por meio da geração automática.
 
 ## 15.2 QR de exemplar
 
-O exemplar possui `id`, `code` e `qr_data` no `exemplares_meta`. O formato interno observado começa com `EXEMPLAR-` e inclui referência do livro, código e identificador único.
+O exemplar possui `id`, `code` e `qr_data` no `exemplares_meta`. O formato interno observado começa com `EXEMPLAR-` e inclui referência do livro, código e identificador único. Esse QR individual também é obrigatório para confirmar a devolução do empréstimo correspondente. Para livros sem metadados de exemplares, a geração de cartões cria um código individual por cópia; cartões antigos com QR genérico devem ser reimpressos.
 
 ## 15.3 QR de aluno
 
@@ -1106,7 +1115,7 @@ O backend busca o livro, lê `exemplares`/`exemplares_ids`, remove exemplares us
 
 ## 16.5 Devolução
 
-`return_loan()` verifica se existe e se ainda está ativo, opcionalmente confere o aluno, grava data de devolução e observação.
+`openDevolution()` abre o modal de confirmação com o botão desabilitado. A pessoa precisa ler o QR individual do exemplar emprestado; o frontend confere o livro e o número do exemplar antes de liberar a confirmação. `return_loan()` exige o campo `exemplar_qr` e valida também o identificador do exemplar no backend: QR ausente retorna HTTP 400 e QR divergente retorna HTTP 403. Somente após essa validação a rota grava a data e a observação da devolução. A conferência de aluno continua opcional e independente do QR obrigatório do livro.
 
 ## 16.6 Renovação
 

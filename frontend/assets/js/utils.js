@@ -48,15 +48,23 @@ const Utils = {
     // Garante que o modal aberto mais recentemente fique por cima de outros já abertos
     // (independente da ordem em que aparecem no DOM, ex: histórico do aluno > devolução/renovação).
     const open = Utils.qsa(".overlay.open");
-    const maxZ = open.reduce((m,o)=>Math.max(m, parseInt(getComputedStyle(o).zIndex)||100), 100);
+    const baseZ = parseInt(getComputedStyle(el).zIndex) || 100;
+    const maxZ = open.reduce((m,o)=>Math.max(m, parseInt(getComputedStyle(o).zIndex)||100), baseZ);
     el.style.zIndex = String(maxZ + 1);
     el.classList.add("open");
+    _syncModalInteraction();
+    const dialog = el.querySelector(".modal") || el;
+    _focusModal(dialog);
   },
   closeModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove("open");
     el.style.zIndex = "";
+    _syncModalInteraction();
+    const previousFocus = _modalFocus.get(el);
+    _modalFocus.delete(el);
+    if (previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus();
   },
 
   statusBadge(status, dl = 0) {
@@ -73,9 +81,102 @@ const Utils = {
     `<tr><td colspan="99"><div class="empty-state"><i class="ti ${icon}"></i><p>${msg}</p></div></td></tr>`,
 };
 
-document.addEventListener("click", e => {
-  if (e.target.classList.contains("overlay")) { e.target.classList.remove("open"); e.target.style.zIndex = ""; }
+const _modalFocus = new WeakMap();
+const _modalInertState = new Map();
+
+function _topModal() {
+  return Utils.qsa(".overlay.open").reduce((top, overlay) => {
+    if (!top) return overlay;
+    return (parseInt(getComputedStyle(overlay).zIndex) || 100) >=
+      (parseInt(getComputedStyle(top).zIndex) || 100) ? overlay : top;
+  }, null);
+}
+
+function _syncModalInteraction() {
+  const top = _topModal();
+  document.body.classList.toggle("modal-open", Boolean(top));
+
+  if (top) {
+    [...document.body.children].forEach((child) => {
+      if (!_modalInertState.has(child)) {
+        _modalInertState.set(child, {
+          inert: child.inert,
+          ariaHidden: child.getAttribute("aria-hidden"),
+        });
+      }
+      const blocked = child !== top;
+      child.inert = blocked;
+      if (blocked) child.setAttribute("aria-hidden", "true");
+      else {
+        const state = _modalInertState.get(child);
+        if (state.ariaHidden === null) child.removeAttribute("aria-hidden");
+        else child.setAttribute("aria-hidden", state.ariaHidden);
+      }
+    });
+
+    const dialog = top.querySelector(".modal") || top;
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const heading = dialog.querySelector("h2");
+    if (heading?.id) dialog.setAttribute("aria-labelledby", heading.id);
+  } else {
+    _modalInertState.forEach((state, child) => {
+      child.inert = state.inert;
+      if (state.ariaHidden === null) child.removeAttribute("aria-hidden");
+      else child.setAttribute("aria-hidden", state.ariaHidden);
+    });
+    _modalInertState.clear();
+  }
+}
+
+function _focusableIn(dialog) {
+  return [...dialog.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )].filter((element) => !element.inert && element.getAttribute("aria-hidden") !== "true");
+}
+
+function _focusModal(dialog) {
+  const overlay = dialog.closest(".overlay");
+  if (overlay && !_modalFocus.has(overlay)) _modalFocus.set(overlay, document.activeElement);
+  const focusable = _focusableIn(dialog);
+  if (focusable.length) focusable[0].focus();
+  else {
+    if (!dialog.hasAttribute("tabindex")) dialog.setAttribute("tabindex", "-1");
+    dialog.focus();
+  }
+}
+
+document.addEventListener("click", (event) => {
+  if (event.target.classList.contains("overlay") && event.target === _topModal()) {
+    Utils.closeModal(event.target.id);
+  }
 });
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape") Utils.qsa(".overlay.open").forEach(o => { o.classList.remove("open"); o.style.zIndex = ""; });
+
+document.addEventListener("keydown", (event) => {
+  const overlay = _topModal();
+  if (!overlay) return;
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    Utils.closeModal(overlay.id);
+    return;
+  }
+  if (event.key !== "Tab") return;
+
+  const dialog = overlay.querySelector(".modal") || overlay;
+  const focusable = _focusableIn(dialog);
+  if (!focusable.length) {
+    event.preventDefault();
+    dialog.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
 });

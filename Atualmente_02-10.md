@@ -1,4 +1,12 @@
-# Relatorio atual do projeto - atualizado em 04/10/2026
+# Relatorio atual do projeto - atualizado em 06/10/2026
+
+## Registro de atualizacao em 06/10/2026
+
+- A devolucao agora exige ler o QR individual do exemplar emprestado. O botao de confirmacao permanece desabilitado ate que o leitor confirme o livro e o numero do exemplar corretos.
+- O endpoint `POST /api/loans/<loan_id>/return` exige `exemplar_qr` e valida tambem o identificador da copia. Sem QR, responde HTTP 400; com QR de outro exemplar, responde HTTP 403.
+- Cartoes de livros antigos sem metadados de exemplares agora sao gerados com um QR por copia. Cartoes fisicos antigos com QR generico precisam ser reimpressos.
+- Regressao focada: devolucao QR, resolucao de QR e geracao de cartoes `7 passed`; testes frontend `4 passed`.
+- A suite backend completa nao foi reexecutada em 06/10. O resultado anterior, de 04/10, permanece como referencia historica: `32 passed, 6 failed, 3 warnings`, com falhas de login e reconexao Supabase.
 
 ## Registro de atualizacao
 
@@ -18,7 +26,7 @@ Este registro atualiza fatos verificados nesta data. As secoes seguintes preserv
 
 ## 1. Resumo executivo
 
-Em 04/10/2026, os testes focados de ISBN/Vision passaram, assim como os dois testes frontend disponiveis. Uma chamada isolada ao Groq Vision reconheceu o ISBN de um frame sintetico; isso nao comprova leitura com webcam real. A suite backend completa teve 32 aprovados, 6 falhas e 3 avisos; as falhas estao em testes de login e reconexao do Supabase.
+Em 06/10/2026, a devolucao passou a exigir a leitura do QR individual do exemplar, com validacao no frontend e no backend. Os testes focados de QR e cartoes tiveram 7 aprovados, e os quatro testes frontend passaram. A suite backend completa nao foi reexecutada nesta data; em 04/10, ela teve 32 aprovados, 6 falhas e 3 avisos, com falhas em testes de login e reconexao do Supabase.
 
 O navegador havia reportado excesso de chamadas ao Groq. O scanner foi ajustado para aguardar 5 segundos entre requisicoes Vision e usar espera crescente apos falhas. O estado da camera fisica e da URL publica do Codespace permanece nao confirmado.
 

@@ -84,10 +84,10 @@ async function deleteGenre(id) {
   } catch(e) { Utils.toast(e.message,"error"); }
 }
 
-async function syncGenres() {
+async function syncGenres({ render = true } = {}) {
   try {
     const genres = await API.genres.list();
     Store.setGenres(genres);
-    renderGenres();
+    if (render && Utils.el("page-generos")?.classList.contains("active")) renderGenres();
   } catch(e) { console.warn("genres sync:", e.message); }
 }

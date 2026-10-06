@@ -14,10 +14,11 @@ class FakeElement {
     this.listeners = {};
     this.className = '';
     this.play = async () => {};
+    this._classes = new Set();
     this.classList = {
-      add: () => {},
-      remove: () => {},
-      contains: () => false,
+      add: (value) => this._classes.add(value),
+      remove: (value) => this._classes.delete(value),
+      contains: (value) => this._classes.has(value),
     };
     this.dataset = {};
     this._lookup = {};
@@ -77,8 +78,17 @@ const documentStub = {
   _elements: {},
 };
 
+const modalEvents = [];
 const utilsStub = {
   toast() {},
+  openModal(id) {
+    modalEvents.push(`open:${id}`);
+    documentStub.body.children.find((child) => child.id === id)?.classList.add('open');
+  },
+  closeModal(id) {
+    modalEvents.push(`close:${id}`);
+    documentStub.body.children.find((child) => child.id === id)?.classList.remove('open');
+  },
 };
 
 const windowStub = {
@@ -136,6 +146,7 @@ vm.runInContext(source, context);
   });
 
   assert.strictEqual(called, true, 'O callback do scanner deveria ser executado após ler o QR');
+  assert.deepStrictEqual(modalEvents, ['open:cam-overlay', 'close:cam-overlay']);
   assert.strictEqual(focusApplications.length, 1, 'O scanner deveria tentar configurar o foco uma vez');
   assert.strictEqual(
     focusApplications[0].advanced[0].focusMode,

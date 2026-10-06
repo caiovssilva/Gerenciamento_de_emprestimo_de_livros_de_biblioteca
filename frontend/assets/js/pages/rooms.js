@@ -134,10 +134,10 @@ function showRoomStudents(roomId) {
   Utils.openModal("modal-room-students");
 }
 
-async function syncRooms() {
+async function syncRooms({ render = true } = {}) {
   try {
     const rooms = await API.rooms.list();
     Store.setRooms(rooms);
-    renderRooms();
+    if (render && Utils.el("page-salas")?.classList.contains("active")) renderRooms();
   } catch(e) { console.warn("rooms sync:", e.message); }
 }

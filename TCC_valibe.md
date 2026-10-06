@@ -31,7 +31,10 @@ Esta atualização registra a exigência de QR do exemplar no processo de devolu
 - `openDevolution()` abre a confirmação com o botão desabilitado. `scanDevolutionQr()` só o habilita quando o QR lido identifica o mesmo livro e o mesmo número de exemplar do empréstimo.
 - `POST /api/loans/<loan_id>/return` exige `exemplar_qr` e valida livro, código do exemplar e identificador individual antes de gravar a devolução. QR ausente retorna HTTP 400; QR de outro exemplar retorna HTTP 403.
 - A geração de cartões para livros sem `exemplares_meta` agora produz um QR por cópia. Cartões físicos antigos com QR genérico precisam ser gerados/impressos novamente para atender à confirmação por exemplar.
-- Os testes focados de devolução, resolução QR e geração de cartões passaram: `7 passed`. Os quatro testes frontend disponíveis também passaram. A suíte backend completa não foi executada nesta atualização; o último resultado completo registrado continua sendo o de 04/10 (`32 passed, 6 failed, 3 warnings`).
+- O aumento da quantidade no cadastro de livro cria metadados, ID e QR para cada nova cópia. Os exemplares existentes mantêm seus códigos; a redução pelo campo de quantidade é recusada para evitar renumeração, devendo ser feita pela exclusão individual no modal.
+- As rotas `/api/genres/` e `/api/rooms/` deixaram de consultar livros/alunos separadamente para cada gênero/sala. Agora consultam os identificadores relacionados uma vez e agregam as contagens em memória.
+- Medições HTTP locais após a alteração: gêneros passou de aproximadamente `3,13 s` para `1,73 s`; salas, de `2,16 s` para `1,25 s`. Ambas responderam HTTP 200. As medições são do ambiente local conectado ao Supabase, não um benchmark de produção.
+- Na regressão mais recente, os testes backend focados de catálogo, exemplares, devolução, QR e cartões passaram: `15 passed`; os quatro testes frontend também passaram. A suíte backend completa não foi executada nesta atualização; o último resultado completo registrado continua sendo o de 04/10 (`32 passed, 6 failed, 3 warnings`).
 
 ## Atualização verificada em 04/10/2026
 

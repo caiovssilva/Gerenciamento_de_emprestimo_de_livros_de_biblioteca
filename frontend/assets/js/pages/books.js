@@ -5,31 +5,40 @@
 function renderBooks() {
   const q      = (Utils.el("books-search")?.value||"").toLowerCase();
   const genre  = Utils.el("books-genre-filter")?.value||"";
-  let   books  = Store.books();
+  const books  = Store.books();
+  const loans  = Store.loans();
+  const genres = Store.genres();
+  const loanByBook = new Map();
 
-  if (q) books = books.filter(b =>
+  loans.forEach(l => {
+    if (!l.devolvido_em && l.livro_id) {
+      const count = loanByBook.get(l.livro_id) || 0;
+      loanByBook.set(l.livro_id, count + 1);
+    }
+  });
+
+  let filtered = books;
+  if (q) filtered = filtered.filter(b =>
     (b.titulo||b.title||"").toLowerCase().includes(q)||
     (b.autor||b.author||"").toLowerCase().includes(q)||
     (b.isbn||"").toLowerCase().includes(q)||
     (b.id||"").toLowerCase().startsWith(q)
   );
-  if (genre) books = books.filter(b => b.genero_id === genre);
+  if (genre) filtered = filtered.filter(b => b.genero_id === genre);
 
-  // Preenche filtro de gêneros
   const sel = Utils.el("books-genre-filter");
   if (sel) {
     const cur = sel.value;
     sel.innerHTML = '<option value="">Todos os gêneros</option>' +
-      Store.genres().map(g=>`<option value="${g.id}" ${g.id===cur?"selected":""}>${g.nome}</option>`).join("");
+      genres.map(g=>`<option value="${g.id}" ${g.id===cur?"selected":""}>${g.nome}</option>`).join("");
   }
 
   const tbody = Utils.el("books-tbody");
-  if (!books.length) { tbody.innerHTML = Utils.emptyState("ti-books","Nenhum livro encontrado."); return; }
+  if (!filtered.length) { tbody.innerHTML = Utils.emptyState("ti-books","Nenhum livro encontrado."); return; }
 
-  const loans = Store.loans();
-  tbody.innerHTML = books.map(b => {
+  tbody.innerHTML = filtered.map(b => {
     const copies = b.exemplares||b.copies||1;
-    const active = loans.filter(l=>l.livro_id===b.id&&!l.devolvido_em).length;
+    const active = loanByBook.get(b.id) || 0;
     const avail  = copies - active;
     const color  = avail===0?"var(--red)":avail<=1?"var(--amber)":"var(--green)";
     const genreStyle = b.genero_cor ? `background:${b.genero_cor}22;color:${b.genero_cor};border:1px solid ${b.genero_cor}44` : "";
@@ -37,6 +46,9 @@ function renderBooks() {
       ? `<span class="badge" style="${genreStyle}"><i class="ti ${b.genero_icone||'ti-book'}"></i>${b.genero_nome}</span>`
       : `<span class="badge badge-gray">Sem gênero</span>`;
 
+    const manageBtns = isLibrarian() ? "" : `
+          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>`;
     return `<tr>
       <td class="td-mono">${b.isbn||b.id.slice(0,8)}</td>
       <td><strong>${b.titulo||b.title}</strong></td>
@@ -49,9 +61,7 @@ function renderBooks() {
         <div style="display:flex;gap:4px;flex-wrap:wrap;">
           <button class="btn btn-sm" title="Ver exemplares"  onclick="showExemplares('${b.id}')"><i class="ti ti-list-details"></i></button>
           <button class="btn btn-sm" title="QR Code"         onclick="showEntityQR('book','${b.id}')"><i class="ti ti-qrcode"></i></button>
-          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>
-          <button class="btn btn-sm" title="Editar"          onclick="editBook('${b.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteBook('${b.id}')"><i class="ti ti-trash"></i></button>
+          <button class="btn btn-sm" title="Imprimir cartão" onclick="printCard('book','${b.id}')"><i class="ti ti-printer"></i></button>${manageBtns}
         </div>
       </td>
     </tr>`;
@@ -66,7 +76,161 @@ function openAddBook() {
   Utils.el("book-copies").value  = 1;
   _populateGenreSelect("book-genre");
   Utils.el("book-genre").value   = "";
+  Utils.el("book-isbn-status").textContent = "";
+  restoreBookVisionProvider();
   Utils.openModal("modal-book");
+}
+
+function restoreBookVisionProvider() {
+  const select = Utils.el("book-vision-provider");
+  if (!select) return;
+  try {
+    select.value = localStorage.getItem("bookVisionProvider") || "groq";
+  } catch {
+    select.value = "groq";
+  }
+  if (!["pyzbar", "groq"].includes(select.value)) select.value = "groq";
+}
+
+function setBookVisionProvider(provider) {
+  if (!["pyzbar", "groq"].includes(provider)) return;
+  try {
+    localStorage.setItem("bookVisionProvider", provider);
+  } catch {
+    // A seleção continua válida durante esta sessão mesmo sem armazenamento local.
+  }
+}
+
+function _normalizeIsbn(value) {
+  return String(value || "").replace(/[^0-9Xx]/g, "").toUpperCase();
+}
+
+function _genreIdFromCategories(categories) {
+  const available = Store.genres();
+  const normalize = value => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const aliases = {
+    "informatica": ["computer", "computing", "technology", "programming", "software"],
+    "ficcao cientifica": ["science fiction", "sci-fi", "scifi"],
+    "literatura brasileira": ["brazilian literature"],
+    "matematica": ["mathematics", "math"],
+    "engenharia": ["engineering"],
+    "tecnico / didatico": ["computer", "computing", "technology", "programming", "software", "textbook", "technical"],
+    "romance": ["romance", "love story"],
+    "aventura": ["adventure"],
+    "comedia": ["comedy", "humor"],
+    "terror / suspense": ["horror", "thriller", "suspense"],
+    "historia": ["history"],
+    "biografia": ["biography", "autobiography"],
+    "autoajuda": ["self-help", "self help"],
+  };
+  const normalized = (categories || []).map(normalize);
+  const match = available.find(genre => {
+    const name = normalize(genre.nome);
+    const terms = [name, ...(aliases[name] || [])];
+    return normalized.some(category => terms.some(term => category.includes(term) || term.includes(category)));
+  });
+  return match?.id || "";
+}
+
+async function applyBookLookupResult(result, isbn) {
+  if (!Store.genres().length && typeof syncGenres === "function") {
+    await syncGenres();
+  }
+  const genreSelect = Utils.el("book-genre");
+  const currentGenre = genreSelect.value;
+  _populateGenreSelect("book-genre");
+  Utils.el("book-isbn").value = result.isbn || isbn;
+  Utils.el("book-title").value = result.titulo || "";
+  Utils.el("book-author").value = result.autor || "";
+  Utils.el("book-area").value = result.area || "Geral";
+  if (!currentGenre && result.genero_id) genreSelect.value = result.genero_id;
+  Utils.el("book-isbn-status").textContent = result.categorias?.length
+    ? `Encontrado: ${result.categorias.join(", ")}`
+    : "Livro encontrado. Escolha o gênero manualmente, se necessário.";
+  Utils.toast("Dados do livro preenchidos. Confira antes de salvar.", "success");
+}
+
+async function lookupBookIsbn(source = "manual") {
+  const input = Utils.el("book-isbn");
+  const status = Utils.el("book-isbn-status");
+  const isbn = _normalizeIsbn(input?.value);
+  if (!isbn) {
+    Utils.toast("Informe ou leia um ISBN.", "error");
+    return;
+  }
+
+  status.textContent = "Pesquisando informações do livro...";
+  try {
+    const result = await API.books.lookupIsbn(isbn, source);
+    await applyBookLookupResult(result, isbn);
+  } catch (error) {
+    const message = error.message || "Livro não encontrado.";
+    status.textContent = message.includes("ISBN")
+      ? message
+      : "Livro não encontrado. Você pode preencher os dados manualmente.";
+    Utils.toast(message, "error");
+  }
+}
+
+function scanBookIsbn() {
+  const provider = Utils.el("book-vision-provider")?.value || "groq";
+  let visionController = null;
+  let visionRetryAt = 0;
+  let visionFailures = 0;
+  let visionErrorNotified = false;
+  QRScanner.start("book-isbn", result => {
+    const value = _normalizeIsbn(result.primary);
+    if (result.data?.titulo || result.source?.endsWith("-vision")) {
+      applyBookLookupResult(result.data || result, value);
+    } else {
+      lookupBookIsbn("manual");
+    }
+  }, {
+    frameIntervalMs: 5000,
+    onStop: () => visionController?.abort(),
+    frameHandler: async image => {
+      if (provider === "pyzbar") {
+        try {
+          const decoded = await API.qr.decode(image);
+          const isbn = _normalizeIsbn(decoded.primary);
+          if (![10, 13].includes(isbn.length)) return null;
+          return { primary: isbn, type: "book", data: null, source: "pyzbar" };
+        } catch (error) {
+          if (!visionErrorNotified) {
+            Utils.toast(error.message || "Não foi possível ler o código com pyzbar.", "error");
+            visionErrorNotified = true;
+          }
+          return null;
+        }
+      }
+
+      if (Date.now() < visionRetryAt) return null;
+      visionController?.abort();
+      visionController = new AbortController();
+      try {
+        const result = await API.books.lookupIsbnVision(image, provider, visionController.signal);
+        visionFailures = 0;
+        visionRetryAt = 0;
+        visionErrorNotified = false;
+        if (!result.encontrado) return null;
+        return { primary: result.isbn, type: "book", data: result, source: `${provider}-vision` };
+      } catch (error) {
+        visionFailures += 1;
+        const isRateLimited = /limite de chamadas|\b429\b|rate limit/i.test(error.message || "");
+        const baseDelay = isRateLimited ? 30000 : 10000;
+        const maxDelay = isRateLimited ? 120000 : 60000;
+        visionRetryAt = Date.now() + Math.min(maxDelay, baseDelay * (2 ** (visionFailures - 1)));
+        if (!visionErrorNotified) {
+          Utils.toast(error.message || "Groq Vision indisponível; tentando leitura local.", "error");
+          visionErrorNotified = true;
+        }
+        return null;
+      }
+    },
+  });
 }
 
 function editBook(id) {
@@ -81,6 +245,7 @@ function editBook(id) {
   Utils.el("book-copies").value  = b.exemplares||b.copies||1;
   _populateGenreSelect("book-genre");
   Utils.el("book-genre").value   = b.genero_id||"";
+  restoreBookVisionProvider();
   Utils.openModal("modal-book");
 }
 
@@ -124,12 +289,32 @@ async function saveBook() {
 }
 
 async function deleteBook(id) {
-  if (!confirm("Excluir este livro do acervo?")) return;
+  const book = Store.bookById(id);
+  const title = book?.titulo || book?.title || "este livro";
+  if (!confirm(`Excluir "${title}" do acervo?`)) return;
   try {
     await API.books.delete(id);
     Utils.toast("Livro excluído.","info");
     await syncData(); Charts.refresh();
   } catch(e) { Utils.toast(e.message,"error"); }
+}
+
+async function deleteExemplar(bookId, exemplarCode) {
+  const book = Store.bookById(bookId);
+  if (!book) return;
+  const title = book.titulo || book.title || "este livro";
+  if (!confirm(`Excluir somente o exemplar #${exemplarCode} de "${title}"? O QR desta cópia deixará de ser aceito; os demais exemplares serão mantidos.`)) return;
+
+  try {
+    await API.books.deleteExemplar(bookId, exemplarCode);
+    await syncData();
+    Charts.refresh();
+    if (Store.bookById(bookId)) showExemplares(bookId);
+    else Utils.closeModal("modal-exemplares");
+    Utils.toast(`Exemplar #${exemplarCode} excluído.`, "success");
+  } catch (error) {
+    Utils.toast(error.message || "Não foi possível excluir o exemplar.", "error");
+  }
 }
 
 function showExemplares(bookId) {
@@ -142,8 +327,10 @@ function showExemplares(bookId) {
   const loanMap = {};
   loans.filter(l=>l.livro_id===bookId&&!l.devolvido_em).forEach(l=>{loanMap[l.exemplar]=l;});
 
-  const total = book.exemplares||book.copies||1;
-  const all   = Array.from({length:total},(_,i)=>String(i+1).padStart(3,"0"));
+  const all = Array.isArray(book.exemplares_meta) && book.exemplares_meta.length
+    ? book.exemplares_meta.map(item => String(item.code))
+    : Array.from({length:book.exemplares||book.copies||1},(_,i)=>String(i+1).padStart(3,"0"));
+  const canDelete = !isLibrarian();
 
   const html = all.map(ex => {
     const loan = loanMap[ex];
@@ -158,10 +345,14 @@ function showExemplares(bookId) {
         <div style="display:flex;align-items:center;gap:6px;">
           ${tag}
           <button class="btn btn-sm btn-success" onclick="openDevolution('${loan.id}');Utils.closeModal('modal-exemplares')">Devolver</button>
+          ${canDelete ? `<button class="btn btn-sm btn-danger" type="button" title="Devolva antes de excluir" aria-label="Exemplar #${ex} emprestado" disabled><i class="ti ti-trash"></i></button>` : ""}
         </div>
       </div>`;
     }
-    return `<div class="exemplar-item"><span class="exemplar-code">#${ex}</span><span class="badge badge-green" style="margin-left:8px;">Disponível</span></div>`;
+    return `<div class="exemplar-item">
+      <span><span class="exemplar-code">#${ex}</span><span class="badge badge-green" style="margin-left:8px;">Disponível</span></span>
+      ${canDelete ? `<button class="btn btn-sm btn-danger" type="button" title="Excluir somente o exemplar #${ex}" aria-label="Excluir exemplar #${ex}" onclick="deleteExemplar('${bookId}','${ex}')"><i class="ti ti-trash"></i></button>` : ""}
+    </div>`;
   }).join("");
 
   Utils.el("exemplares-list").innerHTML = `<div class="exemplar-list">${html}</div>`;
@@ -170,58 +361,101 @@ function showExemplares(bookId) {
 
 // ── QR Code ───────────────────────────────────────────────────
 async function showEntityQR(type, id) {
+  const entity = type==="book" ? Store.bookById(id) : Store.studentById(id);
+  const totalExemplares = type==="book" ? (entity?.exemplares || 1) : 1;
+  if (type==="book" && totalExemplares > 1) {
+    // Livro com múltiplos exemplares: cada um tem seu próprio QR único, então
+    // reaproveita a mesma tela que já lista todos corretamente.
+    return printCard(type, id);
+  }
   Utils.toast("Gerando QR Code...","info");
   try {
     const color = type==="book" ? "#1a4f8a" : "#166534";
     const res   = await API.qr.generate(id, color);
-    const entity = type==="book" ? Store.bookById(id) : Store.studentById(id);
-    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||id.slice(0,8)) : id.slice(0,8);
-    _showQRResult(res.image, `QR Code — ${name}`, id, type);
+    const entityId = entity?.id || id;
+    const name   = entity ? (entity.titulo||entity.nome||entity.name||entity.title||entityId.slice(0,8)) : entityId.slice(0,8);
+    _showQRResult(res.image, `QR Code — ${name}`, entityId, type);
   } catch(e) { Utils.toast("Erro ao gerar QR: "+e.message,"error"); }
 }
 
 async function printCard(type, id) {
   Utils.toast("Gerando cartão...","info");
+  const win = window.open("","_blank","width=700,height=350");
+  if (!win) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
+
+  const emptyHtml = `<!DOCTYPE html><html><head><title>Gerando cartão...</title><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;} .loading{padding:20px 28px;border-radius:12px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.12);font-weight:600;}</style></head><body><div class="loading">Gerando cartão... Aguarde.</div></body></html>`;
+  win.document.write(emptyHtml);
+  win.document.close();
+
   try {
     const res = type==="book" ? await API.qr.cardBook(id) : await API.qr.cardStudent(id);
-    _showPrintCard(res.image, res.filename);
-  } catch(e) { Utils.toast("Erro ao gerar cartão: "+e.message,"error"); }
+    const cards = res.cards || [{ image: res.image, filename: res.filename, exemplar: "" }];
+    requestAnimationFrame(() => _showPrintCard(cards, win));
+  } catch(e) {
+    Utils.toast("Erro ao gerar cartão: "+e.message,"error");
+    if (!win.closed) {
+      win.document.write(`<!DOCTYPE html><html><head><title>Erro</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#0f172a;">Erro ao gerar cartão.</body></html>`);
+      win.document.close();
+    }
+  }
 }
 
 function _showQRResult(imgSrc, label, entityId, type) {
   Utils.el("qr-result-img").src     = imgSrc;
   Utils.el("qr-result-label").textContent = label;
-  Utils.el("qr-result-id").textContent    = `ID: ${entityId.slice(0,8).toUpperCase()}`;
-  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.slice(0,8)}.png`);
+  Utils.el("qr-result-id").textContent    = `ID: ${entityId}`;
+  Utils.el("qr-download-btn").onclick     = () => _downloadImg(imgSrc, `qr-${entityId.replace(/[^a-zA-Z0-9]/g, "")}.png`);
   Utils.el("qr-print-card-btn").onclick   = () => printCard(type, entityId);
   Utils.openModal("modal-qr-result");
 }
 
-function _showPrintCard(imgSrc, filename) {
-  // Abre em nova aba para impressão direta
-  const w = window.open("","_blank","width=700,height=350");
-  w.document.write(`<!DOCTYPE html>
-<html><head><title>Impressão — Biblioteca IFES</title>
+function _showPrintCard(cards, w = null) {
+  const win = w || window.open("","_blank","width=700,height=350");
+  if (!win) {
+    Utils.toast("Pop-up bloqueado. Permita janelas e tente novamente.", "error");
+    return;
+  }
+
+  const blocks = cards.map(c => `
+<div class="card-wrap">
+  ${c.exemplar ? `<div class="exemplar-label">Exemplar ${c.exemplar}</div>` : ""}
+  <img src="${c.image}" alt="Cartão Biblioteca narceu de paiva filho">
+  <div class="actions">
+    <a class="dl-btn" href="${c.image}" download="${c.filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>
+  </div>
+</div>`).join("\n");
+
+  const render = () => {
+    win.document.open();
+    win.document.write(`<!DOCTYPE html>
+<html><head><title>Impressão — Biblioteca narceu de paiva filho</title>
 <style>
-  body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;}
+  body{margin:0;padding:24px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;justify-content:center;min-height:100vh;background:#f1f5f9;}
   .card-wrap{background:#fff;padding:16px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
-  img{display:block;max-width:600px;width:100%;}
+  .exemplar-label{font-weight:700;text-align:center;margin-bottom:8px;color:#1a4f8a;}
+  img{display:block;max-width:400px;width:100%;}
   .actions{display:flex;gap:8px;margin-top:12px;justify-content:center;}
   button{padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;}
   .print-btn{background:#1a4f8a;color:#fff;}
   .dl-btn{background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;}
-  @media print{.actions{display:none;}body{background:#fff;}}
+  .top-actions{width:100%;display:flex;justify-content:center;margin-bottom:8px;}
+  @media print{.actions,.top-actions{display:none;}body{background:#fff;}}
 </style></head>
 <body>
-<div class="card-wrap">
-  <img src="${imgSrc}" alt="Cartão Biblioteca IFES">
-  <div class="actions">
-    <button class="print-btn" onclick="window.print()">🖨️ Imprimir</button>
-    <a class="dl-btn" href="${imgSrc}" download="${filename}" style="text-decoration:none;padding:8px 20px;border-radius:6px;font-size:14px;font-weight:600;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;">⬇️ Baixar PNG</a>
-  </div>
-</div>
+<div class="top-actions"><button class="print-btn" onclick="window.print()">🖨️ Imprimir ${cards.length > 1 ? `todos (${cards.length})` : ""}</button></div>
+${blocks}
 </body></html>`);
-  w.document.close();
+    win.document.close();
+  };
+
+  if (win.requestAnimationFrame) {
+    win.requestAnimationFrame(render);
+  } else {
+    setTimeout(render, 0);
+  }
 }
 
 function _downloadImg(src, filename) {

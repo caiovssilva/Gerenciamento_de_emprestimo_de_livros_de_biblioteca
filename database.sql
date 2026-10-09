@@ -1,5 +1,5 @@
 -- ============================================================
--- BIBLIOTECA IFES — Campus Aracruz v3
+-- BIBLIOTECA narceu de paiva filho — Campus Aracruz v3
 -- Execute no SQL Editor do Supabase
 -- ============================================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -24,8 +24,8 @@ CREATE TABLE usuarios (
     criado_em TIMESTAMP    DEFAULT NOW()
 );
 INSERT INTO usuarios (nome, login, senha) VALUES
-    ('Administrador', 'admin',      'ifes2024'),
-    ('Bibliotecária', 'biblioteca', 'ifes2024')
+    ('Administrador', 'admin',      'narceu2026'),
+    ('Bibliotecária', 'biblioteca', 'narceu2026')
 ON CONFLICT (login) DO NOTHING;
 
 -- ── 2. SALAS ─────────────────────────────────────────────────
@@ -62,32 +62,42 @@ INSERT INTO generos (nome, icone, cor) VALUES
 
 -- ── 4. LIVROS ─────────────────────────────────────────────────
 CREATE TABLE livros (
-    id         UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
-    isbn       VARCHAR(50)  DEFAULT '',
-    titulo     VARCHAR(255) NOT NULL,
-    autor      VARCHAR(255) NOT NULL DEFAULT '',
-    area       VARCHAR(100) NOT NULL DEFAULT 'Geral',
-    genero_id  UUID         REFERENCES generos(id) ON DELETE SET NULL,
-    exemplares INT          NOT NULL DEFAULT 1 CHECK (exemplares >= 1),
-    criado_em  TIMESTAMP    DEFAULT NOW()
+    id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    isbn           VARCHAR(50)  DEFAULT '',
+    titulo         VARCHAR(255) NOT NULL,
+    autor          VARCHAR(255) NOT NULL DEFAULT '',
+    area           VARCHAR(100) NOT NULL DEFAULT 'Geral',
+    genero_id      UUID         REFERENCES generos(id) ON DELETE SET NULL,
+    exemplares     INT          NOT NULL DEFAULT 1 CHECK (exemplares >= 1),
+    qr_id          VARCHAR(255) UNIQUE DEFAULT NULL,
+    exemplares_ids JSONB        DEFAULT '[]'::jsonb,
+    exemplares_meta JSONB       DEFAULT '[]'::jsonb,
+    criado_em      TIMESTAMP    DEFAULT NOW()
 );
 CREATE INDEX idx_livros_isbn    ON livros (isbn)     WHERE isbn <> '';
 CREATE INDEX idx_livros_titulo  ON livros (titulo);
 CREATE INDEX idx_livros_area    ON livros (area);
 CREATE INDEX idx_livros_genero  ON livros (genero_id);
+CREATE INDEX idx_livros_qr_id   ON livros (qr_id)   WHERE qr_id IS NOT NULL;
 
 -- ── 5. ALUNOS ────────────────────────────────────────────────
 CREATE TABLE alunos (
-    id          UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
-    nome        VARCHAR(255) NOT NULL,
-    turma       VARCHAR(50)  NOT NULL DEFAULT '',
-    carteirinha VARCHAR(100) DEFAULT '',
-    sala_id     UUID         REFERENCES salas(id) ON DELETE SET NULL,
-    criado_em   TIMESTAMP    DEFAULT NOW()
+    id            UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    nome          VARCHAR(255) NOT NULL,
+    turma         VARCHAR(50)  NOT NULL DEFAULT '',
+    carteirinha   VARCHAR(100) DEFAULT '',
+    sala_id       UUID         REFERENCES salas(id) ON DELETE SET NULL,
+    qr_id         VARCHAR(255) UNIQUE DEFAULT NULL,
+    is_librarian  BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMP    DEFAULT NULL,
+    criado_em     TIMESTAMP    DEFAULT NOW()
 );
 CREATE UNIQUE INDEX idx_alunos_carteirinha
     ON alunos (carteirinha)
     WHERE carteirinha IS NOT NULL AND carteirinha <> '';
+CREATE UNIQUE INDEX idx_alunos_qr_id
+    ON alunos (qr_id)
+    WHERE qr_id IS NOT NULL;
 CREATE INDEX idx_alunos_nome  ON alunos (nome);
 CREATE INDEX idx_alunos_turma ON alunos (turma);
 CREATE INDEX idx_alunos_sala  ON alunos (sala_id);
@@ -98,20 +108,23 @@ CREATE TABLE emprestimos (
     livro_id                UUID        NOT NULL REFERENCES livros(id)  ON DELETE CASCADE,
     aluno_id                UUID        NOT NULL REFERENCES alunos(id)  ON DELETE CASCADE,
     exemplar                VARCHAR(10) NOT NULL DEFAULT '001',
+    exemplar_id             VARCHAR(255) DEFAULT NULL,
     data_emprestimo         DATE        NOT NULL,
     data_devolucao_prevista DATE        NOT NULL,
     devolvido_em            DATE        DEFAULT NULL,
     observacao              TEXT        DEFAULT '',
     criado_por              VARCHAR(100) DEFAULT 'system',
+    renovacoes              INT         NOT NULL DEFAULT 0 CHECK (renovacoes >= 0),
     criado_em               TIMESTAMP   DEFAULT NOW()
 );
 CREATE UNIQUE INDEX idx_exemplar_ativo
     ON emprestimos (livro_id, exemplar)
     WHERE devolvido_em IS NULL;
-CREATE INDEX idx_emp_livro  ON emprestimos (livro_id);
-CREATE INDEX idx_emp_aluno  ON emprestimos (aluno_id);
-CREATE INDEX idx_emp_ativo  ON emprestimos (devolvido_em) WHERE devolvido_em IS NULL;
-CREATE INDEX idx_emp_data   ON emprestimos (data_emprestimo DESC);
+CREATE INDEX idx_emp_livro       ON emprestimos (livro_id);
+CREATE INDEX idx_emp_aluno       ON emprestimos (aluno_id);
+CREATE INDEX idx_emp_ativo       ON emprestimos (devolvido_em) WHERE devolvido_em IS NULL;
+CREATE INDEX idx_emp_data        ON emprestimos (data_emprestimo DESC);
+CREATE INDEX idx_emp_exemplar_id ON emprestimos (exemplar_id);
 
 -- ── 7. RELATÓRIOS MENSAIS ────────────────────────────────────
 CREATE TABLE relatorios_mensais (
@@ -167,7 +180,7 @@ SELECT l.id, l.titulo, l.autor, l.area, l.isbn, l.exemplares,
        g.nome AS genero, g.cor AS genero_cor,
        COUNT(e.id) AS total_emprestimos,
        COUNT(e.id) FILTER (WHERE e.devolvido_em IS NULL) AS emprestados,
-       l.exemplares - COUNT(e.id) FILTER (WHERE e.devolvido_em IS NULL) AS disponiveis
+       l.exemplares - COALESCE(COUNT(e.id) FILTER (WHERE e.devolvido_em IS NULL), 0) AS disponiveis
 FROM livros l
 LEFT JOIN emprestimos e ON e.livro_id = l.id
 LEFT JOIN generos     g ON g.id = l.genero_id

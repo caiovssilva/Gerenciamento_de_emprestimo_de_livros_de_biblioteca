@@ -92,56 +92,61 @@ def generate_monthly():
 
 
 def _csv_resp(rows, filename):
+    unique_rows = []
+    seen = set()
+    for row in rows:
+        key = tuple(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+
     out=io.StringIO()
-    csv.writer(out,quoting=csv.QUOTE_ALL).writerows(rows)
+    csv.writer(out,quoting=csv.QUOTE_ALL).writerows(unique_rows)
     return Response("\ufeff"+out.getvalue(),mimetype="text/csv; charset=utf-8",
                     headers={"Content-Disposition":f"attachment; filename={filename}"})
 
 
-@reports_bp.route("/export/overdue", methods=["GET"])
-def export_overdue():
+def _unique_records(records):
+    unique = []
+    seen = set()
+    for record in records:
+        key = json.dumps(record, sort_keys=True, ensure_ascii=False, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
+
+
+def _build_report_data():
     books,students,loans = _fetch_all(get_client())
+    loans = _unique_records(loans)
     bmap={b["id"]:b for b in books}; smap={s["id"]:s for s in students}
-    rows=[["Aluno","Turma","Livro","Exemplar","Emprestado em","Vencimento","Dias Atraso"]]
+
+    overdue=[["Aluno","Turma","Livro","Exemplar","Emprestado em","Vencimento","Dias Atraso"]]
     for l in loans:
         if loan_status(l)!="overdue": continue
         b=bmap.get(l["livro_id"],{}); s=smap.get(l["aluno_id"],{})
-        rows.append([s.get("nome",""),s.get("turma",""),b.get("titulo",""),l.get("exemplar",""),
-                     l.get("data_emprestimo",""),l.get("data_devolucao_prevista",""),abs(days_until(l["data_devolucao_prevista"]))])
-    return _csv_resp(rows,"emprestimos-atrasados.csv")
+        overdue.append([s.get("nome",""),s.get("turma",""),b.get("titulo",""),l.get("exemplar",""),
+                        l.get("data_emprestimo",""),l.get("data_devolucao_prevista",""),abs(days_until(l["data_devolucao_prevista"]))])
 
-
-@reports_bp.route("/export/all", methods=["GET"])
-def export_all():
-    books,students,loans = _fetch_all(get_client())
-    bmap={b["id"]:b for b in books}; smap={s["id"]:s for s in students}
-    rows=[["Aluno","Turma","Livro","Exemplar","Emprestado em","Devolução prevista","Devolvido em","Status"]]
+    all_loans=[["Aluno","Turma","Livro","Exemplar","Emprestado em","Devolução prevista","Devolvido em","Status"]]
     for l in loans:
         b=bmap.get(l["livro_id"],{}); s=smap.get(l["aluno_id"],{})
-        rows.append([s.get("nome",""),s.get("turma",""),b.get("titulo",""),l.get("exemplar",""),
-                     l.get("data_emprestimo",""),l.get("data_devolucao_prevista",""),l.get("devolvido_em","") or "",loan_status(l)])
-    return _csv_resp(rows,"historico-completo.csv")
+        all_loans.append([s.get("nome",""),s.get("turma",""),b.get("titulo",""),l.get("exemplar",""),
+                          l.get("data_emprestimo",""),l.get("data_devolucao_prevista",""),l.get("devolvido_em","") or "",loan_status(l)])
 
-
-@reports_bp.route("/export/books", methods=["GET"])
-def export_books():
-    books, _, loans = _fetch_all(get_client())
     counts = {}
     for loan in loans:
         counts[loan["livro_id"]] = counts.get(loan["livro_id"], 0) + 1
 
     bmap = {book["id"]: book for book in books}
-    rows = [["Título", "Autor", "Gênero", "Total de empréstimos"]]
+    popular_books = [["Título", "Autor", "Gênero", "Total de empréstimos"]]
     for book_id, total in sorted(counts.items(), key=lambda item: item[1], reverse=True):
         book = bmap.get(book_id, {})
-        rows.append([book.get("titulo", ""), book.get("autor", ""), book.get("genero", ""), total])
+        popular_books.append([book.get("titulo", ""), book.get("autor", ""), book.get("genero", ""), total])
 
-    return _csv_resp(rows, "livros-mais-emprestados.csv")
-
-
-@reports_bp.route("/export/by-class", methods=["GET"])
-def export_by_class():
-    _, students, loans = _fetch_all(get_client())
     smap = {student["id"]: student.get("turma", "?") for student in students}
     counts = {}
 
@@ -149,25 +154,19 @@ def export_by_class():
         cls = smap.get(loan["aluno_id"], "?")
         counts[cls] = counts.get(cls, 0) + 1
 
-    rows = [["Turma", "Total de empréstimos"]]
+    by_class = [["Turma", "Total de empréstimos"]]
     for cls, total in sorted(counts.items()):
-        rows.append([cls, total])
+        by_class.append([cls, total])
 
-    return _csv_resp(rows, "emprestimos-por-turma.csv")
-
-
-@reports_bp.route("/export/student-status", methods=["GET"])
-def export_student_status():
-    books, students, loans = _fetch_all(get_client())
     bmap = {book["id"]: book for book in books}
     smap = {student["id"]: student for student in students}
-    rows = [["Aluno", "Turma", "Livro", "Exemplar", "Situação", "Emprestado em", "Vencimento", "Devolvido em"]]
+    student_status = [["Aluno", "Turma", "Livro", "Exemplar", "Situação", "Emprestado em", "Vencimento", "Devolvido em"]]
 
     for loan in loans:
         student = smap.get(loan.get("aluno_id"), {})
         book = bmap.get(loan.get("livro_id"), {})
         status = "devolvido" if loan.get("devolvido_em") else ("emprestado" if loan_status(loan) == "active" else "atrasado")
-        rows.append([
+        student_status.append([
             student.get("nome", ""),
             student.get("turma", ""),
             book.get("titulo", ""),
@@ -178,4 +177,45 @@ def export_student_status():
             loan.get("devolvido_em", "") or "",
         ])
 
-    return _csv_resp(rows, "status-alunos-emprestimos.csv")
+    return [
+        {"id": "overdue", "title": "Empréstimos atrasados", "description": "Alunos com devolução vencida", "filename": "emprestimos-atrasados.csv", "rows": overdue},
+        {"id": "all", "title": "Histórico completo", "description": "Todos os empréstimos", "filename": "historico-completo.csv", "rows": all_loans},
+        {"id": "books", "title": "Livros mais emprestados", "description": "Ranking por demanda", "filename": "livros-mais-emprestados.csv", "rows": popular_books},
+        {"id": "by-class", "title": "Por turma", "description": "Empréstimos agrupados por turma", "filename": "emprestimos-por-turma.csv", "rows": by_class},
+        {"id": "student-status", "title": "Status de alunos", "description": "Quem pegou, quem está devendo e quem devolveu", "filename": "status-alunos-emprestimos.csv", "rows": student_status},
+    ]
+
+
+@reports_bp.route("/data", methods=["GET"])
+def report_data():
+    return jsonify(_build_report_data())
+
+
+def _export_report(report_id):
+    report = next(item for item in _build_report_data() if item["id"] == report_id)
+    return _csv_resp(report["rows"], report["filename"])
+
+
+@reports_bp.route("/export/overdue", methods=["GET"])
+def export_overdue():
+    return _export_report("overdue")
+
+
+@reports_bp.route("/export/all", methods=["GET"])
+def export_all():
+    return _export_report("all")
+
+
+@reports_bp.route("/export/books", methods=["GET"])
+def export_books():
+    return _export_report("books")
+
+
+@reports_bp.route("/export/by-class", methods=["GET"])
+def export_by_class():
+    return _export_report("by-class")
+
+
+@reports_bp.route("/export/student-status", methods=["GET"])
+def export_student_status():
+    return _export_report("student-status")

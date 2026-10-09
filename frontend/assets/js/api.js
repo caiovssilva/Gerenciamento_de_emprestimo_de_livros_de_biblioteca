@@ -64,6 +64,7 @@ const API = {
     renew:  (id,body={}) => apiFetch(`/loans/${id}/renew`,   { method:"POST", body:JSON.stringify(body) }),
   },
   reports: {
+    data:            ()          => apiFetch("/reports/data"),
     chartSummary:    ()          => apiFetch("/reports/chart-summary"),
     topBooks:        (n=8)       => apiFetch(`/reports/top-books?limit=${n}`),
     byClass:         ()          => apiFetch("/reports/by-class"),

@@ -450,7 +450,7 @@ const PAGE_META = {
   generos:    { title:"Gêneros de Livro", sub:"Tipos e categorias do acervo",
     action:`<button class="btn btn-primary" onclick="openAddGenre()"><i class="ti ti-plus"></i>Novo gênero</button>` },
   relatorios: { title:"Relatórios",       sub:"Gráficos e exportação",
-    action:`<button class="btn" onclick="Charts.refresh()"><i class="ti ti-refresh"></i>Atualizar</button>` },
+    action:`<button class="btn" onclick="refreshReports()"><i class="ti ti-refresh"></i>Atualizar</button>` },
   config:     { title:"Configurações",    sub:"Sistema e conexão", action:"" },
 };
 
@@ -471,7 +471,7 @@ function navigateTo(page) {
   if (page==="salas")      renderRooms();
   if (page==="generos")    renderGenres();
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
-  if (page==="relatorios") Charts.init();
+  if (page==="relatorios") { Charts.init(); Reports.init(); }
   if (page==="config" && isLibrarian()) {
     Utils.el("topbar-actions").innerHTML = "";
   }
@@ -799,6 +799,7 @@ async function confirmDevolution() {
 
 // ── Renovação ─────────────────────────────────────────────────────────
 let pendingRenewalId = null;
+let pendingRenewalQr = null;
 
 function openRenewal(loanId) {
   const loan = Store.loanById(loanId);
@@ -806,12 +807,39 @@ function openRenewal(loanId) {
   const book = Store.bookById(loan.livro_id);
   const stud = Store.studentById(loan.aluno_id);
   pendingRenewalId = loanId;
+  pendingRenewalQr = null;
   Utils.el("renew-info").innerHTML = `
     <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
     <br><small>Exemplar #${loan.exemplar} · Prazo atual: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
   Utils.el("renew-days").value = 7;
+  Utils.el("renew-qr-status").textContent = "A leitura do QR é obrigatória para confirmar a renovação.";
+  Utils.el("renew-confirm-btn").disabled = true;
   _updateRenewalPreview();
   Utils.openModal("modal-renewal");
+}
+
+async function scanRenewalQr() {
+  const loan = Store.loanById(pendingRenewalId);
+  if (!loan || loan.devolvido_em) return;
+
+  const status = Utils.el("renew-qr-status");
+  status.textContent = "Aponte a câmera para o QR Code do exemplar emprestado.";
+  // Para integrar html5-qrcode no futuro, inicialize-o no contêiner renew-qr-viewport.
+  await QRScanner.start(null, (result) => {
+    const code = String(result?.primary || "").trim();
+    if (!_matchesDevolutionQr(loan, code)) {
+      pendingRenewalQr = null;
+      status.textContent = "QR não corresponde a este exemplar. Tente novamente.";
+      Utils.el("renew-confirm-btn").disabled = true;
+      Utils.toast("Leia o QR Code do exemplar indicado na renovação.", "error");
+      return;
+    }
+
+    pendingRenewalQr = code;
+    status.textContent = "QR Code do exemplar confirmado. A renovação pode ser concluída.";
+    Utils.el("renew-confirm-btn").disabled = false;
+    Utils.toast("Livro confirmado pelo QR Code.", "success");
+  });
 }
 
 function _updateRenewalPreview() {
@@ -824,12 +852,17 @@ function _updateRenewalPreview() {
 
 async function confirmRenewal() {
   if (!pendingRenewalId) return;
+  if (!pendingRenewalQr) {
+    Utils.toast("Leia o QR Code do exemplar antes de confirmar a renovação.", "error");
+    return;
+  }
   const days = parseInt(Utils.el("renew-days").value)||7;
   try {
     await API.loans.renew(pendingRenewalId, { dias: days });
     Utils.toast(`Empréstimo renovado por +${days} dias!`, "success");
     Utils.closeModal("modal-renewal");
     pendingRenewalId = null;
+    pendingRenewalQr = null;
     await syncData(); Charts.refresh();
     _refreshOpenStudentHistory();
     renderLoanScanPanel();

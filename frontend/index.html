@@ -271,13 +271,19 @@
               <div class="chart-body" style="height:280px;"><canvas id="chart-exports"></canvas></div>
             </div>
           </div>
-          <div style="margin-top:.25rem;"><div class="report-grid">
-            <div class="report-card"><div class="report-icon red"><i class="ti ti-clock-exclamation"></i></div><div><div class="report-title">Empréstimos atrasados</div><div class="report-desc">Alunos com devolução vencida</div><a class="btn btn-sm" href="/api/reports/export/overdue" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon blue"><i class="ti ti-transfer"></i></div><div><div class="report-title">Histórico completo</div><div class="report-desc">Todos os empréstimos</div><a class="btn btn-sm" href="/api/reports/export/all" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon green"><i class="ti ti-book"></i></div><div><div class="report-title">Livros mais emprestados</div><div class="report-desc">Ranking por demanda</div><a class="btn btn-sm" href="/api/reports/export/books" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon amber"><i class="ti ti-users"></i></div><div><div class="report-title">Por turma</div><div class="report-desc">Agrupado por turma</div><a class="btn btn-sm" href="/api/reports/export/by-class" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-            <div class="report-card"><div class="report-icon purple"><i class="ti ti-user-check"></i></div><div><div class="report-title">Status de alunos</div><div class="report-desc">Quem pegou, quem está devendo e quem devolveu</div><a class="btn btn-sm" href="/api/reports/export/student-status" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
-          </div></div>
+          <section class="reports-data-section" aria-labelledby="reports-data-title">
+            <div class="reports-section-heading">
+              <div><h2 id="reports-data-title">Dados disponíveis para exportação</h2><p>Confira os dados antes de baixar. Registros repetidos são removidos automaticamente.</p></div>
+              <span id="reports-count" class="reports-count" aria-live="polite"></span>
+            </div>
+            <div id="reports-status" class="reports-status" role="status" aria-live="polite">Carregando relatórios...</div>
+            <div id="reports-list" class="reports-list"></div>
+          </section>
+          <div class="reports-download-bar">
+            <button class="btn btn-primary reports-download-btn" id="reports-download-all" type="button" onclick="Reports.downloadAll()" disabled>
+              <i class="ti ti-download" aria-hidden="true"></i>Baixar Relatório (Planilha)
+            </button>
+          </div>
         </section>
 
         <!-- CONFIG -->
@@ -425,6 +431,18 @@
   <div class="modal-head"><h2><i class="ti ti-rotate-clockwise" style="vertical-align:-2px;margin-right:5px;"></i>Renovar empréstimo</h2><button class="modal-close" onclick="Utils.closeModal('modal-renewal')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <div class="dev-info" id="renew-info"></div>
+    <section class="renew-scanner" aria-labelledby="renew-scanner-title">
+      <h3 id="renew-scanner-title"><i class="ti ti-qrcode" aria-hidden="true"></i> Confirme o livro pelo QR Code</h3>
+      <p>Aponte a câmera para o QR Code do exemplar que será renovado.</p>
+      <div class="renew-scanner-viewport" id="renew-qr-viewport" aria-hidden="true">
+        <i class="ti ti-scan" aria-hidden="true"></i>
+        <span>O leitor da câmera será aberto ao tocar no botão</span>
+      </div>
+      <button class="btn btn-primary renew-scan-btn" type="button" onclick="scanRenewalQr()">
+        <i class="ti ti-camera" aria-hidden="true"></i>Escanear QR Code do livro
+      </button>
+      <div id="renew-qr-status" class="renew-qr-status" role="status" aria-live="polite">A leitura do QR é obrigatória para confirmar a renovação.</div>
+    </section>
     <div class="form-group"><label>Estender prazo por</label>
       <select id="renew-days">
         <option value="7">7 dias (padrão)</option><option value="14">14 dias</option>
@@ -433,7 +451,7 @@
     </div>
     <div class="alert alert-blue"><i class="ti ti-calendar-due"></i><span id="renew-new-date-text"></span></div>
   </div>
-  <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-renewal')">Cancelar</button><button class="btn btn-primary" onclick="confirmRenewal()"><i class="ti ti-rotate-clockwise"></i>Confirmar renovação</button></div>
+  <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-renewal')">Cancelar</button><button class="btn btn-primary" id="renew-confirm-btn" onclick="confirmRenewal()" disabled><i class="ti ti-rotate-clockwise"></i>Confirmar renovação</button></div>
 </div></div>
 
 <!-- Histórico aluno -->
@@ -494,6 +512,7 @@
 <script src="assets/js/api.js"></script>
 <script src="assets/js/qr-scanner.js"></script>
 <script src="assets/js/charts.js"></script>
+<script src="assets/js/reports.js"></script>
 <script src="assets/js/pages/books.js"></script>
 <script src="assets/js/pages/students.js"></script>
 <script src="assets/js/pages/loans.js"></script>

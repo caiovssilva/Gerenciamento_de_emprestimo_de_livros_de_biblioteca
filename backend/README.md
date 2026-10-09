@@ -95,11 +95,15 @@ cp backend/.env.example backend/.env
 # Edite backend/.env com suas credenciais, se não usar Secrets do Codespaces
 ```
 
-### Consulta de ISBN com Groq
+### Consulta de ISBN e leitura visual
 
 O cadastro de livros usa o Groq para obter uma sugestão inicial de metadados e consulta Google Books, ISBNsearch e Open Library em paralelo para confirmar ou complementar o resultado. O sistema preserva os dados do Groq quando as fontes externas não retornam dados.
 
-Configure um Secret do Codespaces chamado `GROQ_API`, `GROQ_API_KEY` ou `API_GROQ`. O nome recomendado é `GROQ_API_KEY`. Também é possível definir `GROQ_MODEL` e `GOOGLE_BOOKS_API_KEY`.
+Na câmera do cadastro de livros, escolha `Groq Vision` ou `OpenAI Vision`; a opção fica salva neste navegador. A leitura local de códigos de barras continua disponível via `pyzbar` no backend e `BarcodeDetector` no navegador, sem depender do provedor de visão.
+
+Em Linux, o leitor `pyzbar` também precisa da biblioteca nativa `libzbar` instalada no sistema (Ubuntu/Debian: `sudo apt install libzbar0`). Sem ela, a leitura local do backend fica indisponível; o navegador ainda pode usar o `BarcodeDetector` quando suportado.
+
+Para usar Groq, configure `GROQ_API_KEY` (também são aceitos `GROQ_API` e `API_GROQ`) e, opcionalmente, `GROQ_VISION_MODEL`. Para OpenAI, configure `OPENAI_API_KEY` e, opcionalmente, `OPENAI_VISION_MODEL` (padrão `gpt-4o-mini`). `ISBN_VISION_PROVIDER` define o padrão da API quando nenhum provedor é enviado (`groq` ou `openai`). As chaves devem ficar apenas no backend. Também é possível definir `GROQ_MODEL` e `GOOGLE_BOOKS_API_KEY` para a consulta de metadados.
 
 Para usar a biblioteca OpenAI com a API compatível do Groq, utilize:
 

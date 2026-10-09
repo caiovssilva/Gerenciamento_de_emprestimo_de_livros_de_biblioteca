@@ -318,6 +318,60 @@ def test_groq_vision_rejects_invalid_isbn(monkeypatch):
     assert books._groq_isbn_from_image(_vision_frame()) == {"encontrado": False, "isbn": ""}
 
 
+def test_openai_vision_uses_configured_model_and_normalizes_isbn(monkeypatch):
+    calls = []
+    client_options = []
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "test-vision-model")
+
+    class Completion:
+        def create(self, **payload):
+            calls.append(payload)
+            return type("Response", (), {
+                "choices": [type("Choice", (), {
+                    "message": type("Message", (), {"content": '{"encontrado": true, "isbn": "978-85-3251-101-0"}'})()
+                })()]
+            })()
+
+    def create_client(**kwargs):
+        client_options.append(kwargs)
+        return type("Client", (), {"chat": type("Chat", (), {"completions": Completion()})()})()
+
+    monkeypatch.setattr(books, "OpenAI", create_client)
+
+    result = books._openai_isbn_from_image(_vision_frame())
+
+    assert result == {"encontrado": True, "isbn": "9788532511010"}
+    assert client_options[0]["api_key"] == "test-key"
+    assert "base_url" not in client_options[0]
+    assert calls[0]["model"] == "test-vision-model"
+
+
+def test_vision_endpoint_dispatches_to_selected_provider(monkeypatch):
+    calls = []
+    monkeypatch.setattr(books, "_openai_isbn_from_image", lambda image: calls.append(image) or {"encontrado": True, "isbn": "9788532511010"})
+    monkeypatch.setattr(books, "_lookup_isbn", lambda isbn, use_groq=False: {
+        "isbn": isbn, "titulo": "Livro", "autor": "Autora", "categorias": []
+    })
+    from app import app
+
+    with app.test_client() as client:
+        response = client.post("/api/books/isbn-vision", json={"image": _vision_frame(), "provider": "openai"})
+
+    assert response.status_code == 200
+    assert calls == [_vision_frame()]
+    assert response.get_json()["titulo"] == "Livro"
+
+
+def test_vision_endpoint_rejects_unknown_provider():
+    from app import app
+
+    with app.test_client() as client:
+        response = client.post("/api/books/isbn-vision", json={"image": _vision_frame(), "provider": "unknown"})
+
+    assert response.status_code == 400
+
+
 def test_vision_endpoint_uses_normalized_isbn_without_metadata_groq(monkeypatch):
     calls = []
     monkeypatch.setattr(books, "_groq_isbn_from_image", lambda image: {"encontrado": True, "isbn": "9788532511010"})

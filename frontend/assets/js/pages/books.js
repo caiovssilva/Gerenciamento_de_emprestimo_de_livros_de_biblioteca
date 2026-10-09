@@ -77,7 +77,28 @@ function openAddBook() {
   _populateGenreSelect("book-genre");
   Utils.el("book-genre").value   = "";
   Utils.el("book-isbn-status").textContent = "";
+  restoreBookVisionProvider();
   Utils.openModal("modal-book");
+}
+
+function restoreBookVisionProvider() {
+  const select = Utils.el("book-vision-provider");
+  if (!select) return;
+  try {
+    select.value = localStorage.getItem("bookVisionProvider") || "groq";
+  } catch {
+    select.value = "groq";
+  }
+  if (!["pyzbar", "groq"].includes(select.value)) select.value = "groq";
+}
+
+function setBookVisionProvider(provider) {
+  if (!["pyzbar", "groq"].includes(provider)) return;
+  try {
+    localStorage.setItem("bookVisionProvider", provider);
+  } catch {
+    // A seleção continua válida durante esta sessão mesmo sem armazenamento local.
+  }
 }
 
 function _normalizeIsbn(value) {
@@ -155,13 +176,14 @@ async function lookupBookIsbn(source = "manual") {
 }
 
 function scanBookIsbn() {
+  const provider = Utils.el("book-vision-provider")?.value || "groq";
   let visionController = null;
   let visionRetryAt = 0;
   let visionFailures = 0;
   let visionErrorNotified = false;
   QRScanner.start("book-isbn", result => {
     const value = _normalizeIsbn(result.primary);
-    if (result.data?.titulo || result.source === "groq-vision") {
+    if (result.data?.titulo || result.source?.endsWith("-vision")) {
       applyBookLookupResult(result.data || result, value);
     } else {
       lookupBookIsbn("manual");
@@ -170,16 +192,31 @@ function scanBookIsbn() {
     frameIntervalMs: 5000,
     onStop: () => visionController?.abort(),
     frameHandler: async image => {
+      if (provider === "pyzbar") {
+        try {
+          const decoded = await API.qr.decode(image);
+          const isbn = _normalizeIsbn(decoded.primary);
+          if (![10, 13].includes(isbn.length)) return null;
+          return { primary: isbn, type: "book", data: null, source: "pyzbar" };
+        } catch (error) {
+          if (!visionErrorNotified) {
+            Utils.toast(error.message || "Não foi possível ler o código com pyzbar.", "error");
+            visionErrorNotified = true;
+          }
+          return null;
+        }
+      }
+
       if (Date.now() < visionRetryAt) return null;
       visionController?.abort();
       visionController = new AbortController();
       try {
-        const result = await API.books.lookupIsbnVision(image, visionController.signal);
+        const result = await API.books.lookupIsbnVision(image, provider, visionController.signal);
         visionFailures = 0;
         visionRetryAt = 0;
         visionErrorNotified = false;
         if (!result.encontrado) return null;
-        return { primary: result.isbn, type: "book", data: result, source: "groq-vision" };
+        return { primary: result.isbn, type: "book", data: result, source: `${provider}-vision` };
       } catch (error) {
         visionFailures += 1;
         const isRateLimited = /limite de chamadas|\b429\b|rate limit/i.test(error.message || "");
@@ -208,6 +245,7 @@ function editBook(id) {
   Utils.el("book-copies").value  = b.exemplares||b.copies||1;
   _populateGenreSelect("book-genre");
   Utils.el("book-genre").value   = b.genero_id||"";
+  restoreBookVisionProvider();
   Utils.openModal("modal-book");
 }
 

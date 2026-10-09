@@ -2,14 +2,17 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1a4f8a">
 <meta name="apple-mobile-web-app-capable" content="yes">
   <!-- Deprecated 'mobile-web-app-capable' replaced by Apple meta, but keep for compatibility -->
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
 <title>Biblioteca Narceu de Paiva Filho</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <link rel="stylesheet" href="assets/css/main.css">
@@ -51,7 +54,7 @@
 <!-- APP -->
 <div id="app">
   <div class="layout">
-    <nav class="sidebar" aria-label="Menu principal">
+    <nav class="sidebar" id="sidebar-navigation" aria-label="Menu principal">
       <div class="sb-logo">
         <div class="sb-logo-main">
           <span class="name">📚 Biblioteca</span>
@@ -72,20 +75,20 @@
         <button class="nav-btn" data-page="relatorios" data-role="admin"><i class="ti ti-chart-bar"></i>Relatórios</button>
         <button class="nav-btn" data-page="config"><i class="ti ti-settings"></i>Configurações</button>
       </div>
-      <div class="sb-footer">
+      <footer class="sb-footer">
         <div class="sb-avatar" id="sb-avatar-initials">AD</div>
         <div class="sb-user-info">
           <span class="sb-user-name" id="sb-user-name">Administrador</span>
           <span id="sb-role-badge"></span>
         </div>
         <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout"></i></button>
-      </div>
+      </footer>
     </nav>
 
     <div class="main-area">
-      <div class="topbar">
+      <header class="topbar">
         <div class="topbar-left">
-          <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" onclick="toggleMobileSidebar()" aria-label="Abrir menu"><i class="ti ti-menu-2"></i></button>
+          <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" aria-label="Abrir menu" aria-controls="sidebar-navigation"><i class="ti ti-menu-2"></i></button>
           <div>
             <div class="topbar-title" id="topbar-title">Painel</div>
             <div class="topbar-sub" id="topbar-sub">Visão geral</div>
@@ -95,11 +98,11 @@
         </div>
         <button class="btn btn-ghost topbar-theme-btn" id="theme-toggle-topbar-btn" type="button" onclick="toggleTheme()" title="Alternar tema" aria-label="Alternar tema"><i class="ti ti-moon"></i></button>
         <button class="topbar-cam-btn" title="Escanear carteirinha de aluno" onclick="openGlobalScanner()"><i class="ti ti-camera"></i></button>
-      </div>
-      <div class="content">
+      </header>
+      <main class="content">
 
         <!-- DASHBOARD -->
-        <div class="page active" id="page-dashboard">
+        <section class="page active" id="page-dashboard" aria-label="Painel">
           <div class="metrics" id="metrics-row"></div>
           <div id="dashboard-priority-students"></div>
           <div class="card">
@@ -110,10 +113,10 @@
               <tbody id="dash-loans-tbody"></tbody>
             </table></div>
           </div>
-        </div>
+        </section>
 
         <!-- EMPRÉSTIMOS -->
-        <div class="page" id="page-emprestimo">
+        <section class="page" id="page-emprestimo" aria-label="Empréstimos">
           <div class="tabs" id="emp-tabs">
             <button class="tab-btn active" data-tab="novo">Novo empréstimo</button>
             <button class="tab-btn" data-tab="lista">Todos os empréstimos</button>
@@ -169,10 +172,10 @@
               <tbody id="loans-tbody"></tbody>
             </table></div>
           </div>
-        </div>
+        </section>
 
         <!-- ACERVO -->
-        <div class="page" id="page-livros">
+        <section class="page" id="page-livros" aria-label="Acervo">
           <div class="toolbar">
             <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="books-search" placeholder="Título, autor, ISBN..." oninput="renderScheduler.books()"></div>
             <select id="books-genre-filter" onchange="renderScheduler.books()"><option value="">Todos os gêneros</option></select>
@@ -181,18 +184,18 @@
             <thead><tr><th>ISBN / ID</th><th>Título</th><th>Autor</th><th>Gênero</th><th>Área</th><th>Exemplares</th><th>Disponíveis</th><th></th></tr></thead>
             <tbody id="books-tbody"></tbody>
           </table></div>
-        </div>
+        </section>
 
         <!-- GÊNEROS -->
-        <div class="page" id="page-generos">
+        <section class="page" id="page-generos" aria-label="Gêneros">
           <div style="padding:.75rem 0 .5rem;">
             <p style="font-size:13px;color:var(--muted);">Categorize seus livros por tipo de literatura para facilitar a busca.</p>
           </div>
           <div class="genres-grid" id="genres-grid"></div>
-        </div>
+        </section>
 
         <!-- ALUNOS -->
-        <div class="page" id="page-alunos">
+        <section class="page" id="page-alunos" aria-label="Alunos">
           <div style="padding:1rem 0;">
             <div class="import-zone" id="import-zone" onclick="document.getElementById('csv-file-input').click()">
               <i class="ti ti-file-type-csv"></i><p>Importar alunos via CSV</p>
@@ -209,10 +212,10 @@
             <thead><tr><th>Carteirinha / ID</th><th>Nome</th><th>Turma</th><th>Sala</th><th>Ativos</th><th>Situação</th><th></th></tr></thead>
             <tbody id="students-tbody"></tbody>
           </table></div>
-        </div>
+        </section>
 
         <!-- SALAS -->
-        <div class="page" id="page-salas">
+        <section class="page" id="page-salas" aria-label="Salas">
           <div class="toolbar">
             <div class="search-wrap"><i class="ti ti-search"></i><input type="text" id="rooms-search" placeholder="Buscar sala..." oninput="renderScheduler.rooms()"></div>
           </div>
@@ -220,10 +223,10 @@
             <thead><tr><th>Código</th><th>Nome</th><th>Descrição</th><th>Capacidade</th><th>Ocupação</th><th></th></tr></thead>
             <tbody id="rooms-tbody"></tbody>
           </table></div>
-        </div>
+        </section>
 
         <!-- RELATÓRIOS -->
-        <div class="page" id="page-relatorios">
+        <section class="page" id="page-relatorios" aria-label="Relatórios">
           <div class="charts-grid" style="margin-top:.5rem;">
             <div class="chart-card">
               <div class="chart-card-header">
@@ -275,10 +278,10 @@
             <div class="report-card"><div class="report-icon amber"><i class="ti ti-users"></i></div><div><div class="report-title">Por turma</div><div class="report-desc">Agrupado por turma</div><a class="btn btn-sm" href="/api/reports/export/by-class" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
             <div class="report-card"><div class="report-icon purple"><i class="ti ti-user-check"></i></div><div><div class="report-title">Status de alunos</div><div class="report-desc">Quem pegou, quem está devendo e quem devolveu</div><a class="btn btn-sm" href="/api/reports/export/student-status" target="_blank"><i class="ti ti-download"></i>CSV</a></div></div>
           </div></div>
-        </div>
+        </section>
 
         <!-- CONFIG -->
-        <div class="page" id="page-config">
+        <section class="page" id="page-config" aria-label="Configurações">
           <div class="card" style="max-width:760px;">
             <div class="card-header"><h2><i class="ti ti-book" style="vertical-align:-2px;margin-right:5px;color:var(--brand);"></i>Tutorial de uso</h2></div>
             <div class="card-body">
@@ -328,9 +331,9 @@
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-      </div>
+      </main>
     </div>
   </div>
 </div>
@@ -343,6 +346,7 @@
   <div class="modal-body">
     <input type="hidden" id="book-edit-id">
     <div class="form-group"><label>ISBN / Código de barras</label><div class="barcode-row"><input type="text" id="book-isbn" placeholder="Leia ou informe o ISBN"><button type="button" class="scan-btn" onclick="scanBookIsbn()" title="Ler código de barras"><i class="ti ti-barcode"></i>Ler</button><button type="button" class="scan-btn" onclick="lookupBookIsbn()" title="Pesquisar ISBN"><i class="ti ti-search"></i>Pesquisar</button></div><small id="book-isbn-status" style="display:block;margin-top:6px;color:var(--muted);"></small></div>
+    <div class="form-group"><label for="book-vision-provider">Leitura do ISBN</label><select id="book-vision-provider" onchange="setBookVisionProvider(this.value)"><option value="pyzbar">Python (pyzbar)</option><option value="groq">Groq Vision</option></select></div>
     <div class="form-group"><label>Título *</label><input type="text" id="book-title" placeholder="Título completo"></div>
     <div class="form-group"><label>Autor *</label><input type="text" id="book-author" placeholder="Nome do autor"></div>
     <div class="form-row cols-2">

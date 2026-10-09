@@ -41,7 +41,7 @@ const API = {
     list:   (q="", genre="") => apiFetch(`/books/?q=${encodeURIComponent(q)}&genre=${encodeURIComponent(genre)}`),
     get:    id               => apiFetch(`/books/${id}`),
     lookupIsbn: (isbn, source="manual") => apiFetch(`/books/isbn-lookup?isbn=${encodeURIComponent(isbn)}&source=${encodeURIComponent(source)}`),
-    lookupIsbnVision: (image, signal) => apiFetch("/books/isbn-vision", { method:"POST", body:JSON.stringify({ image }), signal }),
+    lookupIsbnVision: (image, provider, signal) => apiFetch("/books/isbn-vision", { method:"POST", body:JSON.stringify({ image, provider }), signal }),
     create: body             => apiFetch("/books/",      { method:"POST",   body:JSON.stringify(body) }),
     update: (id,body)        => apiFetch(`/books/${id}`, { method:"PUT",    body:JSON.stringify(body) }),
     delete: id               => apiFetch(`/books/${id}`, { method:"DELETE" }),

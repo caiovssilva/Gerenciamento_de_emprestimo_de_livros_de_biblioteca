@@ -212,8 +212,11 @@ def _groq_lookup(isbn: str) -> dict:
     return result
 
 
-def _groq_isbn_from_image(image_data: str) -> dict:
-    """Extrai um ISBN de um frame temporário usando um modelo Groq com visão."""
+def _vision_isbn_from_image(image_data: str, provider: str) -> dict:
+    """Extrai e valida um ISBN de um frame temporário usando um provedor de visão."""
+    provider = str(provider or "").strip().lower()
+    if provider not in {"groq", "openai"}:
+        raise ValueError("Provedor de visão inválido. Escolha Groq ou OpenAI.")
     if not isinstance(image_data, str) or not image_data.startswith("data:image/") or "," not in image_data:
         raise ValueError("Frame de imagem inválido.")
 
@@ -225,19 +228,27 @@ def _groq_isbn_from_image(image_data: str) -> dict:
     if not image_bytes or len(image_bytes) > _VISION_FRAME_MAX_BYTES:
         raise ValueError("Frame de imagem inválido.")
 
-    api_key = (
-        os.getenv("GROQ_API_KEY")
-        or os.getenv("API_GROQ")
-        or os.getenv("GROQ_API")
-        or ""
-    ).strip()
+    if provider == "groq":
+        source = "Groq Vision"
+        key_name = "GROQ_API_KEY"
+        model_name = "GROQ_VISION_MODEL"
+        api_key = (
+            os.getenv("GROQ_API_KEY")
+            or os.getenv("API_GROQ")
+            or os.getenv("GROQ_API")
+            or ""
+        ).strip()
+        model = (os.getenv(model_name) or _GROQ_DEFAULT_VISION_MODEL).strip()
+        client_options = {"base_url": _GROQ_BASE_URL}
+    else:
+        source = "OpenAI Vision"
+        key_name = "OPENAI_API_KEY"
+        model_name = "OPENAI_VISION_MODEL"
+        api_key = os.getenv(key_name, "").strip()
+        model = os.getenv(model_name, "gpt-4o-mini").strip() or "gpt-4o-mini"
+        client_options = {}
     if not api_key:
-        raise LookupError("Groq não configurado.")
-
-    model = (
-        os.getenv("GROQ_VISION_MODEL")
-        or _GROQ_DEFAULT_VISION_MODEL
-    ).strip()
+        raise LookupError(f"{source} não configurado. Defina {key_name} no backend.")
     payload = {
         "model": model,
         "temperature": 0,
@@ -262,19 +273,19 @@ def _groq_isbn_from_image(image_data: str) -> dict:
     try:
         client = OpenAI(
             api_key=api_key,
-            base_url=_GROQ_BASE_URL,
+            **client_options,
             timeout=_PROVIDER_TIMEOUT_SECONDS,
             max_retries=0,
         )
         response = client.chat.completions.create(**payload)
         content = response.choices[0].message.content or "{}"
     except (OpenAIError, OSError) as exc:
-        raise _ProviderError("Groq Vision", _describe_groq_error(exc, source="Groq Vision", key_name="GROQ_API_KEY", model_name="GROQ_VISION_MODEL")) from exc
+        raise _ProviderError(source, _describe_groq_error(exc, source=source, key_name=key_name, model_name=model_name)) from exc
 
     try:
         parsed = json.loads(content)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise _ProviderError("Groq Vision", "O Groq Vision retornou uma resposta inválida.") from exc
+        raise _ProviderError(source, f"{source} retornou uma resposta inválida.") from exc
 
     isbn = _normalize_isbn(parsed.get("isbn", "")) if parsed.get("encontrado") else ""
     if not isbn:
@@ -284,6 +295,14 @@ def _groq_isbn_from_image(image_data: str) -> dict:
     except ValueError:
         return {"encontrado": False, "isbn": ""}
     return {"encontrado": True, "isbn": isbn}
+
+
+def _groq_isbn_from_image(image_data: str) -> dict:
+    return _vision_isbn_from_image(image_data, "groq")
+
+
+def _openai_isbn_from_image(image_data: str) -> dict:
+    return _vision_isbn_from_image(image_data, "openai")
 
 
 class _IsbnSearchParser(HTMLParser):
@@ -609,8 +628,16 @@ def lookup_isbn():
 @books_bp.route("/isbn-vision", methods=["POST"])
 def lookup_isbn_from_image():
     body = request.get_json(silent=True) or {}
+    provider = str(body.get("provider") or os.getenv("ISBN_VISION_PROVIDER", "groq")).strip().lower()
     try:
-        vision_result = _groq_isbn_from_image(body.get("image", ""))
+        vision_readers = {
+            "groq": _groq_isbn_from_image,
+            "openai": _openai_isbn_from_image,
+        }
+        reader = vision_readers.get(provider)
+        if reader is None:
+            raise ValueError("Provedor de visão inválido. Escolha Groq ou OpenAI.")
+        vision_result = reader(body.get("image", ""))
         if not vision_result["encontrado"]:
             return jsonify(vision_result)
         result = _lookup_isbn(vision_result["isbn"], use_groq=False)

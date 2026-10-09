@@ -8,6 +8,7 @@ const elements = {
   'book-title': { value: '' },
   'book-author': { value: 'Autor digitado' },
   'book-area': { value: 'Informática' },
+  'book-vision-provider': { value: 'pyzbar' },
   'book-genre': { value: '', innerHTML: '' },
   'book-isbn-status': { textContent: '' },
 };
@@ -41,6 +42,15 @@ const context = {
             area: 'Literatura',
           },
     },
+    qr: {
+      decode: async (image) => {
+        assert.strictEqual(image, 'frame-data');
+        return { primary: '9788576831303' };
+      },
+    },
+  },
+  QRScanner: {
+    start: (_inputId, _callback, options) => { context.scanOptions = options; },
   },
   syncGenres: async () => {},
 };
@@ -64,6 +74,11 @@ vm.runInContext(
   assert.strictEqual(elements['book-title'].value, 'Segundo livro');
   assert.strictEqual(elements['book-author'].value, 'Segundo autor');
   assert.strictEqual(elements['book-area'].value, 'Literatura');
+
+  context.scanBookIsbn();
+  const scanned = await context.scanOptions.frameHandler('frame-data');
+  assert.strictEqual(scanned.primary, '9788576831303');
+  assert.strictEqual(scanned.source, 'pyzbar');
   console.log('books ISBN form test passed');
 })().catch((error) => {
   console.error(error);

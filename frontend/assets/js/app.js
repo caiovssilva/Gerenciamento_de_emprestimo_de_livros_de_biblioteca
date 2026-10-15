@@ -238,6 +238,44 @@ async function startQRLogin() {
   });
 }
 
+function openSelfServiceLoginScreen() {
+  Utils.el("login-screen").style.display = "none";
+  Utils.el("self-service-login-screen").style.display = "flex";
+}
+
+function returnFromSelfServiceLoginScreen() {
+  if (currentUser?.role === "self_service") return;
+  Utils.el("self-service-login-screen").style.display = "none";
+  Utils.el("login-screen").style.display = "flex";
+}
+
+async function startSelfServiceLogin() {
+  const errEl = Utils.el("login-err");
+  errEl.textContent = "";
+  try {
+    await QRScanner.start(null, async (result) => {
+      const code = String(result?.primary || "").trim();
+      if (!code) {
+        errEl.textContent = "Não foi possível ler a carteirinha. Tente novamente.";
+        return;
+      }
+      try {
+        const session = await API.auth.selfServiceLogin(code);
+        await _finishLogin({
+          role: "self_service",
+          login: "autoatendimento",
+          name: session.name || "Aluno",
+          accessToken: session.token,
+        });
+      } catch (error) {
+        errEl.textContent = error.message || "Carteirinha não reconhecida.";
+      }
+    }, { onStop: returnFromSelfServiceLoginScreen });
+  } catch (error) {
+    errEl.textContent = error.message || "Não foi possível iniciar a câmera.";
+  }
+}
+
 function _showQRLoginResult({icon, color, title, sub, action}) {
   Utils.el("login-card-form").style.display = "none";
   const body = Utils.el("login-qr-result-body");
@@ -260,10 +298,27 @@ function cancelQRLoginResult() {
 
 // ── Finaliza login (qualquer origem) e aplica permissões ──────────────
 async function _finishLogin(user, showRoleToast) {
+  if (user.role === "self_service") {
+    currentUser = user;
+    clearSessionCookie();
+    clearTimeout(window.__session_timeout_handle);
+    document.body.classList.add("role-self-service");
+    Utils.el("login-screen").style.display = "none";
+    Utils.el("self-service-login-screen").style.display = "none";
+    Utils.el("app").style.display = "flex";
+    Utils.el("sb-user-name").textContent = user.name;
+    Utils.el("sb-avatar-initials").textContent = user.name.split(" ").map(word => word[0]).slice(0, 2).join("").toUpperCase();
+    Utils.el("sb-role-badge").textContent = "Autoatendimento";
+    navigateTo("auto-historico");
+    return;
+  }
+
+  document.body.classList.remove("role-self-service");
   currentUser = user;
   setSessionCookie(user);
   scheduleSessionTimeout();
   Utils.el("login-screen").style.display = "none";
+  Utils.el("self-service-login-screen").style.display = "none";
   Utils.el("login-card-qr-result").style.display = "none";
   Utils.el("login-qr-result-body").innerHTML = "";
   Utils.el("login-card-form").style.display = "block";
@@ -306,18 +361,21 @@ function isLibrarian() { return currentUser?.role === "librarian"; }
 
 function doLogout({ confirmPrompt = true, reason = "" } = {}) {
   if (confirmPrompt && !confirm("Sair do sistema?")) return;
+  if (currentUser?.role === "self_service") API.auth.selfServiceLogout().catch(() => {});
   currentUser = null;
   clearSessionCookie();
   clearTimeout(window.__session_timeout_handle);
   Charts.destroy();
   Utils.el("app").style.display = "none";
   Utils.el("login-screen").style.display = "flex";
+  Utils.el("self-service-login-screen").style.display = "none";
   Utils.el("login-user").value = "";
   Utils.el("login-pass").value = "";
   Utils.el("login-err").textContent = "";
   cancelQRLoginResult();
   Utils.qsa('[data-role="admin"]').forEach(el => el.classList.remove("lib-hidden"));
   document.body.classList.remove("role-librarian");
+  document.body.classList.remove("role-self-service");
   toggleMobileSidebar(false);
   if (reason) Utils.toast(reason, "info");
 }
@@ -439,6 +497,7 @@ async function syncData({ force = false, render = true } = {}) {
 
 // ── Navegação ─────────────────────────────────────────────────────────
 const PAGE_META = {
+  "auto-historico": { title:"Meu histórico", sub:"Movimentações da sua carteirinha", action:"" },
   dashboard:  { title:"Painel",           sub:"Visão geral da biblioteca",         action:"" },
   emprestimo: { title:"Empréstimos",      sub:"Registrar e gerenciar empréstimos", action:"" },
   livros:     { title:"Acervo",           sub:"Livros por gênero e área",
@@ -455,6 +514,7 @@ const PAGE_META = {
 };
 
 function navigateTo(page) {
+  if (currentUser?.role === "self_service") page = "auto-historico";
   toggleMobileSidebar(false);
   Utils.qsa(".page").forEach(p => p.classList.remove("active"));
   Utils.qsa(".nav-btn[data-page]").forEach(b => b.classList.remove("active"));
@@ -472,8 +532,67 @@ function navigateTo(page) {
   if (page==="generos")    renderGenres();
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") { Charts.init(); Reports.init(); }
+  if (page==="auto-historico") showSelfServiceTab("history");
   if (page==="config" && isLibrarian()) {
     Utils.el("topbar-actions").innerHTML = "";
+  }
+}
+
+function escapeSelfServiceHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
+function showSelfServiceTab() {
+  if (currentUser?.role !== "self_service") return;
+  const selected = "history";
+  Utils.qsa("[data-self-service-tab]").forEach((button) => {
+    const active = button.dataset.selfServiceTab === selected;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  Utils.qsa(".self-service-panel").forEach((panel) => {
+    const active = panel.id === `self-service-panel-${selected}`;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  });
+
+  loadSelfServiceHistory();
+}
+
+async function loadSelfServiceHistory() {
+  const status = Utils.el("self-service-history-status");
+  const rows = Utils.el("self-service-history-rows");
+  if (!currentUser?.accessToken || !status || !rows) return;
+  status.textContent = "Carregando seu histórico...";
+  rows.innerHTML = "";
+  try {
+    const result = await API.auth.selfServiceHistory(currentUser.accessToken);
+    const student = result.student || {};
+    Utils.el("self-service-student-name").textContent = student.name || currentUser.name;
+    Utils.el("self-service-student-class").textContent = student.class ? `Turma ${student.class}` : "";
+    Utils.el("self-service-student-card").textContent = student.card ? `Carteirinha ${student.card}` : "Carteirinha não informada";
+    status.textContent = "";
+    if (!result.history?.length) {
+      status.textContent = "Nenhuma movimentação encontrada.";
+      return;
+    }
+    rows.innerHTML = result.history.map((loan) => {
+      const returned = Boolean(loan.returned_at);
+      const overdue = !returned && loan.due_date && Utils.daysLeft(loan.due_date) < 0;
+      const state = returned ? "Devolvido" : overdue ? "Atrasado" : "Em andamento";
+      const stateClass = returned ? "returned" : overdue ? "overdue" : "active";
+      return `<tr>
+        <td><strong>${escapeSelfServiceHtml(loan.book_title)}</strong><small>${escapeSelfServiceHtml(loan.book_author)}</small></td>
+        <td>${escapeSelfServiceHtml(loan.exemplar ? `#${loan.exemplar}` : "—")}</td>
+        <td>${escapeSelfServiceHtml(Utils.fmtDate(loan.loan_date))}</td>
+        <td>${escapeSelfServiceHtml(Utils.fmtDate(loan.due_date))}</td>
+        <td><span class="self-service-status ${stateClass}">${state}</span></td>
+      </tr>`;
+    }).join("");
+  } catch (error) {
+    status.textContent = error.message || "Não foi possível carregar seu histórico.";
   }
 }
 
@@ -1251,6 +1370,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Botão login — apenas um handler
   Utils.el("login-btn")?.addEventListener("click", doLogin);
+  Utils.el("self-service-open-btn")?.addEventListener("click", openSelfServiceLoginScreen);
+  Utils.el("self-service-scan-btn")?.addEventListener("click", startSelfServiceLogin);
+  Utils.qsa("[data-self-service-tab]").forEach(button => {
+    button.addEventListener("click", () => showSelfServiceTab(button.dataset.selfServiceTab));
+  });
 
   // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)
   Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);

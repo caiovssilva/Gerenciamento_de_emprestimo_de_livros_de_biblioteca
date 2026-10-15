@@ -1,6 +1,8 @@
 """api/auth.py — Autenticação via tabela usuarios do Supabase."""
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, session
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import os
+from pathlib import Path
 
 # Prefer passlib for portable password verification.
 # Add explicit bcrypt support in case the system lacks passlib backends.
@@ -24,8 +26,12 @@ except Exception:
     unix_crypt = None
 
 from utils import get_client, sb_exec
+from api._helpers import read_json
 
 auth_bp = Blueprint("auth", __name__)
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SELF_SERVICE_TOKEN_MAX_AGE = 30 * 60
+DEFAULT_DEV_SECRET = "narceu-biblioteca-2026-dev-only"
 
 LOGIN_ALIASES = {
     "bibliotecario": "biblioteca",
@@ -111,6 +117,59 @@ def _get_user_by_login(login_str: str):
     return None
 
 
+def _self_service_serializer():
+    session_secret = current_app.config.get("SECRET_KEY")
+    if not session_secret or session_secret == DEFAULT_DEV_SECRET:
+        return None
+    secret = os.getenv("SELF_SERVICE_SECRET_KEY") or session_secret
+    if not secret:
+        return None
+    return URLSafeTimedSerializer(secret, salt="biblioteca-self-service-v1")
+
+
+def _get_student_by_card(code: str):
+    sb = get_client()
+    for field in ("id", "carteirinha"):
+        try:
+            rows = sb_exec(sb.table("alunos").select("*").eq(field, code))
+            if rows:
+                student = rows[0]
+                if not student.get("deleted_at"):
+                    return student
+        except Exception:
+            pass
+
+    students = read_json(DATA_DIR / "alunos.json")
+    return next((
+        student for student in students
+        if not student.get("deleted_at")
+        and code in {str(student.get("id", "")), str(student.get("carteirinha", ""))}
+    ), None)
+
+
+def _self_service_student_from_request():
+    serializer = _self_service_serializer()
+    if serializer is None:
+        return None, (jsonify({"error": "Autoatendimento indisponível: configure uma chave secreta segura."}), 503)
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None, (jsonify({"error": "Sessão de autoatendimento inválida ou expirada."}), 401)
+
+    try:
+        payload = serializer.loads(token, max_age=SELF_SERVICE_TOKEN_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None, (jsonify({"error": "Sessão de autoatendimento inválida ou expirada."}), 401)
+
+    if payload.get("scope") != "student_history" or not payload.get("student_id"):
+        return None, (jsonify({"error": "Sessão de autoatendimento inválida ou expirada."}), 401)
+    student_id = str(payload["student_id"])
+    if session.get("access_scope") != "self_service" or str(session.get("student_id", "")) != student_id:
+        return None, (jsonify({"error": "Sessão de autoatendimento inválida ou expirada."}), 401)
+    return student_id, None
+
+
 # ── Endpoint: Login ──────────────────────────────────────────────────
 @auth_bp.route("/login", methods=["POST"])
 def login():
@@ -178,6 +237,7 @@ def login():
 
         normalized_login = (user["login"] or "").strip().lower()
         access = "librarian" if normalized_login in ("bibliotecario", "biblioteca") else "admin"
+        session.clear()
         return jsonify({
             "access": access,
             "id": user["id"],
@@ -188,6 +248,103 @@ def login():
     except Exception as e:
         current_app.logger.error(f"Erro ao fazer login: {e}")
         return jsonify({"error": "Erro ao processar login"}), 500
+
+
+@auth_bp.route("/self-service/login", methods=["POST"])
+def self_service_login():
+    """Autentica uma carteirinha comum e emite uma sessão no escopo do próprio aluno."""
+    serializer = _self_service_serializer()
+    if serializer is None:
+        return jsonify({"error": "Autoatendimento indisponível: configure uma chave secreta segura."}), 503
+
+    body = request.get_json(force=True) or {}
+    code = str(body.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "Leia a carteirinha para continuar."}), 400
+
+    try:
+        student = _get_student_by_card(code)
+        if not student or student.get("is_librarian"):
+            return jsonify({"error": "Carteirinha não reconhecida para autoatendimento."}), 401
+
+        token = serializer.dumps({"scope": "student_history", "student_id": str(student["id"])})
+        session.clear()
+        session["access_scope"] = "self_service"
+        session["student_id"] = str(student["id"])
+        return jsonify({
+            "access": "self_service",
+            "token": token,
+            "name": student.get("nome") or student.get("name") or "Aluno",
+        }), 200
+    except Exception as error:
+        current_app.logger.error("Erro no login de autoatendimento: %s", error)
+        return jsonify({"error": "Erro ao validar a carteirinha."}), 500
+
+
+@auth_bp.route("/self-service/logout", methods=["POST"])
+def self_service_logout():
+    session.clear()
+    return jsonify({"success": True}), 200
+
+
+@auth_bp.route("/self-service/history", methods=["GET"])
+def self_service_history():
+    """Retorna somente o histórico pertencente à carteirinha autenticada."""
+    student_id, error_response = _self_service_student_from_request()
+    if error_response:
+        return error_response
+
+    try:
+        sb = get_client()
+        try:
+            loans = sb_exec(
+                sb.table("emprestimos").select("*").eq("aluno_id", student_id)
+            )
+        except Exception:
+            loans = [
+                loan for loan in read_json(DATA_DIR / "emprestimos.json")
+                if str(loan.get("aluno_id", "")) == student_id
+            ]
+
+        try:
+            books = sb_exec(sb.table("livros").select("id,titulo,autor"))
+        except Exception:
+            books = read_json(DATA_DIR / "livros.json")
+        books_by_id = {str(book.get("id")): book for book in books}
+
+        history = []
+        for loan in loans:
+            book = books_by_id.get(str(loan.get("livro_id", "")), {})
+            history.append({
+                "book_title": book.get("titulo") or book.get("title") or "Livro não encontrado",
+                "book_author": book.get("autor") or book.get("author") or "",
+                "exemplar": loan.get("exemplar"),
+                "loan_date": loan.get("data_emprestimo"),
+                "due_date": loan.get("data_devolucao_prevista"),
+                "returned_at": loan.get("devolvido_em"),
+            })
+        history.sort(key=lambda item: str(item.get("loan_date") or ""), reverse=True)
+
+        students = read_json(DATA_DIR / "alunos.json")
+        student = next((row for row in students if str(row.get("id")) == student_id), None)
+        if student is None:
+            try:
+                rows = sb_exec(sb.table("alunos").select("id,nome,turma,carteirinha").eq("id", student_id))
+                student = rows[0] if rows else {}
+            except Exception:
+                student = {}
+
+        return jsonify({
+            "student": {
+                "name": student.get("nome") or student.get("name") or "Aluno",
+                "class": student.get("turma") or student.get("class") or "",
+                "card": student.get("carteirinha") or "",
+            },
+            "history": history,
+        }), 200
+    except Exception as error:
+        current_app.logger.error("Erro ao consultar histórico de autoatendimento: %s", error)
+        return jsonify({"error": "Erro ao carregar o histórico."}), 500
 
 
 # ── Endpoint: Configuração Supabase Segura ──────────────────────────

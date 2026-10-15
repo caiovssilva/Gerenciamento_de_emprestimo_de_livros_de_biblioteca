@@ -3,6 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
+const loginMarkup = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+assert.strictEqual((loginMarkup.match(/data-self-service-tab=/g) || []).length, 1);
+assert.match(loginMarkup, /id="self-service-student-card"/);
+assert.doesNotMatch(loginMarkup, /self-service-panel-(borrow|renew)/);
+
 function classList() {
   const values = new Set();
   return {
@@ -16,7 +21,7 @@ function classList() {
   };
 }
 
-const pages = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos'].map((name) => ({
+const pages = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos', 'auto-historico'].map((name) => ({
   id: `page-${name}`,
   classList: classList(),
 }));
@@ -60,6 +65,7 @@ const context = {
   renderDashboard: () => {},
   renderBooks: () => {},
   renderLoans: () => {},
+  loadSelfServiceHistory: () => {},
   resetLoanForm: () => {},
   renderLoanScanPanel: () => {},
 };
@@ -83,6 +89,13 @@ vm.runInContext(
     pages.find((page) => page.classList.contains('active')).id,
     'page-livros',
     'a conclusão da sincronização não deve substituir a página escolhida',
+  );
+  vm.runInContext("currentUser = { role: 'self_service' }", context);
+  context.navigateTo('relatorios');
+  assert.strictEqual(
+    pages.find((page) => page.classList.contains('active')).id,
+    'page-auto-historico',
+    'autoatendimento não deve navegar para páginas administrativas',
   );
   console.log('navigation remains on selected page during initial sync');
 

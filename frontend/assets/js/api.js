@@ -37,6 +37,11 @@ async function apiFetch(path, options = {}) {
 }
 
 const API = {
+  auth: {
+    selfServiceLogin: code => apiFetch("/auth/self-service/login", { method:"POST", body:JSON.stringify({ code }) }),
+    selfServiceHistory: token => apiFetch("/auth/self-service/history", { headers:{ Authorization:`Bearer ${token}` } }),
+    selfServiceLogout: () => apiFetch("/auth/self-service/logout", { method:"POST", body:"{}" }),
+  },
   books: {
     list:   (q="", genre="") => apiFetch(`/books/?q=${encodeURIComponent(q)}&genre=${encodeURIComponent(genre)}`),
     get:    id               => apiFetch(`/books/${id}`),

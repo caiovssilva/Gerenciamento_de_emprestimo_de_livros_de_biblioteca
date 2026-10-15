@@ -37,10 +37,11 @@
     </div>
     <div class="form-field"><label>Usuário</label><input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username"></div>
     <div class="form-field"><label for="login-pass">Senha</label><div class="password-field"><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"><button type="button" class="password-toggle" id="login-password-toggle" aria-label="Mostrar senha" title="Mostrar senha"><i class="ti ti-eye"></i></button></div></div>
-      <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
+    <button id="login-btn" type="button" class="btn-login" onclick="doLogin()"><i class="ti ti-login" style="vertical-align:-2px;margin-right:6px;"></i>Entrar</button>
     <p class="login-err" id="login-err"></p>
     <div class="login-divider">ou</div>
-    <button type="button" class="btn-qr-login" onclick="startQRLogin()"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
+    <button type="button" class="btn-qr-login"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
+    <button type="button" class="btn-self-service-entry" id="self-service-open-btn">Autoatendimento</button>
     <p class="login-hint">Logins do banco: <strong>admin</strong> e <strong>bibliotecario</strong></p>
   </div>
 
@@ -49,6 +50,12 @@
     <div id="login-qr-result-body"></div>
     <button type="button" class="btn" style="width:100%;margin-top:1rem;" onclick="cancelQRLoginResult()"><i class="ti ti-arrow-left"></i> Voltar</button>
   </div>
+</div>
+
+<div id="self-service-login-screen" class="self-service-camera-screen" style="display:none;" aria-label="Login por autoatendimento">
+  <button type="button" class="btn-self-service-scan" id="self-service-scan-btn" aria-label="Escanear carteirinha com a câmera" title="Escanear carteirinha">
+    <i class="ti ti-camera" aria-hidden="true"></i>
+  </button>
 </div>
 
 <!-- APP -->
@@ -113,6 +120,30 @@
               <tbody id="dash-loans-tbody"></tbody>
             </table></div>
           </div>
+        </section>
+
+        <section class="page self-service-history-page" id="page-auto-historico" aria-label="Meu histórico">
+          <div class="self-service-history-heading">
+            <div>
+              <span class="self-service-eyebrow">AUTOATENDIMENTO</span>
+              <h1 id="self-service-student-name">Meu histórico</h1>
+              <p id="self-service-student-class"></p>
+              <p id="self-service-student-card"></p>
+            </div>
+            <button class="btn self-service-logout" type="button" onclick="doLogout()"><i class="ti ti-logout" aria-hidden="true"></i>Sair</button>
+          </div>
+          <div class="self-service-tabs" role="tablist" aria-label="Área do aluno">
+            <button type="button" class="self-service-tab active" role="tab" aria-selected="true" data-self-service-tab="history">Histórico</button>
+          </div>
+          <section class="self-service-panel active" role="tabpanel" id="self-service-panel-history">
+            <div id="self-service-history-status" role="status" aria-live="polite"></div>
+            <div class="tbl-wrap self-service-history-table-wrap">
+              <table class="self-service-history-table">
+                <thead><tr><th>Livro</th><th>Exemplar</th><th>Empréstimo</th><th>Prazo</th><th>Situação</th></tr></thead>
+                <tbody id="self-service-history-rows"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
         <!-- EMPRÉSTIMOS -->

@@ -89,6 +89,8 @@ pip install python-dotenv
 
 O arquivo `backend/.env` não deve ser versionado. Configure as credenciais por Secrets do Codespaces ou por um arquivo local ignorado pelo Git.
 
+O modo **Autoatendimento** exige `SECRET_KEY` com valor aleatório e exclusivo (não use a chave padrão de desenvolvimento). Opcionalmente, configure também `SELF_SERVICE_SECRET_KEY` para assinar os tokens de histórico separadamente. Gere os valores com `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Sem uma `SECRET_KEY` segura, o login de autoatendimento retorna `503`; seus tokens expiram em 30 minutos.
+
 Se quiser usar seu próprio banco Supabase:
 ```bash
 cp backend/.env.example backend/.env
@@ -144,7 +146,7 @@ Em ambos os casos, abra **http://localhost:5000** no navegador.
 
 ## Login
 
-O sistema possui **dois jeitos de entrar**:
+O sistema possui **três jeitos de entrar**:
 
 ### 1. Usuário e senha (administradores)
 
@@ -158,6 +160,10 @@ Esses são os usuários "reais" do sistema. Em **Configurações → Minha carte
 ### 2. Carteirinha com QR Code (Bibliotecário)
 
 Qualquer **aluno** pode receber o título de **Bibliotecário** — veja [Acesso de Bibliotecário](#acesso-de-bibliotecário-para-alunos) abaixo. Depois disso, ele entra escaneando a própria carteirinha (QR) na tela de login, vendo a mensagem **"Você entrou como Bibliotecário"**.
+
+### 3. Autoatendimento (aluno)
+
+A opção fica logo abaixo de **"Entrar com carteirinha (QR Code)"**. Ela abre uma tela dedicada com apenas o botão de câmera; após a leitura, o aluno recebe acesso somente à aba **Histórico**, com os dados associados à própria carteirinha. A sessão não carrega a store administrativa, e as demais APIs, operações e dados de outros alunos permanecem bloqueados.
 
 ---
 

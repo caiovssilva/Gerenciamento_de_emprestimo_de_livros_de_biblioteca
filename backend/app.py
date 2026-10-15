@@ -6,7 +6,7 @@ import os, sys
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, send_from_directory, request, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
@@ -85,6 +85,18 @@ def apply_security_headers(response):
     response.headers["Content-Security-Policy"] = csp
     return response
 
+
+@app.before_request
+def restrict_self_service_api():
+    """Limita a sessão do aluno ao próprio histórico e à saída."""
+    if not request.path.startswith("/api/") or session.get("access_scope") != "self_service":
+        return None
+
+    if request.path == "/api/auth/self-service/history" and request.method == "GET":
+        return None
+    if request.path == "/api/auth/self-service/logout" and request.method == "POST":
+        return None
+    return jsonify({"error": "A sessão de autoatendimento permite apenas consultar o próprio histórico."}), 403
 
 @app.before_request
 def require_database_for_api():

@@ -32,6 +32,7 @@ from api.reports  import reports_bp
 from api.rooms    import rooms_bp
 from api.genres   import genres_bp
 from api.auth     import auth_bp
+from api.controle import controle_bp, librarian_operation_allowed
 from scanner.routes import qr_bp
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
@@ -49,6 +50,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ── Registrar blueprints ─────────────────────────────────────────────
 app.register_blueprint(auth_bp,     url_prefix="/api/auth")
+app.register_blueprint(controle_bp, url_prefix="/api/controle")
 app.register_blueprint(books_bp,    url_prefix="/api/books")
 app.register_blueprint(students_bp, url_prefix="/api/students")
 app.register_blueprint(loans_bp,    url_prefix="/api/loans")
@@ -89,14 +91,35 @@ def apply_security_headers(response):
 @app.before_request
 def restrict_self_service_api():
     """Limita a sessão do aluno ao próprio histórico e à saída."""
-    if not request.path.startswith("/api/") or session.get("access_scope") != "self_service":
+    if not request.path.startswith("/api/"):
         return None
 
+    scope = session.get("access_scope")
+    if scope == "staff_librarian":
+        permission = None
+        if request.method == "POST" and request.path == "/api/loans/":
+            permission = "allow_borrow"
+        elif request.method == "POST" and request.path.startswith("/api/loans/") and request.path.endswith("/return"):
+            permission = "allow_return"
+        elif request.method == "POST" and request.path.startswith("/api/loans/") and request.path.endswith("/renew"):
+            permission = "allow_renew"
+        if permission and not librarian_operation_allowed(permission):
+            return jsonify({"error": "Esta operação está desativada pelo administrador."}), 403
+        return None
+
+    if scope != "self_service":
+        return None
     if request.path == "/api/auth/self-service/history" and request.method == "GET":
+        return None
+    if request.path == "/api/auth/self-service/books" and request.method == "GET":
+        return None
+    if request.path == "/api/auth/self-service/loans" and request.method == "POST":
+        return None
+    if request.path.startswith("/api/auth/self-service/loans/") and request.method == "POST":
         return None
     if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
-    return jsonify({"error": "A sessão de autoatendimento permite apenas consultar o próprio histórico."}), 403
+    return jsonify({"error": "A sessão de autoatendimento permite apenas operar os empréstimos da carteirinha lida."}), 403
 
 @app.before_request
 def require_database_for_api():

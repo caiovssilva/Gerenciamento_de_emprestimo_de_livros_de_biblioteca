@@ -16,6 +16,13 @@ class FakeQuery:
     def select(self, *_columns):
         return self
 
+    def order(self, *_args, **_kwargs):
+        return self
+
+    def is_(self, field, value):
+        self.filters[field] = None if value == "null" else value
+        return self
+
     def eq(self, field, value):
         self.filters[field] = value
         return self
@@ -158,3 +165,52 @@ def test_self_service_allows_only_own_history_and_logout(monkeypatch):
     assert create_loan.status_code == 403
     assert renew_loan.status_code == 403
     assert logout.status_code == 200
+
+
+def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
+    import api.loans as loans_module
+
+    client = FakeClient({
+        "livros": [{"id": "book-1", "titulo": "Livro disponível", "exemplares": 1}],
+        "alunos": [
+            {"id": "student-1", "nome": "Ana", "carteirinha": "CARD-1"},
+            {"id": "student-2", "nome": "Bia", "carteirinha": "CARD-2"},
+        ],
+        "emprestimos": [],
+    })
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setattr(utils, "get_client", lambda: client)
+    monkeypatch.setattr(loans_module, "get_client", lambda: client)
+    monkeypatch.setattr(loans_module, "_available_copies_from_rows", lambda *_args: [{"code": "001", "id": "copy-1"}])
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    captured = {}
+
+    def create_record(body, forced_student_id=None, created_by_override=None):
+        captured.update(body=body, student_id=forced_student_id, created_by=created_by_override)
+        from flask import jsonify
+        return jsonify({"aluno_id": forced_student_id, "livro_id": body["livro_id"]}), 201
+
+    monkeypatch.setattr(loans_module, "_create_loan_record", create_record)
+
+    with app.test_client() as test_client:
+        login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-1"})
+        headers = {"Authorization": f"Bearer {login.get_json()['token']}"}
+        books = test_client.get("/api/auth/self-service/books", headers=headers)
+        loan = test_client.post(
+            "/api/auth/self-service/loans",
+            json={"livro_id": "book-1", "aluno_id": "student-2"},
+            headers=headers,
+        )
+        blocked_catalog = test_client.get("/api/books/", headers=headers)
+        blocked_renewal = test_client.post("/api/loans/loan-own/renew", json={}, headers=headers)
+
+    assert books.status_code == 200
+    assert books.get_json() == [{"id": "book-1", "titulo": "Livro disponível", "autor": "", "isbn": "", "available_copies": 1}]
+    assert loan.status_code == 201
+    assert loan.get_json()["aluno_id"] == "student-1"
+    assert captured["student_id"] == "student-1"
+    assert captured["created_by"] == "autoatendimento"
+    assert "aluno_id" not in captured["body"]
+    assert blocked_catalog.status_code == 403
+    assert blocked_renewal.status_code == 403

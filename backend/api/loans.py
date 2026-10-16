@@ -17,6 +17,11 @@ def _available_copies(sb, book_id, total, exemplar_ids=None, exemplares_meta=Non
     except:
         rows = [l for l in read_json(LOANS_FILE) if l.get("livro_id")==book_id and not l.get("devolvido_em")]
 
+    return _available_copies_from_rows(book_id, total, exemplar_ids, exemplares_meta, rows)
+
+
+def _available_copies_from_rows(book_id, total, exemplar_ids=None, exemplares_meta=None, rows=None):
+    rows = rows or []
     usados_codigos = {str(r.get("exemplar", "")).strip() for r in rows if str(r.get("exemplar", "")).strip()}
     usados_ids = {str(r.get("exemplar_id", "")).strip() for r in rows if str(r.get("exemplar_id", "")).strip()}
 
@@ -116,8 +121,11 @@ def get_loan(loan_id):
 
 @loans_bp.route("/", methods=["POST"])
 def create_loan():
-    body = request.get_json(force=True) or {}
-    book_id = body.get("livro_id"); student_id = body.get("aluno_id")
+    return _create_loan_record(request.get_json(force=True) or {})
+
+
+def _create_loan_record(body, forced_student_id=None, created_by_override=None):
+    book_id = body.get("livro_id"); student_id = forced_student_id or body.get("aluno_id")
     try: days = max(1, int(body.get("dias",7)))
     except: days = 7
     if not book_id or not student_id:
@@ -150,7 +158,8 @@ def create_loan():
     payload = {"id":new_id(),"livro_id":book_id,"aluno_id":student_id,"exemplar":exemplar_info["code"],
                "exemplar_id": exemplar_id_override or exemplar_info["id"],
                "data_emprestimo":dt,"data_devolucao_prevista":add_days(dt,days),
-               "devolvido_em":None,"observacao":body.get("observacao",""),"criado_por":body.get("criado_por","system")}
+               "devolvido_em":None,"observacao":body.get("observacao",""),
+               "criado_por":created_by_override if created_by_override is not None else body.get("criado_por","system")}
     try:    rows = sb_exec(sb.table("emprestimos").insert(payload))
     except Exception as e:
         m=str(e).lower()

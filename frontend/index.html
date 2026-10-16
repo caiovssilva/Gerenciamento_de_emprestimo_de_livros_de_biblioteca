@@ -132,10 +132,8 @@
             </div>
             <button class="btn self-service-logout" type="button" onclick="doLogout()"><i class="ti ti-logout" aria-hidden="true"></i>Sair</button>
           </div>
-          <div class="self-service-tabs" role="tablist" aria-label="Área do aluno">
-            <button type="button" class="self-service-tab active" role="tab" aria-selected="true" data-self-service-tab="history">Histórico</button>
-          </div>
           <section class="self-service-panel active" role="tabpanel" id="self-service-panel-history">
+            <h2 class="self-service-section-title">Meu histórico</h2>
             <div id="self-service-history-status" role="status" aria-live="polite"></div>
             <div class="tbl-wrap self-service-history-table-wrap">
               <table class="self-service-history-table">
@@ -143,6 +141,18 @@
                 <tbody id="self-service-history-rows"></tbody>
               </table>
             </div>
+            <section class="self-service-catalog" aria-labelledby="self-service-catalog-title">
+              <div class="self-service-catalog-heading">
+                <h2 class="self-service-section-title" id="self-service-catalog-title">Acervo disponível</h2>
+                <span id="self-service-books-count" aria-live="polite"></span>
+              </div>
+              <div class="form-group self-service-book-search">
+                <label for="self-service-books-search">Buscar livro</label>
+                <input type="search" id="self-service-books-search" placeholder="Título, autor ou ISBN">
+              </div>
+              <div id="self-service-books-status" role="status" aria-live="polite"></div>
+              <div id="self-service-books-list" class="self-service-books-list"></div>
+            </section>
           </section>
         </section>
 

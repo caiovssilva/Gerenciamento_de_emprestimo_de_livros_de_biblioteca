@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify
 from pathlib import Path
 import csv, io
+from uuid import UUID
 from utils import get_client, sb_exec, new_id, today_str
 from api._helpers import read_json, write_json, table_ok, has_deleted_at, is_offline_error
 
@@ -47,10 +48,19 @@ def get_student(student_id):
     rows = []
     if table_ok(sb, "alunos"):
         try:
-            rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("id", student_id))
-            if not rows: rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("carteirinha", student_id))
-        except:
-            rows = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
+            rows = sb_exec(sb.table("alunos").select("*").eq("carteirinha", student_id))
+        except Exception:
+            rows = []
+        if not rows:
+            try:
+                UUID(student_id)
+            except (ValueError, TypeError, AttributeError):
+                pass
+            else:
+                try:
+                    rows = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
+                except Exception:
+                    rows = []
     if not rows:
         all_s = read_json(ALUNOS_FILE)
         rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id]

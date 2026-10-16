@@ -4,9 +4,9 @@ const path = require('path');
 const vm = require('vm');
 
 const loginMarkup = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-assert.strictEqual((loginMarkup.match(/data-self-service-tab=/g) || []).length, 1);
 assert.match(loginMarkup, /id="self-service-student-card"/);
-assert.doesNotMatch(loginMarkup, /self-service-panel-(borrow|renew)/);
+assert.match(loginMarkup, /id="self-service-books-search"/);
+assert.match(loginMarkup, /id="self-service-books-list"/);
 
 function classList() {
   const values = new Set();
@@ -66,6 +66,7 @@ const context = {
   renderBooks: () => {},
   renderLoans: () => {},
   loadSelfServiceHistory: () => {},
+  loadSelfServiceBooks: () => {},
   resetLoanForm: () => {},
   renderLoanScanPanel: () => {},
 };

@@ -272,15 +272,18 @@ function _renderHistoryActiveLoans(s) {
       const b  = books.find(x=>x.id===l.livro_id);
       const dl = Utils.daysLeft(l.data_devolucao_prevista);
       const renov = l.renovacoes ? `<span class="badge badge-blue" style="margin-left:4px;">Renovado ${l.renovacoes}x</span>` : "";
+      const canRenew = isOperationAllowedForCurrentUser("allow_renew");
+      const canReturn = isOperationAllowedForCurrentUser("allow_return");
+      const loanActions = [
+        canRenew ? `<button class="btn btn-sm" title="Renovar por mais dias" onclick="openRenewal('${l.id}')"><i class="ti ti-rotate-clockwise"></i>Renovar</button>` : "",
+        canReturn ? `<button class="btn btn-sm btn-success" title="Registrar devolução" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>` : "",
+      ].filter(Boolean).join("");
       return `<div class="active-loan-item">
         <div class="ali-info">
           <div class="ali-title">${b?.titulo||b?.title||"—"} <span class="td-mono" style="font-size:11px;">#${l.exemplar}</span></div>
           <div class="ali-sub">${Utils.statusBadge(Store.loanStatus(l),dl)} · Devolução: ${Utils.fmtDate(l.data_devolucao_prevista)} ${renov}</div>
         </div>
-        <div class="ali-actions">
-          <button class="btn btn-sm" title="Renovar por mais dias" onclick="openRenewal('${l.id}')"><i class="ti ti-rotate-clockwise"></i>Renovar</button>
-          <button class="btn btn-sm btn-success" title="Registrar devolução" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>
-        </div>
+        ${loanActions ? `<div class="ali-actions">${loanActions}</div>` : ""}
       </div>`;
     }).join("")}
   </div>`;
@@ -289,6 +292,10 @@ function _renderHistoryActiveLoans(s) {
 // ── Bloco 3: "pegar livro" — novo empréstimo a partir do histórico ─────
 function _renderHistoryNewLoan(s) {
   const el = Utils.el("student-history-newloan");
+  if (!isOperationAllowedForCurrentUser("allow_borrow")) {
+    el.innerHTML = "";
+    return;
+  }
   el.innerHTML = `<div class="history-new-loan">
     <h4><i class="ti ti-book-plus" style="vertical-align:-2px;"></i> Pegar livro emprestado</h4>
     <div class="barcode-row">
@@ -377,6 +384,10 @@ function selectHistoryExemplar(bookId, ex, btn, exemplarId) {
 }
 
 async function confirmHistoryLoan(studentId) {
+  if (!isOperationAllowedForCurrentUser("allow_borrow")) {
+    Utils.toast("O administrador desativou novos empréstimos para este perfil.", "error");
+    return;
+  }
   if (!pendingHistoryLoan.book)     { Utils.toast("Busque e selecione um livro.","error"); return; }
   if (!pendingHistoryLoan.exemplar) { Utils.toast("Selecione um exemplar.","error"); return; }
   const days = parseInt(Utils.el("hist-loan-days")?.value)||7;
@@ -389,10 +400,19 @@ async function confirmHistoryLoan(studentId) {
       criado_por: currentUser?.login||"sistema",
     };
     if (pendingHistoryLoan.exemplarId) payload.exemplar_id = pendingHistoryLoan.exemplarId;
-    await API.loans.create(payload);
+    if (selfServiceMode) {
+      await API.auth.selfServiceCreateLoan(selfServiceAccessToken, payload);
+    } else {
+      await API.loans.create(payload);
+    }
     Utils.toast(`Empréstimo registrado — ${pendingHistoryLoan.book.titulo||pendingHistoryLoan.book.title}`,"success");
-    await syncData(); Charts.refresh();
-    showStudentHistory(studentId); // redesenha tudo, já com o novo empréstimo
+    if (selfServiceMode) {
+      await refreshSelfServiceHistory();
+      showStudentHistory(selfServiceStudentId);
+    } else {
+      await syncData(); Charts.refresh();
+      showStudentHistory(studentId); // redesenha tudo, já com o novo empréstimo
+    }
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 

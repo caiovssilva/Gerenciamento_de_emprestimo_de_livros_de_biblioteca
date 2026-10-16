@@ -70,7 +70,7 @@ def _decode_barcode_variants(frame):
             return decoded
     return []
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, session
 
 qr_bp = Blueprint("qr", __name__)
 
@@ -353,11 +353,17 @@ def qr_login():
             "login": user.get("login"),
             "nome": user.get("nome"),
         }
+        session.clear()
+        session["access_scope"] = "staff_admin"
+        session["staff_login"] = user.get("login")
         return jsonify({"access": "admin", **resolved})
 
     if resolved["type"] == "student":
         student = resolved["data"]
         if student.get("is_librarian"):
+            session.clear()
+            session["access_scope"] = "staff_librarian"
+            session["staff_student_id"] = str(student.get("id", ""))
             return jsonify({"access": "librarian", "type": "student", "data": student})
         return jsonify({"access": "denied", "type": "student", "data": student,
                          "message": "Este aluno não possui acesso ao painel. Solicite ao administrador para 'Permitir acesso'."})

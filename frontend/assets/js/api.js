@@ -40,6 +40,8 @@ const API = {
   auth: {
     selfServiceLogin: code => apiFetch("/auth/self-service/login", { method:"POST", body:JSON.stringify({ code }) }),
     selfServiceHistory: token => apiFetch("/auth/self-service/history", { headers:{ Authorization:`Bearer ${token}` } }),
+    selfServiceBooks: token => apiFetch("/auth/self-service/books", { headers:{ Authorization:`Bearer ${token}` } }),
+    selfServiceCreateLoan: (token, body) => apiFetch("/auth/self-service/loans", { method:"POST", headers:{ Authorization:`Bearer ${token}` }, body:JSON.stringify(body) }),
     selfServiceLogout: () => apiFetch("/auth/self-service/logout", { method:"POST", body:"{}" }),
   },
   books: {

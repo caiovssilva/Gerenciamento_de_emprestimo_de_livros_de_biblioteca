@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app import app
+import api.students as students_module
 
 
 @pytest.fixture()
@@ -68,3 +69,45 @@ def test_qr_decode_resolves_student_by_id(client):
     payload = decode_response.get_json()
     assert payload["type"] == "student"
     assert payload["data"]["id"] == student["id"]
+
+
+def test_get_student_resolves_dotted_card_number_without_uuid_lookup(monkeypatch):
+    student = {
+        "id": "student-uuid",
+        "nome": "Aluno da carteirinha",
+        "carteirinha": "185548.1.32021194",
+        "turma": "INF3A",
+    }
+
+    class Query:
+        def __init__(self):
+            self.field = None
+            self.value = None
+
+        def select(self, *_columns):
+            return self
+
+        def eq(self, field, value):
+            self.field = field
+            self.value = value
+            return self
+
+    query = Query()
+
+    class Client:
+        def table(self, _name):
+            return query
+
+    def execute(current_query):
+        assert current_query.field == "carteirinha"
+        return [student] if current_query.value == student["carteirinha"] else []
+
+    monkeypatch.setattr(students_module, "get_client", lambda: Client())
+    monkeypatch.setattr(students_module, "table_ok", lambda *_args: True)
+    monkeypatch.setattr(students_module, "sb_exec", execute)
+
+    with app.test_request_context("/api/students/185548.1.32021194"):
+        response = students_module.get_student("185548.1.32021194")
+
+    assert response.status_code == 200
+    assert response.get_json()["id"] == "student-uuid"

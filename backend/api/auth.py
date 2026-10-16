@@ -347,6 +347,66 @@ def self_service_history():
         return jsonify({"error": "Erro ao carregar o histórico."}), 500
 
 
+@auth_bp.route("/self-service/books", methods=["GET"])
+def self_service_books():
+    """Lista somente livros com exemplares disponíveis para o aluno autenticado."""
+    student_id, error_response = _self_service_student_from_request()
+    if error_response:
+        return error_response
+
+    try:
+        from api.loans import _available_copies_from_rows
+
+        sb = get_client()
+        books = sb_exec(sb.table("livros").select("*").order("titulo"))
+        active_loans = sb_exec(
+            sb.table("emprestimos").select("livro_id,exemplar,exemplar_id").is_("devolvido_em", "null")
+        )
+        available_books = []
+        for book in books:
+            book_loans = [loan for loan in active_loans if str(loan.get("livro_id")) == str(book.get("id"))]
+            available = _available_copies_from_rows(
+                book.get("id"),
+                book.get("exemplares", 1),
+                book.get("exemplares_ids"),
+                book.get("exemplares_meta"),
+                book_loans,
+            )
+            if not available:
+                continue
+            available_books.append({
+                "id": book.get("id"),
+                "titulo": book.get("titulo") or book.get("title") or "Livro sem título",
+                "autor": book.get("autor") or book.get("author") or "",
+                "isbn": book.get("isbn") or "",
+                "available_copies": len(available),
+            })
+        return jsonify(available_books), 200
+    except Exception as error:
+        current_app.logger.error("Erro ao consultar acervo do autoatendimento: %s", error)
+        return jsonify({"error": "Não foi possível carregar os livros disponíveis."}), 500
+
+
+@auth_bp.route("/self-service/loans", methods=["POST"])
+def self_service_create_loan():
+    """Registra empréstimo associado exclusivamente à carteirinha autenticada."""
+    student_id, error_response = _self_service_student_from_request()
+    if error_response:
+        return error_response
+
+    body = request.get_json(force=True) or {}
+    if not body.get("livro_id"):
+        return jsonify({"error": "Selecione um livro para continuar."}), 400
+
+    from api.loans import _create_loan_record
+
+    return _create_loan_record(
+        {"livro_id": body["livro_id"], "dias": 7, "observacao": ""},
+        forced_student_id=student_id,
+        created_by_override="autoatendimento",
+    )
+
+
 # ── Endpoint: Configuração Supabase Segura ──────────────────────────
 @auth_bp.route("/config/supabase", methods=["GET"])
 def get_supabase_config():

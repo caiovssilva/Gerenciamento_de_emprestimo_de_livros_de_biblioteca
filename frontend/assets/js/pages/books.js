@@ -344,7 +344,7 @@ function showExemplares(bookId) {
         <div><span class="exemplar-code">#${ex}</span> — ${s?.nome||s?.name||"Desconhecido"}</div>
         <div style="display:flex;align-items:center;gap:6px;">
           ${tag}
-          <button class="btn btn-sm btn-success" onclick="openDevolution('${loan.id}');Utils.closeModal('modal-exemplares')">Devolver</button>
+          ${isOperationAllowedForCurrentUser("allow_return") ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${loan.id}');Utils.closeModal('modal-exemplares')">Devolver</button>` : ""}
           ${canDelete ? `<button class="btn btn-sm btn-danger" type="button" title="Devolva antes de excluir" aria-label="Exemplar #${ex} emprestado" disabled><i class="ti ti-trash"></i></button>` : ""}
         </div>
       </div>`;

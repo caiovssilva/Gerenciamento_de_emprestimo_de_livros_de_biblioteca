@@ -20,6 +20,10 @@ function renderLoans() {
   });
 
   const tbody = Utils.el("loans-tbody");
+  const loanConfirmButton = Utils.el("loan-confirm-btn");
+  if (loanConfirmButton) {
+    loanConfirmButton.disabled = !isOperationAllowedForCurrentUser("allow_borrow");
+  }
   if (!loans.length) { tbody.innerHTML = Utils.emptyState("ti-transfer","Nenhum registro encontrado."); return; }
 
   tbody.innerHTML = loans.map((l,i)=>{
@@ -27,7 +31,7 @@ function renderLoans() {
     const s  = studs.find(x=>x.id===l.aluno_id);
     const st = Store.loanStatus(l);
     const dl = Utils.daysLeft(l.data_devolucao_prevista);
-    const action = st!=="returned"
+    const action = st!=="returned" && isOperationAllowedForCurrentUser("allow_return")
       ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>`
       : "";
     return `<tr>
@@ -42,6 +46,7 @@ function renderLoans() {
       <td>${action}</td>
     </tr>`;
   }).join("");
+
 }
 
 function renderDashboard() {
@@ -113,7 +118,7 @@ function renderDashboard() {
       <td class="td-mono">#${l.exemplar}</td>
       <td>${Utils.fmtDate(l.data_devolucao_prevista)}</td>
       <td><span class="badge ${bc}">${bt}</span></td>
-      <td><button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button></td>
+      <td>${isOperationAllowedForCurrentUser("allow_return") ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>` : ""}</td>
     </tr>`;
   }).join("");
 }

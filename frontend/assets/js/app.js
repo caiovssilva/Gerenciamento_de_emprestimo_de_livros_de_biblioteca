@@ -14,6 +14,7 @@ let pendingReturnLoanId = null;
 let pendingDevolutionQr = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
+let selfServiceBooks = [];
 const THEME_STORAGE_KEY = "biblioteca-theme";
 const SESSION_COOKIE_KEY = "biblioteca-session";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -559,6 +560,7 @@ function showSelfServiceTab() {
   });
 
   loadSelfServiceHistory();
+  loadSelfServiceBooks();
 }
 
 async function loadSelfServiceHistory() {
@@ -594,6 +596,82 @@ async function loadSelfServiceHistory() {
   } catch (error) {
     status.textContent = error.message || "Não foi possível carregar seu histórico.";
   }
+}
+
+async function loadSelfServiceBooks() {
+  const status = Utils.el("self-service-books-status");
+  const list = Utils.el("self-service-books-list");
+  if (!currentUser?.accessToken || !status || !list) return;
+  status.textContent = "Carregando livros disponíveis...";
+  try {
+    selfServiceBooks = await API.auth.selfServiceBooks(currentUser.accessToken);
+    renderSelfServiceBooks();
+  } catch (error) {
+    status.textContent = error.message || "Não foi possível carregar o acervo.";
+    Utils.el("self-service-books-count").textContent = "";
+  }
+}
+
+function renderSelfServiceBooks() {
+  const status = Utils.el("self-service-books-status");
+  const list = Utils.el("self-service-books-list");
+  const count = Utils.el("self-service-books-count");
+  if (!status || !list) return;
+
+  const query = String(Utils.el("self-service-books-search")?.value || "").trim().toLocaleLowerCase();
+  const matches = selfServiceBooks.filter((book) =>
+    [book.titulo, book.autor, book.isbn].some((value) => String(value || "").toLocaleLowerCase().includes(query))
+  );
+  count.textContent = `${matches.length} ${matches.length === 1 ? "livro disponível" : "livros disponíveis"}`;
+
+  if (!matches.length) {
+    status.textContent = selfServiceBooks.length ? "Nenhum livro corresponde à busca." : "Nenhum exemplar disponível no momento.";
+    list.innerHTML = "";
+    return;
+  }
+
+  status.textContent = "";
+  list.innerHTML = matches.map((book) => `<article class="self-service-book-item">
+    <div class="self-service-book-info">
+      <strong>${escapeSelfServiceHtml(book.titulo)}</strong>
+      <span>${escapeSelfServiceHtml(book.autor || "Autor não informado")}</span>
+      <small>${book.available_copies} ${book.available_copies === 1 ? "exemplar disponível" : "exemplares disponíveis"}</small>
+    </div>
+    <button type="button" class="btn btn-primary self-service-borrow-btn" data-self-service-book-id="${escapeSelfServiceHtml(book.id)}">
+      <i class="ti ti-book-download" aria-hidden="true"></i> Pegar emprestado
+    </button>
+  </article>`).join("");
+
+  list.querySelectorAll("[data-self-service-book-id]").forEach((button) => {
+    button.addEventListener("click", () => borrowSelfServiceBook(button.dataset.selfServiceBookId, button));
+  });
+}
+
+async function borrowSelfServiceBook(bookId, button) {
+  if (!currentUser?.accessToken || button?.disabled) return;
+  const book = selfServiceBooks.find((item) => String(item.id) === String(bookId));
+  if (!book) return;
+
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Registrando...';
+  }
+  const status = Utils.el("self-service-books-status");
+  try {
+    await API.auth.selfServiceCreateLoan(currentUser.accessToken, { livro_id: book.id });
+    status.textContent = `Empréstimo registrado: ${book.titulo}.`;
+    await Promise.all([loadSelfServiceHistory(), loadSelfServiceBooks()]);
+  } catch (error) {
+    status.textContent = error.message || "Não foi possível registrar o empréstimo.";
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = '<i class="ti ti-book-download" aria-hidden="true"></i> Pegar emprestado';
+    }
+  }
+}
+
+function filterSelfServiceBooks() {
+  renderSelfServiceBooks();
 }
 
 // ── Empréstimo ────────────────────────────────────────────────────────
@@ -1375,6 +1453,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   Utils.qsa("[data-self-service-tab]").forEach(button => {
     button.addEventListener("click", () => showSelfServiceTab(button.dataset.selfServiceTab));
   });
+  Utils.el("self-service-books-search")?.addEventListener("input", filterSelfServiceBooks);
 
   // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)
   Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);

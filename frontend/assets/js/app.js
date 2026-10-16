@@ -15,6 +15,14 @@ let pendingDevolutionQr = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
 let selfServiceBooks = [];
+let selfServiceHistory = [];
+let selfServiceSettings = {
+  enabled: false,
+  allow_borrow: false,
+  allow_return: false,
+  allow_renew: false,
+  renewal_days: 7,
+};
 const THEME_STORAGE_KEY = "biblioteca-theme";
 const SESSION_COOKIE_KEY = "biblioteca-session";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -205,7 +213,11 @@ async function startQRLogin() {
     if (!code) { Utils.toast("Código não reconhecido.","error"); return; }
     try {
       const password = code.startsWith("ADMIN-")
-        ? window.prompt("Digite a senha administrativa para confirmar o acesso:")
+        ? await Utils.promptPassword({
+          title: "Acesso administrativo",
+          message: "Digite sua senha administrativa para confirmar o acesso.",
+          confirmText: "Continuar",
+        })
         : "";
       if (code.startsWith("ADMIN-") && password === null) return;
       const r = await API.qr.login(code, password);
@@ -213,20 +225,10 @@ async function startQRLogin() {
         const adminData = r.data || {};
         const login = adminData.login || "admin";
         const name = adminData.nome || (login === "bibliotecario" ? "Bibliotecário" : "Administrador");
-        _showQRLoginResult({
-          icon:"ti-shield-check", color:"var(--brand)",
-          title:`Bem-vindo, ${name}`,
-          sub:"Acesso administrativo confirmado.",
-          action:() => _finishLogin({ role:"admin", login, name }),
-        });
+        await _finishLogin({ role:"admin", login, name });
       } else if (r.access === "librarian") {
         const student = r.data;
-        _showQRLoginResult({
-          icon:"ti-id-badge2", color:"var(--green)",
-          title:"Carteirinha reconhecida!",
-          sub:`${student.nome} — ${student.turma}`,
-          action:() => _finishLogin({ role:"librarian", login:student.carteirinha||student.id, name:student.nome, student }, true),
-        });
+        await _finishLogin({ role:"librarian", login:student.carteirinha||student.id, name:student.nome, student }, true);
       } else {
         _showQRLoginResult({
           icon:"ti-lock", color:"var(--red)",
@@ -240,6 +242,11 @@ async function startQRLogin() {
 }
 
 function openSelfServiceLoginScreen() {
+  if (!selfServiceSettings.enabled) {
+    Utils.toast("O Autoatendimento está desativado pelo administrador.", "error");
+    return;
+  }
+  Utils.el("self-service-kiosk-status").textContent = "";
   Utils.el("login-screen").style.display = "none";
   Utils.el("self-service-login-screen").style.display = "flex";
 }
@@ -251,15 +258,16 @@ function returnFromSelfServiceLoginScreen() {
 }
 
 async function startSelfServiceLogin() {
-  const errEl = Utils.el("login-err");
-  errEl.textContent = "";
+  const statusEl = Utils.el("self-service-kiosk-status");
+  statusEl.textContent = "Aponte a câmera para o QR Code da carteirinha.";
   try {
     await QRScanner.start(null, async (result) => {
       const code = String(result?.primary || "").trim();
       if (!code) {
-        errEl.textContent = "Não foi possível ler a carteirinha. Tente novamente.";
+        statusEl.textContent = "Não foi possível ler a carteirinha. Toque em Ler carteirinha para tentar novamente.";
         return;
       }
+      statusEl.textContent = "Carteirinha lida. Carregando o histórico...";
       try {
         const session = await API.auth.selfServiceLogin(code);
         await _finishLogin({
@@ -269,11 +277,15 @@ async function startSelfServiceLogin() {
           accessToken: session.token,
         });
       } catch (error) {
-        errEl.textContent = error.message || "Carteirinha não reconhecida.";
+        statusEl.textContent = `${error.message || "Carteirinha não reconhecida."} Toque em Ler carteirinha para tentar novamente.`;
       }
-    }, { onStop: returnFromSelfServiceLoginScreen });
+    }, {
+      onError: (error) => {
+        statusEl.textContent = `${error.message || "Não foi possível iniciar a câmera."} Verifique a permissão da câmera e tente novamente.`;
+      },
+    });
   } catch (error) {
-    errEl.textContent = error.message || "Não foi possível iniciar a câmera.";
+    statusEl.textContent = `${error.message || "Não foi possível iniciar a câmera."} Verifique a permissão da câmera e tente novamente.`;
   }
 }
 
@@ -332,7 +344,7 @@ async function _finishLogin(user, showRoleToast) {
   roleBadge.innerHTML = user.role === "librarian"
     ? `<span class="role-badge role-librarian"><i class="ti ti-id-badge2"></i>Bibliotecário</span>`
     : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
-
+  _applyRolePermissions();
   _applyRolePermissions();
   navigateTo(user.role === "librarian" ? "emprestimo" : "dashboard");
   await syncAll();
@@ -353,15 +365,85 @@ function _applyRolePermissions() {
   document.body.classList.toggle("role-librarian", isLibrarian);
   if (isLibrarian) {
     const active = Utils.qs(".page.active");
-    const adminOnlyPages = ["alunos","salas","generos","relatorios","livros"];
+    const adminOnlyPages = ["alunos","salas","generos","relatorios","livros","controle"];
     if (active && adminOnlyPages.includes(active.id.replace("page-",""))) navigateTo("emprestimo");
   }
 }
 
 function isLibrarian() { return currentUser?.role === "librarian"; }
 
-function doLogout({ confirmPrompt = true, reason = "" } = {}) {
-  if (confirmPrompt && !confirm("Sair do sistema?")) return;
+function isOperationAllowedForCurrentUser(setting) {
+  if (["librarian", "self_service"].includes(currentUser?.role)) {
+    return selfServiceSettings[setting] === true;
+  }
+  return true;
+}
+
+function updateSelfServiceEntryButton() {
+  const button = Utils.el("self-service-open-btn");
+  if (!button) return;
+  button.disabled = !selfServiceSettings.enabled;
+  button.setAttribute("aria-disabled", String(!selfServiceSettings.enabled));
+  button.title = selfServiceSettings.enabled ? "Abrir Autoatendimento" : "Autoatendimento desativado";
+}
+
+async function loadSelfServiceSettings() {
+  const status = Utils.el("self-service-settings-status");
+  try {
+    selfServiceSettings = await API.controle.selfServiceSettings();
+    updateSelfServiceEntryButton();
+    for (const key of ["enabled", "allow_borrow", "allow_return", "allow_renew"]) {
+      const input = Utils.el(`self-service-setting-${key}`);
+      if (input) input.checked = selfServiceSettings[key];
+    }
+    const daysInput = Utils.el("self-service-setting-renewal_days");
+    if (daysInput) daysInput.value = selfServiceSettings.renewal_days;
+    if (status) status.textContent = "Controles carregados.";
+    return selfServiceSettings;
+  } catch (error) {
+    if (status) status.textContent = `Não foi possível carregar os controles: ${error.message}`;
+    console.error("Erro ao carregar controles do Autoatendimento:", error);
+    updateSelfServiceEntryButton();
+    return null;
+  }
+}
+
+async function saveSelfServiceSettings() {
+  if (currentUser?.role !== "admin") {
+    Utils.toast("Somente o administrador pode alterar esses controles.", "error");
+    return;
+  }
+  const settings = {};
+  for (const key of ["enabled", "allow_borrow", "allow_return", "allow_renew"]) {
+    settings[key] = Utils.el(`self-service-setting-${key}`).checked;
+  }
+  settings.renewal_days = Number(Utils.el("self-service-setting-renewal_days").value);
+  if (!Number.isInteger(settings.renewal_days) || settings.renewal_days < 1 || settings.renewal_days > 365) {
+    Utils.toast("O prazo de renovação deve ser um número inteiro entre 1 e 365 dias.", "error");
+    return;
+  }
+  const status = Utils.el("self-service-settings-status");
+  const button = Utils.el("self-service-settings-save");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "Salvando controles...";
+  try {
+    selfServiceSettings = await API.controle.updateSelfServiceSettings(settings);
+    updateSelfServiceEntryButton();
+    if (status) status.textContent = "Controles salvos.";
+    Utils.toast("Controles do Autoatendimento atualizados.", "success");
+  } catch (error) {
+    if (status) status.textContent = `Erro ao salvar: ${error.message}`;
+    Utils.toast(`Não foi possível salvar: ${error.message}`, "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function doLogout({ confirmPrompt = true, reason = "" } = {}) {
+  if (confirmPrompt && !await Utils.confirmDialog("Deseja sair do sistema?", {
+    title: "Sair",
+    confirmText: "Sair",
+  })) return;
   if (currentUser?.role === "self_service") API.auth.selfServiceLogout().catch(() => {});
   currentUser = null;
   clearSessionCookie();
@@ -511,11 +593,13 @@ const PAGE_META = {
     action:`<button class="btn btn-primary" onclick="openAddGenre()"><i class="ti ti-plus"></i>Novo gênero</button>` },
   relatorios: { title:"Relatórios",       sub:"Gráficos e exportação",
     action:`<button class="btn" onclick="refreshReports()"><i class="ti ti-refresh"></i>Atualizar</button>` },
+  controle:   { title:"Controle",         sub:"Permissões e regras de operação", action:"" },
   config:     { title:"Configurações",    sub:"Sistema e conexão", action:"" },
 };
 
 function navigateTo(page) {
   if (currentUser?.role === "self_service") page = "auto-historico";
+  if (currentUser?.role === "librarian" && page === "controle") page = "emprestimo";
   toggleMobileSidebar(false);
   Utils.qsa(".page").forEach(p => p.classList.remove("active"));
   Utils.qsa(".nav-btn[data-page]").forEach(b => b.classList.remove("active"));
@@ -533,6 +617,7 @@ function navigateTo(page) {
   if (page==="generos")    renderGenres();
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") { Charts.init(); Reports.init(); }
+  if (page==="controle") loadSelfServiceSettings();
   if (page==="auto-historico") showSelfServiceTab("history");
   if (page==="config" && isLibrarian()) {
     Utils.el("topbar-actions").innerHTML = "";
@@ -545,9 +630,9 @@ function escapeSelfServiceHtml(value) {
   })[character]);
 }
 
-function showSelfServiceTab() {
+function showSelfServiceTab(tab = "history") {
   if (currentUser?.role !== "self_service") return;
-  const selected = "history";
+  const selected = ["history", "books"].includes(tab) ? tab : "history";
   Utils.qsa("[data-self-service-tab]").forEach((button) => {
     const active = button.dataset.selfServiceTab === selected;
     button.classList.toggle("active", active);
@@ -559,8 +644,8 @@ function showSelfServiceTab() {
     panel.hidden = !active;
   });
 
-  loadSelfServiceHistory();
-  loadSelfServiceBooks();
+  if (selected === "history") loadSelfServiceHistory();
+  if (selected === "books") loadSelfServiceBooks();
 }
 
 async function loadSelfServiceHistory() {
@@ -572,29 +657,79 @@ async function loadSelfServiceHistory() {
   try {
     const result = await API.auth.selfServiceHistory(currentUser.accessToken);
     const student = result.student || {};
+    selfServiceHistory = result.history || [];
     Utils.el("self-service-student-name").textContent = student.name || currentUser.name;
     Utils.el("self-service-student-class").textContent = student.class ? `Turma ${student.class}` : "";
     Utils.el("self-service-student-card").textContent = student.card ? `Carteirinha ${student.card}` : "Carteirinha não informada";
     status.textContent = "";
-    if (!result.history?.length) {
+    if (!selfServiceHistory.length) {
       status.textContent = "Nenhuma movimentação encontrada.";
       return;
     }
-    rows.innerHTML = result.history.map((loan) => {
+    rows.innerHTML = selfServiceHistory.map((loan) => {
       const returned = Boolean(loan.returned_at);
       const overdue = !returned && loan.due_date && Utils.daysLeft(loan.due_date) < 0;
       const state = returned ? "Devolvido" : overdue ? "Atrasado" : "Em andamento";
       const stateClass = returned ? "returned" : overdue ? "overdue" : "active";
+      const actions = returned ? "" : [
+        isOperationAllowedForCurrentUser("allow_renew")
+          ? `<button class="btn btn-sm" type="button" data-self-service-action="renew" data-loan-id="${escapeSelfServiceHtml(loan.loan_id)}">Renovar</button>` : "",
+        isOperationAllowedForCurrentUser("allow_return")
+          ? `<button class="btn btn-sm btn-success" type="button" data-self-service-action="return" data-loan-id="${escapeSelfServiceHtml(loan.loan_id)}">Devolver</button>` : "",
+      ].filter(Boolean).join(" ");
       return `<tr>
         <td><strong>${escapeSelfServiceHtml(loan.book_title)}</strong><small>${escapeSelfServiceHtml(loan.book_author)}</small></td>
         <td>${escapeSelfServiceHtml(loan.exemplar ? `#${loan.exemplar}` : "—")}</td>
         <td>${escapeSelfServiceHtml(Utils.fmtDate(loan.loan_date))}</td>
         <td>${escapeSelfServiceHtml(Utils.fmtDate(loan.due_date))}</td>
         <td><span class="self-service-status ${stateClass}">${state}</span></td>
+        <td>${actions}</td>
       </tr>`;
     }).join("");
+    rows.querySelectorAll("[data-self-service-action]").forEach((button) => {
+      button.addEventListener("click", () => operateSelfServiceLoan(
+        button.dataset.loanId,
+        button.dataset.selfServiceAction,
+      ));
+    });
   } catch (error) {
     status.textContent = error.message || "Não foi possível carregar seu histórico.";
+  }
+}
+
+async function operateSelfServiceLoan(loanId, action) {
+  const setting = action === "renew" ? "allow_renew" : "allow_return";
+  if (!currentUser?.accessToken || !isOperationAllowedForCurrentUser(setting)) {
+    Utils.toast("Esta operação está desativada pelo administrador.", "error");
+    return;
+  }
+  const loan = selfServiceHistory.find(item => String(item.loan_id) === String(loanId));
+  if (!loan || loan.returned_at) return;
+
+  try {
+    await QRScanner.start(null, async (result) => {
+      const code = String(result?.primary || "").trim();
+      if (!_matchesDevolutionQr({
+        livro_id: loan.book_id,
+        exemplar: loan.exemplar,
+        exemplar_id: loan.exemplar_id,
+      }, code)) {
+        Utils.toast("O QR lido não corresponde ao exemplar deste empréstimo.", "error");
+        return;
+      }
+
+      if (action === "renew") {
+        await API.auth.selfServiceRenewLoan(currentUser.accessToken, loan.loan_id, { exemplar_qr: code });
+        Utils.toast(`Empréstimo renovado por ${selfServiceSettings.renewal_days} dias.`, "success");
+      } else {
+        await API.auth.selfServiceReturnLoan(currentUser.accessToken, loan.loan_id, { exemplar_qr: code });
+        Utils.toast("Livro devolvido.", "success");
+      }
+      await loadSelfServiceHistory();
+      if (isOperationAllowedForCurrentUser("allow_borrow")) await loadSelfServiceBooks();
+    });
+  } catch (error) {
+    Utils.toast(`Não foi possível concluir a operação: ${error.message}`, "error");
   }
 }
 
@@ -602,6 +737,12 @@ async function loadSelfServiceBooks() {
   const status = Utils.el("self-service-books-status");
   const list = Utils.el("self-service-books-list");
   if (!currentUser?.accessToken || !status || !list) return;
+  if (!isOperationAllowedForCurrentUser("allow_borrow")) {
+    status.textContent = "Empréstimos pelo Autoatendimento estão desativados pelo administrador.";
+    list.innerHTML = "";
+    Utils.el("self-service-books-count").textContent = "";
+    return;
+  }
   status.textContent = "Carregando livros disponíveis...";
   try {
     selfServiceBooks = await API.auth.selfServiceBooks(currentUser.accessToken);
@@ -999,6 +1140,10 @@ let pendingRenewalId = null;
 let pendingRenewalQr = null;
 
 function openRenewal(loanId) {
+  if (!isOperationAllowedForCurrentUser("allow_renew")) {
+    Utils.toast("O administrador desativou renovações para este perfil.", "error");
+    return;
+  }
   const loan = Store.loanById(loanId);
   if (!loan) return;
   const book = Store.bookById(loan.livro_id);
@@ -1008,7 +1153,7 @@ function openRenewal(loanId) {
   Utils.el("renew-info").innerHTML = `
     <strong>${stud?.nome||stud?.name||"—"}</strong> — ${book?.titulo||book?.title||"—"}
     <br><small>Exemplar #${loan.exemplar} · Prazo atual: ${Utils.fmtDate(loan.data_devolucao_prevista)}</small>`;
-  Utils.el("renew-days").value = 7;
+  Utils.el("renew-days").textContent = `${selfServiceSettings.renewal_days} dias`;
   Utils.el("renew-qr-status").textContent = "A leitura do QR é obrigatória para confirmar a renovação.";
   Utils.el("renew-confirm-btn").disabled = true;
   _updateRenewalPreview();
@@ -1042,18 +1187,22 @@ async function scanRenewalQr() {
 function _updateRenewalPreview() {
   const loan = Store.loanById(pendingRenewalId);
   if (!loan) return;
-  const days = parseInt(Utils.el("renew-days").value)||7;
+  const days = selfServiceSettings.renewal_days;
   const base = loan.data_devolucao_prevista || Utils.today();
   Utils.el("renew-new-date-text").textContent = `Nova devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (+${days} dias)`;
 }
 
 async function confirmRenewal() {
+  if (!isOperationAllowedForCurrentUser("allow_renew")) {
+    Utils.toast("O administrador desativou renovações para este perfil.", "error");
+    return;
+  }
   if (!pendingRenewalId) return;
   if (!pendingRenewalQr) {
     Utils.toast("Leia o QR Code do exemplar antes de confirmar a renovação.", "error");
     return;
   }
-  const days = parseInt(Utils.el("renew-days").value)||7;
+  const days = selfServiceSettings.renewal_days;
   try {
     await API.loans.renew(pendingRenewalId, { dias: days });
     Utils.toast(`Empréstimo renovado por +${days} dias!`, "success");
@@ -1296,7 +1445,11 @@ async function testConnection() {
 // Gera e abre para impressão a carteirinha do usuário admin logado
 async function printAdminCard() {
   if (!currentUser?.login) return;
-  const password = window.prompt("Digite sua senha atual para gerar a carteirinha administrativa:");
+  const password = await Utils.promptPassword({
+    title: "Gerar carteirinha administrativa",
+    message: "Digite sua senha atual para confirmar a geração.",
+    confirmText: "Gerar carteirinha",
+  });
   if (password === null) return;
   if (!password) {
     Utils.toast("Informe sua senha para gerar a carteirinha.", "error");
@@ -1389,6 +1542,7 @@ async function waitForDatabase() {
 // ── Init ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   await waitForDatabase();
+  await loadSelfServiceSettings();
   loadSupabaseConfig?.().then((config) => {
     if (!config) {
       const status = Utils.el("cloud-status");
@@ -1421,6 +1575,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         : `<span class="role-badge role-admin"><i class="ti ti-shield-check"></i>Administrador</span>`;
 
       _applyRolePermissions();
+      await loadSelfServiceSettings();
       scheduleSessionTimeout();
       navigateTo(currentUser.role === "librarian" ? "emprestimo" : "dashboard");
       await syncAll();
@@ -1450,6 +1605,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   Utils.el("login-btn")?.addEventListener("click", doLogin);
   Utils.el("self-service-open-btn")?.addEventListener("click", openSelfServiceLoginScreen);
   Utils.el("self-service-scan-btn")?.addEventListener("click", startSelfServiceLogin);
+  Utils.el("self-service-exit-btn")?.addEventListener("click", returnFromSelfServiceLoginScreen);
+  Utils.el("self-service-settings-save")?.addEventListener("click", saveSelfServiceSettings);
   Utils.qsa("[data-self-service-tab]").forEach(button => {
     button.addEventListener("click", () => showSelfServiceTab(button.dataset.selfServiceTab));
   });
@@ -1468,9 +1625,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupNavigationBindings();
   improveFormAccessibility();
   applyTheme(getPreferredTheme());
-
-  // Atualiza prévia da nova data ao trocar o prazo de renovação
-  Utils.el("renew-days")?.addEventListener("change", _updateRenewalPreview);
 
   // Data inicial
   const ld = Utils.el("loan-date");

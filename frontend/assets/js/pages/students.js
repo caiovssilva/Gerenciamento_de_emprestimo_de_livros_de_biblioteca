@@ -82,7 +82,11 @@ async function toggleLibrarianAccess(studentId, grant) {
   const s = Store.studentById(studentId);
   if (!s) return;
   const action = grant ? "permitir acesso de Bibliotecário a" : "revogar o acesso de Bibliotecário de";
-  if (!confirm(`Deseja ${action} ${s.nome||s.name}?`)) return;
+  if (!await Utils.confirmDialog(`Deseja ${action} ${s.nome||s.name}?`, {
+    title: grant ? "Conceder acesso de bibliotecário" : "Revogar acesso de bibliotecário",
+    confirmText: grant ? "Conceder acesso" : "Revogar acesso",
+    danger: !grant,
+  })) return;
   try {
     await API.students.toggleAccess(studentId, grant);
     Utils.toast(grant ? `${s.nome||s.name} agora é Bibliotecário(a)!` : "Acesso de bibliotecário revogado.", "success");
@@ -188,7 +192,11 @@ function scanStudentCard() {
 }
 
 async function deleteStudent(id) {
-  if (!confirm("Excluir este aluno?")) return;
+  if (!await Utils.confirmDialog("Excluir este aluno?", {
+    title: "Excluir aluno",
+    confirmText: "Excluir aluno",
+    danger: true,
+  })) return;
   try {
     await API.students.delete(id);
     Utils.toast("Aluno excluído.","info");

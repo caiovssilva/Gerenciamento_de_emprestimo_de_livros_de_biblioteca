@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, current_app, session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import os
 from pathlib import Path
+import unicodedata
 
 # Prefer passlib for portable password verification.
 # Add explicit bcrypt support in case the system lacks passlib backends.
@@ -27,6 +28,7 @@ except Exception:
 
 from utils import get_client, sb_exec
 from api._helpers import read_json
+from api.controle import self_service_operation_allowed
 
 auth_bp = Blueprint("auth", __name__)
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -127,11 +129,19 @@ def _self_service_serializer():
     return URLSafeTimedSerializer(secret, salt="biblioteca-self-service-v1")
 
 
+def _normalize_card_code(value) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return "".join(character for character in normalized if character.isalnum())
+
+
 def _get_student_by_card(code: str):
     sb = get_client()
+    normalized_code = str(code or "").strip()
+    if not normalized_code:
+        return None
     for field in ("id", "carteirinha"):
         try:
-            rows = sb_exec(sb.table("alunos").select("*").eq(field, code))
+            rows = sb_exec(sb.table("alunos").select("*").eq(field, normalized_code))
             if rows:
                 student = rows[0]
                 if not student.get("deleted_at"):
@@ -139,12 +149,23 @@ def _get_student_by_card(code: str):
         except Exception:
             pass
 
-    students = read_json(DATA_DIR / "alunos.json")
-    return next((
+    try:
+        students = sb_exec(sb.table("alunos").select("*"))
+    except Exception:
+        students = read_json(DATA_DIR / "alunos.json")
+    normalized_code = _normalize_card_code(normalized_code)
+    if not normalized_code:
+        return None
+    matches = [
         student for student in students
         if not student.get("deleted_at")
-        and code in {str(student.get("id", "")), str(student.get("carteirinha", ""))}
-    ), None)
+        and normalized_code in {
+            _normalize_card_code(student.get(field))
+            for field in ("id", "carteirinha", "card", "matricula")
+        }
+    ]
+    unique_students = {str(student.get("id") or student.get("carteirinha") or id(student)): student for student in matches}
+    return next(iter(unique_students.values())) if len(unique_students) == 1 else None
 
 
 def _self_service_student_from_request():
@@ -238,6 +259,7 @@ def login():
         normalized_login = (user["login"] or "").strip().lower()
         access = "librarian" if normalized_login in ("bibliotecario", "biblioteca") else "admin"
         session.clear()
+        session["access_scope"] = "staff_librarian" if access == "librarian" else "staff_admin"
         return jsonify({
             "access": access,
             "id": user["id"],
@@ -252,7 +274,9 @@ def login():
 
 @auth_bp.route("/self-service/login", methods=["POST"])
 def self_service_login():
-    """Autentica uma carteirinha comum e emite uma sessão no escopo do próprio aluno."""
+    """Emite uma sessão restrita ao titular de uma carteirinha cadastrada."""
+    if not self_service_operation_allowed():
+        return jsonify({"error": "O Autoatendimento está desativado pelo administrador."}), 403
     serializer = _self_service_serializer()
     if serializer is None:
         return jsonify({"error": "Autoatendimento indisponível: configure uma chave secreta segura."}), 503
@@ -264,7 +288,7 @@ def self_service_login():
 
     try:
         student = _get_student_by_card(code)
-        if not student or student.get("is_librarian"):
+        if not student:
             return jsonify({"error": "Carteirinha não reconhecida para autoatendimento."}), 401
 
         token = serializer.dumps({"scope": "student_history", "student_id": str(student["id"])})
@@ -290,6 +314,8 @@ def self_service_logout():
 @auth_bp.route("/self-service/history", methods=["GET"])
 def self_service_history():
     """Retorna somente o histórico pertencente à carteirinha autenticada."""
+    if not self_service_operation_allowed():
+        return jsonify({"error": "O Autoatendimento está desativado pelo administrador."}), 403
     student_id, error_response = _self_service_student_from_request()
     if error_response:
         return error_response
@@ -316,9 +342,12 @@ def self_service_history():
         for loan in loans:
             book = books_by_id.get(str(loan.get("livro_id", "")), {})
             history.append({
+                "loan_id": loan.get("id"),
+                "book_id": loan.get("livro_id"),
                 "book_title": book.get("titulo") or book.get("title") or "Livro não encontrado",
                 "book_author": book.get("autor") or book.get("author") or "",
                 "exemplar": loan.get("exemplar"),
+                "exemplar_id": loan.get("exemplar_id"),
                 "loan_date": loan.get("data_emprestimo"),
                 "due_date": loan.get("data_devolucao_prevista"),
                 "returned_at": loan.get("devolvido_em"),
@@ -350,6 +379,8 @@ def self_service_history():
 @auth_bp.route("/self-service/books", methods=["GET"])
 def self_service_books():
     """Lista somente livros com exemplares disponíveis para o aluno autenticado."""
+    if not self_service_operation_allowed("allow_borrow"):
+        return jsonify({"error": "Empréstimos pelo Autoatendimento estão desativados pelo administrador."}), 403
     student_id, error_response = _self_service_student_from_request()
     if error_response:
         return error_response
@@ -390,6 +421,8 @@ def self_service_books():
 @auth_bp.route("/self-service/loans", methods=["POST"])
 def self_service_create_loan():
     """Registra empréstimo associado exclusivamente à carteirinha autenticada."""
+    if not self_service_operation_allowed("allow_borrow"):
+        return jsonify({"error": "Empréstimos pelo Autoatendimento estão desativados pelo administrador."}), 403
     student_id, error_response = _self_service_student_from_request()
     if error_response:
         return error_response
@@ -405,6 +438,55 @@ def self_service_create_loan():
         forced_student_id=student_id,
         created_by_override="autoatendimento",
     )
+
+
+def _self_service_owned_loan(loan_id, required_setting):
+    from api.controle import self_service_operation_allowed
+
+    if not self_service_operation_allowed(required_setting):
+        return None, jsonify({"error": "Esta operação está desativada pelo administrador."}), 403
+
+    student_id, error_response = _self_service_student_from_request()
+    if error_response:
+        response, status = error_response
+        return None, response, status
+
+    try:
+        from utils import sb_exec
+
+        rows = sb_exec(get_client().table("emprestimos").select("*").eq("id", loan_id))
+    except Exception:
+        rows = [
+            loan for loan in read_json(DATA_DIR / "emprestimos.json")
+            if str(loan.get("id", "")) == str(loan_id)
+        ]
+    if not rows:
+        return None, jsonify({"error": "Empréstimo não encontrado."}), 404
+    if str(rows[0].get("aluno_id", "")) != student_id:
+        return None, jsonify({"error": "Este empréstimo não pertence à carteirinha lida."}), 403
+    return student_id, None, None
+
+
+@auth_bp.route("/self-service/loans/<loan_id>/renew", methods=["POST"])
+def self_service_renew_loan(loan_id):
+    _student_id, response, status = _self_service_owned_loan(loan_id, "allow_renew")
+    if response:
+        return response, status
+
+    from api.loans import renew_loan
+
+    return renew_loan(loan_id)
+
+
+@auth_bp.route("/self-service/loans/<loan_id>/return", methods=["POST"])
+def self_service_return_loan(loan_id):
+    _student_id, response, status = _self_service_owned_loan(loan_id, "allow_return")
+    if response:
+        return response, status
+
+    from api.loans import return_loan
+
+    return return_loan(loan_id)
 
 
 # ── Endpoint: Configuração Supabase Segura ──────────────────────────

@@ -42,7 +42,16 @@ const API = {
     selfServiceHistory: token => apiFetch("/auth/self-service/history", { headers:{ Authorization:`Bearer ${token}` } }),
     selfServiceBooks: token => apiFetch("/auth/self-service/books", { headers:{ Authorization:`Bearer ${token}` } }),
     selfServiceCreateLoan: (token, body) => apiFetch("/auth/self-service/loans", { method:"POST", headers:{ Authorization:`Bearer ${token}` }, body:JSON.stringify(body) }),
+    selfServiceRenewLoan: (token, id, body) => apiFetch(`/auth/self-service/loans/${id}/renew`, { method:"POST", headers:selfServiceHeaders(token), body:JSON.stringify(body) }),
+    selfServiceReturnLoan: (token, id, body) => apiFetch(`/auth/self-service/loans/${id}/return`, { method:"POST", headers:selfServiceHeaders(token), body:JSON.stringify(body) }),
     selfServiceLogout: () => apiFetch("/auth/self-service/logout", { method:"POST", body:"{}" }),
+  },
+  controle: {
+    selfServiceSettings: () => apiFetch("/controle/autoatendimento", { cache:"no-store" }),
+    updateSelfServiceSettings: settings => apiFetch("/controle/autoatendimento", {
+      method:"PUT",
+      body:JSON.stringify(settings),
+    }),
   },
   books: {
     list:   (q="", genre="") => apiFetch(`/books/?q=${encodeURIComponent(q)}&genre=${encodeURIComponent(genre)}`),
@@ -105,3 +114,7 @@ const API = {
   },
   health: () => apiFetch("/health"),
 };
+
+function selfServiceHeaders(token) {
+  return { Authorization: "Bearer " + token };
+}

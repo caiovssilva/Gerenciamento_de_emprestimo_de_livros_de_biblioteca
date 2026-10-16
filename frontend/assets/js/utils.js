@@ -56,7 +56,7 @@ const Utils = {
     const dialog = el.querySelector(".modal") || el;
     _focusModal(dialog);
   },
-  closeModal(id) {
+  closeModal(id, { restoreFocus = true } = {}) {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove("open");
@@ -64,7 +64,126 @@ const Utils = {
     _syncModalInteraction();
     const previousFocus = _modalFocus.get(el);
     _modalFocus.delete(el);
-    if (previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus();
+    if (restoreFocus && previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus();
+  },
+
+  confirmDialog(message, {
+    title = "Confirmar ação",
+    confirmText = "Confirmar",
+    cancelText = "Cancelar",
+    danger = false,
+  } = {}) {
+    const overlay = document.createElement("div");
+    overlay.id = `app-dialog-${Utils.uid()}`;
+    overlay.className = "overlay";
+    overlay.innerHTML = `<section class="modal app-dialog" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2></h2><button class="modal-close app-dialog-close" type="button" aria-label="Fechar"><i class="ti ti-x"></i></button></div>
+      <div class="modal-body"><p class="app-dialog-message"></p></div>
+      <div class="modal-foot"><button class="btn app-dialog-cancel" type="button"></button><button class="btn app-dialog-confirm" type="button"></button></div>
+    </section>`;
+    const dialog = overlay.querySelector(".modal");
+    const titleEl = overlay.querySelector(".modal-head h2");
+    const messageEl = overlay.querySelector(".app-dialog-message");
+    const cancelButton = overlay.querySelector(".app-dialog-cancel");
+    const confirmButton = overlay.querySelector(".app-dialog-confirm");
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    cancelButton.textContent = cancelText;
+    confirmButton.textContent = confirmText;
+    confirmButton.classList.add(danger ? "btn-danger" : "btn-primary");
+    document.body.appendChild(overlay);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (confirmed) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener("keydown", onKeyDown);
+        try {
+          Utils.closeModal(overlay.id, { restoreFocus: !confirmed });
+        } finally {
+          overlay.remove();
+          resolve(confirmed);
+        }
+      };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          finish(false);
+        }
+        if (event.key === "Enter" && overlay.classList.contains("open")) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          finish(true);
+        }
+      };
+      cancelButton.addEventListener("click", () => finish(false));
+      confirmButton.addEventListener("click", () => finish(true));
+      overlay.querySelector(".app-dialog-close").addEventListener("click", () => finish(false));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) finish(false);
+      });
+      document.addEventListener("keydown", onKeyDown);
+      Utils.openModal(overlay.id);
+      confirmButton.focus();
+    });
+  },
+
+  promptPassword({
+    title = "Confirme sua senha",
+    message = "Digite sua senha para continuar.",
+    confirmText = "Continuar",
+  } = {}) {
+    const overlay = document.createElement("div");
+    overlay.id = `app-dialog-${Utils.uid()}`;
+    overlay.className = "overlay";
+    overlay.innerHTML = `<form class="modal app-dialog app-password-dialog" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2></h2><button class="modal-close app-dialog-close" type="button" aria-label="Fechar"><i class="ti ti-x"></i></button></div>
+      <div class="modal-body"><p class="app-dialog-message"></p><div class="form-group"><label for="app-dialog-password">Senha</label><input id="app-dialog-password" type="password" autocomplete="current-password" required></div></div>
+      <div class="modal-foot"><button class="btn app-dialog-cancel" type="button">Cancelar</button><button class="btn btn-primary app-dialog-confirm" type="submit"></button></div>
+    </form>`;
+    const form = overlay.querySelector("form");
+    const input = overlay.querySelector("#app-dialog-password");
+    overlay.querySelector(".modal-head h2").textContent = title;
+    overlay.querySelector(".app-dialog-message").textContent = message;
+    overlay.querySelector(".app-dialog-confirm").textContent = confirmText;
+    document.body.appendChild(overlay);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (password) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener("keydown", onKeyDown);
+        try {
+          Utils.closeModal(overlay.id, { restoreFocus: password === null });
+        } finally {
+          overlay.remove();
+          resolve(password);
+        }
+      };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          finish(null);
+        }
+      };
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (input.value) finish(input.value);
+        else input.focus();
+      });
+      form.querySelector(".app-dialog-cancel").addEventListener("click", () => finish(null));
+      overlay.querySelector(".app-dialog-close").addEventListener("click", () => finish(null));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) finish(null);
+      });
+      document.addEventListener("keydown", onKeyDown);
+      Utils.openModal(overlay.id);
+      input.focus();
+    });
   },
 
   statusBadge(status, dl = 0) {

@@ -89,7 +89,11 @@ async function deleteRoom(id) {
   const msg = studs.length
     ? `Esta sala tem ${studs.length} aluno(s). Eles ficarão sem sala. Confirmar exclusão?`
     : "Excluir esta sala?";
-  if (!confirm(msg)) return;
+  if (!await Utils.confirmDialog(msg, {
+    title: "Excluir sala",
+    confirmText: "Excluir sala",
+    danger: true,
+  })) return;
   try {
     await API.rooms.delete(id);
     Utils.toast("Sala excluída.","info");

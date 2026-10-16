@@ -109,15 +109,22 @@ def restrict_self_service_api():
 
     if scope != "self_service":
         return None
+    if request.path == "/api/auth/self-service/logout" and request.method == "POST":
+        return None
+    from api.controle import self_service_operation_allowed
+    if not self_service_operation_allowed():
+        return jsonify({"error": "O Autoatendimento está desativado pelo administrador."}), 403
     if request.path == "/api/auth/self-service/history" and request.method == "GET":
         return None
     if request.path == "/api/auth/self-service/books" and request.method == "GET":
+        if not self_service_operation_allowed("allow_borrow"):
+            return jsonify({"error": "Empréstimos pelo Autoatendimento estão desativados pelo administrador."}), 403
         return None
     if request.path == "/api/auth/self-service/loans" and request.method == "POST":
+        if not self_service_operation_allowed("allow_borrow"):
+            return jsonify({"error": "Empréstimos pelo Autoatendimento estão desativados pelo administrador."}), 403
         return None
     if request.path.startswith("/api/auth/self-service/loans/") and request.method == "POST":
-        return None
-    if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
     return jsonify({"error": "A sessão de autoatendimento permite apenas operar os empréstimos da carteirinha lida."}), 403
 

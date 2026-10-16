@@ -174,9 +174,9 @@ def _create_loan_record(body, forced_student_id=None, created_by_override=None):
 @loans_bp.route("/<loan_id>/renew", methods=["POST"])
 def renew_loan(loan_id):
     """Renova um empréstimo ativo, estendendo a data de devolução prevista."""
-    body = request.get_json(force=True) or {}
-    try: days = max(1, int(body.get("dias", 7)))
-    except: days = 7
+    from api.controle import get_self_service_settings
+
+    days = get_self_service_settings()["renewal_days"]
     sb = get_client()
     try:    loans = sb_exec(sb.table("emprestimos").select("*").eq("id",loan_id))
     except: loans = [l for l in read_json(LOANS_FILE) if l.get("id")==loan_id]

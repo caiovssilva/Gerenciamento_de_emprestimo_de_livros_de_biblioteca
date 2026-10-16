@@ -117,7 +117,7 @@ def test_traditional_staff_login_still_requires_valid_password(monkeypatch):
     assert rejected.status_code == 401
 
 
-def test_librarian_card_cannot_enter_as_common_student(monkeypatch):
+def test_librarian_card_can_enter_restricted_self_service(monkeypatch):
     client = FakeClient({
         "livros": [],
         "alunos": [{"id": "staff-1", "nome": "Bibliotecário", "carteirinha": "STAFF-1", "is_librarian": True}],
@@ -129,7 +129,50 @@ def test_librarian_card_cannot_enter_as_common_student(monkeypatch):
     with app.test_client() as test_client:
         response = test_client.post("/api/auth/self-service/login", json={"code": "STAFF-1"})
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert response.get_json()["access"] == "self_service"
+
+
+def test_self_service_card_lookup_normalizes_input_and_false_librarian_flag(monkeypatch):
+    client = FakeClient({
+        "livros": [],
+        "alunos": [{
+            "id": "student-1",
+            "nome": "Ana",
+            "carteirinha": "CARD-1",
+            "is_librarian": "false",
+        }],
+    })
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        response = test_client.post("/api/auth/self-service/login", json={"code": " card-1 "})
+
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Ana"
+
+
+def test_self_service_card_lookup_tolerates_card_formatting(monkeypatch):
+    client = FakeClient({
+        "livros": [],
+        "alunos": [{
+            "id": "student-1",
+            "nome": "Ana",
+            "carteirinha": "185548.1.32021194",
+        }],
+    })
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        response = test_client.post(
+            "/api/auth/self-service/login",
+            json={"code": "185548 1 32021194"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Ana"
 
 
 def test_self_service_allows_only_own_history_and_logout(monkeypatch):
@@ -214,3 +257,78 @@ def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
     assert "aluno_id" not in captured["body"]
     assert blocked_catalog.status_code == 403
     assert blocked_renewal.status_code == 403
+
+
+def test_self_service_cannot_renew_another_students_loan(monkeypatch):
+    client = FakeClient({
+        "livros": [],
+        "alunos": [{"id": "student-1", "nome": "Ana", "carteirinha": "CARD-1"}],
+        "emprestimos": [{"id": "loan-other", "aluno_id": "student-2"}],
+    })
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setattr(utils, "get_client", lambda: client)
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-1"})
+        token = login.get_json()["token"]
+        response = test_client.post(
+            "/api/auth/self-service/loans/loan-other/renew",
+            json={"dias": 1},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 403
+    assert "não pertence" in response.get_json()["error"]
+
+
+def test_renewal_ignores_client_days_and_uses_admin_setting(monkeypatch):
+    import api.controle as controle_module
+    import api.loans as loans_module
+
+    loan = {
+        "id": "loan-1",
+        "data_devolucao_prevista": "2026-10-15",
+        "renovacoes": 0,
+        "devolvido_em": None,
+    }
+
+    class Query:
+        action = "select"
+
+        def select(self, *_columns):
+            self.action = "select"
+            return self
+
+        def update(self, values):
+            self.action = "update"
+            self.values = values
+            return self
+
+        def eq(self, *_args):
+            return self
+
+    class Client:
+        def table(self, _name):
+            return Query()
+
+    def execute(query):
+        if query.action == "update":
+            loan.update(query.values)
+        return [loan]
+
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: {
+        **controle_module.DEFAULT_SETTINGS,
+        "renewal_days": 21,
+    })
+    monkeypatch.setattr(loans_module, "get_client", lambda: Client())
+    monkeypatch.setattr(loans_module, "sb_exec", execute)
+
+    with app.test_request_context(
+        "/api/loans/loan-1/renew",
+        method="POST",
+        json={"dias": 1},
+    ):
+        response = loans_module.renew_loan("loan-1")
+
+    assert response.get_json()["data_devolucao_prevista"] == utils.add_days("2026-10-15", 21)

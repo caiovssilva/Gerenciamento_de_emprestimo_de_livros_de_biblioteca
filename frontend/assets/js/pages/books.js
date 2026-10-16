@@ -291,7 +291,11 @@ async function saveBook() {
 async function deleteBook(id) {
   const book = Store.bookById(id);
   const title = book?.titulo || book?.title || "este livro";
-  if (!confirm(`Excluir "${title}" do acervo?`)) return;
+  if (!await Utils.confirmDialog(`Excluir "${title}" do acervo?`, {
+    title: "Excluir livro",
+    confirmText: "Excluir livro",
+    danger: true,
+  })) return;
   try {
     await API.books.delete(id);
     Utils.toast("Livro excluído.","info");
@@ -303,7 +307,11 @@ async function deleteExemplar(bookId, exemplarCode) {
   const book = Store.bookById(bookId);
   if (!book) return;
   const title = book.titulo || book.title || "este livro";
-  if (!confirm(`Excluir somente o exemplar #${exemplarCode} de "${title}"? O QR desta cópia deixará de ser aceito; os demais exemplares serão mantidos.`)) return;
+  if (!await Utils.confirmDialog(`Excluir somente o exemplar #${exemplarCode} de "${title}"? O QR desta cópia deixará de ser aceito; os demais exemplares serão mantidos.`, {
+    title: "Excluir exemplar",
+    confirmText: "Excluir exemplar",
+    danger: true,
+  })) return;
 
   try {
     await API.books.deleteExemplar(bookId, exemplarCode);

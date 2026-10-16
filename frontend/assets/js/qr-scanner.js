@@ -27,6 +27,7 @@ const QRScanner = (() => {
   let _lastReadAt = 0;
   let _frameHandler = null;
   let _onStop = null;
+  let _onError = null;
   let _frameRequestActive = false;
   let _frameIntervalMs = 1000;
   let _nextFrameAt = 0;
@@ -387,6 +388,7 @@ const QRScanner = (() => {
     _selectEl = null;
     _cancelBtnEl = null;
     _refreshBtnEl = null;
+    _onError = null;
   }
 
   return {
@@ -396,6 +398,7 @@ const QRScanner = (() => {
       _callback = cb;
       _frameHandler = typeof options.frameHandler === "function" ? options.frameHandler : null;
       _onStop = typeof options.onStop === "function" ? options.onStop : null;
+      _onError = typeof options.onError === "function" ? options.onError : null;
       _frameIntervalMs = Math.max(500, Number(options.frameIntervalMs) || 1000);
       _nextFrameAt = 0;
       _buildUI();
@@ -409,6 +412,7 @@ const QRScanner = (() => {
         _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
       } catch (error) {
         if (_statusEl) _statusEl.textContent = "Câmera indisponível.";
+        if (_onError) _onError(error);
         Utils.toast("Câmera indisponível: " + error.message, "error");
         stop();
       }

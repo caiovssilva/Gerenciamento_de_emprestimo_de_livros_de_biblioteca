@@ -7,6 +7,18 @@ const loginMarkup = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8
 assert.match(loginMarkup, /id="self-service-student-card"/);
 assert.match(loginMarkup, /id="self-service-books-search"/);
 assert.match(loginMarkup, /id="self-service-books-list"/);
+assert.match(loginMarkup, /data-self-service-tab="history">Histórico/);
+assert.match(loginMarkup, /data-self-service-tab="books">Acervo/);
+assert.match(loginMarkup, /id="self-service-kiosk-status"/);
+assert.match(loginMarkup, /id="self-service-scan-btn"/);
+assert.match(loginMarkup, /id="self-service-exit-btn"/);
+assert.match(loginMarkup, /data-page="controle" data-role="admin"/);
+assert.match(loginMarkup, /id="page-controle"/);
+const configPageMarkup = loginMarkup.split('id="page-config"')[1].split('<!--')[0];
+assert.doesNotMatch(configPageMarkup, /self-service-setting-enabled/);
+const appSource = fs.readFileSync(path.join(__dirname, '../assets/js/app.js'), 'utf8');
+assert.match(appSource, /onError:\s*\(error\)\s*=>/);
+assert.doesNotMatch(appSource, /onStop:\s*returnFromSelfServiceLoginScreen/);
 
 function classList() {
   const values = new Set();
@@ -21,12 +33,22 @@ function classList() {
   };
 }
 
-const pages = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos', 'auto-historico'].map((name) => ({
+const pages = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos', 'auto-historico', 'controle'].map((name) => ({
   id: `page-${name}`,
   classList: classList(),
 }));
-const navButtons = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos'].map((name) => ({
+const navButtons = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos', 'controle'].map((name) => ({
   dataset: { page: name },
+  classList: classList(),
+}));
+const selfServiceTabs = ['history', 'books'].map((tab) => ({
+  dataset: { selfServiceTab: tab },
+  classList: classList(),
+  setAttribute: () => {},
+}));
+const selfServicePanels = ['history', 'books'].map((tab) => ({
+  id: `self-service-panel-${tab}`,
+  hidden: tab !== 'history',
   classList: classList(),
 }));
 const elements = new Map();
@@ -55,7 +77,9 @@ const context = {
   Utils: {
     el: getElement,
     qsa: (selector) => selector === '.page' ? pages
-      : selector === '.nav-btn[data-page]' ? navButtons : [],
+      : selector === '.nav-btn[data-page]' ? navButtons
+        : selector === '[data-self-service-tab]' ? selfServiceTabs
+          : selector === '.self-service-panel' ? selfServicePanels : [],
     qs: (selector) => {
       if (selector === '.page.active') return pages.find((page) => page.classList.contains('active'));
       const match = selector.match(/^\.nav-btn\[data-page="([^"]+)"\]$/);
@@ -98,6 +122,46 @@ vm.runInContext(
     'page-auto-historico',
     'autoatendimento não deve navegar para páginas administrativas',
   );
+  let historyLoads = 0;
+  let bookLoads = 0;
+  context.loadSelfServiceHistory = () => { historyLoads += 1; };
+  context.loadSelfServiceBooks = () => { bookLoads += 1; };
+  context.showSelfServiceTab('books');
+  assert.strictEqual(selfServiceTabs[1].classList.contains('active'), true);
+  assert.strictEqual(selfServicePanels[1].hidden, false);
+  assert.strictEqual(bookLoads, 1);
+  context.showSelfServiceTab('history');
+  assert.strictEqual(selfServiceTabs[0].classList.contains('active'), true);
+  assert.strictEqual(selfServicePanels[0].hidden, false);
+  assert.strictEqual(historyLoads, 1);
+
+  const qrLogins = [];
+  let qrCallback;
+  context.QRScanner = {
+    start: async (_input, callback) => { qrCallback = callback; },
+  };
+  context.Utils.toast = () => {};
+  context._finishLogin = async (user) => { qrLogins.push(user); };
+  context.API = {
+    qr: {
+      login: async () => ({
+        access: 'librarian',
+        data: { id: 'staff-1', nome: 'Bibliotecária', carteirinha: 'STAFF-1' },
+      }),
+    },
+  };
+  await context.startQRLogin();
+  await qrCallback({ primary: 'STAFF-1' });
+  assert.strictEqual(qrLogins[0].role, 'librarian', 'carteirinha autorizada deve concluir o login sem confirmação extra');
+
+  context.Utils.promptPassword = async () => 'senha-validada';
+  context.API.qr.login = async (_code, password) => {
+    assert.strictEqual(password, 'senha-validada', 'acesso administrativo mantém validação de senha');
+    return { access: 'admin', data: { login: 'admin', nome: 'Administrador' } };
+  };
+  await context.startQRLogin();
+  await qrCallback({ primary: 'ADMIN-admin' });
+  assert.strictEqual(qrLogins[1].role, 'admin', 'acesso administrativo confirmado deve entrar imediatamente');
   console.log('navigation remains on selected page during initial sync');
 
   const syncOptions = [];

@@ -10,6 +10,7 @@ DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
 BOOKS_FILE  = DATA_DIR / "livros.json"
 ALUNOS_FILE = DATA_DIR / "alunos.json"
 LOANS_FILE  = DATA_DIR / "emprestimos.json"
+ROOMS_FILE  = DATA_DIR / "salas.json"
 
 
 def _fetch_all(sb):
@@ -120,9 +121,15 @@ def _unique_records(records):
 
 
 def _build_report_data():
-    books,students,loans = _fetch_all(get_client())
+    sb = get_client()
+    books,students,loans = _fetch_all(sb)
     loans = _unique_records(loans)
     bmap={b["id"]:b for b in books}; smap={s["id"]:s for s in students}
+    try:
+        rooms = sb_exec(sb.table("salas").select("*"))
+    except Exception:
+        rooms = read_json(ROOMS_FILE)
+    room_map = {str(room.get("id")): room for room in rooms}
 
     overdue=[["Aluno","Turma","Livro","Exemplar","Emprestado em","Vencimento","Dias Atraso"]]
     for l in loans:
@@ -177,11 +184,53 @@ def _build_report_data():
             loan.get("devolvido_em", "") or "",
         ])
 
+    active_loans_by_student = {}
+    overdue_by_student = {}
+    for loan in loans:
+        if loan.get("devolvido_em"):
+            continue
+        student_id = str(loan.get("aluno_id", ""))
+        active_loans_by_student[student_id] = active_loans_by_student.get(student_id, 0) + 1
+        if loan_status(loan) == "overdue":
+            overdue_by_student[student_id] = overdue_by_student.get(student_id, 0) + 1
+
+    student_directory = [[
+        "ID do aluno", "Carteirinha", "Nome", "Turma", "Sala", "Perfil",
+        "Empréstimos ativos", "Em atraso", "Situação",
+    ]]
+    for student in sorted(students, key=lambda row: (
+        str(row.get("nome") or row.get("name") or "").casefold(),
+        str(row.get("turma") or row.get("class") or "").casefold(),
+    )):
+        if student.get("deleted_at"):
+            continue
+        student_id = str(student.get("id", ""))
+        active_count = active_loans_by_student.get(student_id, 0)
+        overdue_count = overdue_by_student.get(student_id, 0)
+        room = room_map.get(str(student.get("sala_id", "")), {})
+        room_name = room.get("nome") or room.get("name") or ""
+        room_code = room.get("codigo") or room.get("code") or ""
+        room_label = " — ".join(part for part in (room_name, room_code) if part) or "Sem sala"
+        is_librarian = student.get("is_librarian") is True or str(student.get("is_librarian", "")).strip().casefold() in {"true", "1", "yes", "sim"}
+        status = "Com atraso" if overdue_count else "Com empréstimo" if active_count else "Regular"
+        student_directory.append([
+            student_id,
+            student.get("carteirinha") or student.get("card") or "",
+            student.get("nome") or student.get("name") or "",
+            student.get("turma") or student.get("class") or "",
+            room_label,
+            "Bibliotecário" if is_librarian else "Aluno",
+            active_count,
+            overdue_count,
+            status,
+        ])
+
     return [
         {"id": "overdue", "title": "Empréstimos atrasados", "description": "Alunos com devolução vencida", "filename": "emprestimos-atrasados.csv", "rows": overdue},
         {"id": "all", "title": "Histórico completo", "description": "Todos os empréstimos", "filename": "historico-completo.csv", "rows": all_loans},
         {"id": "books", "title": "Livros mais emprestados", "description": "Ranking por demanda", "filename": "livros-mais-emprestados.csv", "rows": popular_books},
         {"id": "by-class", "title": "Por turma", "description": "Empréstimos agrupados por turma", "filename": "emprestimos-por-turma.csv", "rows": by_class},
+        {"id": "students", "title": "Cadastro de alunos", "description": "Lista completa com carteirinha, turma, sala e situação dos empréstimos", "filename": "cadastro-de-alunos.csv", "rows": student_directory},
         {"id": "student-status", "title": "Status de alunos", "description": "Quem pegou, quem está devendo e quem devolveu", "filename": "status-alunos-emprestimos.csv", "rows": student_status},
     ]
 
@@ -219,3 +268,8 @@ def export_by_class():
 @reports_bp.route("/export/student-status", methods=["GET"])
 def export_student_status():
     return _export_report("student-status")
+
+
+@reports_bp.route("/export/students", methods=["GET"])
+def export_students():
+    return _export_report("students")

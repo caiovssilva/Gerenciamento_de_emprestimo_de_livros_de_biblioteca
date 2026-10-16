@@ -52,10 +52,24 @@
   </div>
 </div>
 
-<div id="self-service-login-screen" class="self-service-camera-screen" style="display:none;" aria-label="Login por autoatendimento">
-  <button type="button" class="btn-self-service-scan" id="self-service-scan-btn" aria-label="Escanear carteirinha com a câmera" title="Escanear carteirinha">
-    <i class="ti ti-camera" aria-hidden="true"></i>
-  </button>
+<div id="self-service-login-screen" class="self-service-camera-screen" style="display:none;" aria-label="Modo de autoatendimento">
+  <div class="self-service-kiosk">
+    <header class="self-service-kiosk-heading">
+      <div class="self-service-kiosk-icon"><i class="ti ti-books" aria-hidden="true"></i></div>
+      <span class="self-service-eyebrow">BIBLIOTECA</span>
+      <h1>Autoatendimento</h1>
+      <p>Leia sua carteirinha para consultar o histórico e os serviços disponíveis.</p>
+    </header>
+    <div class="self-service-mode-actions">
+      <button type="button" class="btn-self-service-scan" id="self-service-scan-btn" aria-label="Escanear carteirinha com a câmera">
+        <i class="ti ti-camera" aria-hidden="true"></i><span>Ler carteirinha</span><small>Abrir câmera para continuar</small>
+      </button>
+      <button type="button" class="btn-self-service-exit" id="self-service-exit-btn">
+        <i class="ti ti-logout" aria-hidden="true"></i><span>Sair do autoatendimento</span><small>Voltar à tela inicial</small>
+      </button>
+    </div>
+    <p class="self-service-kiosk-status" id="self-service-kiosk-status" role="status" aria-live="polite"></p>
+  </div>
 </div>
 
 <!-- APP -->
@@ -80,6 +94,7 @@
         <button class="nav-btn" data-page="salas" data-role="admin"><i class="ti ti-door"></i>Salas</button>
         <div class="sb-section" data-role="admin">Outros</div>
         <button class="nav-btn" data-page="relatorios" data-role="admin"><i class="ti ti-chart-bar"></i>Relatórios</button>
+        <button class="nav-btn" data-page="controle" data-role="admin"><i class="ti ti-lock-access"></i>Controle</button>
         <button class="nav-btn" data-page="config"><i class="ti ti-settings"></i>Configurações</button>
       </div>
       <footer class="sb-footer">
@@ -132,15 +147,21 @@
             </div>
             <button class="btn self-service-logout" type="button" onclick="doLogout()"><i class="ti ti-logout" aria-hidden="true"></i>Sair</button>
           </div>
+          <div class="self-service-tabs" role="tablist" aria-label="Autoatendimento">
+            <button class="self-service-tab active" type="button" role="tab" id="self-service-tab-history" aria-controls="self-service-panel-history" aria-selected="true" data-self-service-tab="history">Histórico</button>
+            <button class="self-service-tab" type="button" role="tab" id="self-service-tab-books" aria-controls="self-service-panel-books" aria-selected="false" data-self-service-tab="books">Acervo</button>
+          </div>
           <section class="self-service-panel active" role="tabpanel" id="self-service-panel-history">
             <h2 class="self-service-section-title">Meu histórico</h2>
             <div id="self-service-history-status" role="status" aria-live="polite"></div>
             <div class="tbl-wrap self-service-history-table-wrap">
               <table class="self-service-history-table">
-                <thead><tr><th>Livro</th><th>Exemplar</th><th>Empréstimo</th><th>Prazo</th><th>Situação</th></tr></thead>
+                <thead><tr><th>Livro</th><th>Exemplar</th><th>Empréstimo</th><th>Prazo</th><th>Situação</th><th>Ações</th></tr></thead>
                 <tbody id="self-service-history-rows"></tbody>
               </table>
             </div>
+          </section>
+          <section class="self-service-panel" role="tabpanel" id="self-service-panel-books" aria-labelledby="self-service-tab-books" hidden>
             <section class="self-service-catalog" aria-labelledby="self-service-catalog-title">
               <div class="self-service-catalog-heading">
                 <h2 class="self-service-section-title" id="self-service-catalog-title">Acervo disponível</h2>
@@ -327,6 +348,73 @@
           </div>
         </section>
 
+        <!-- CONTROLE -->
+        <section class="page" id="page-controle" aria-label="Controle e permissões">
+          <header class="control-page-heading">
+            <div class="control-heading-icon"><i class="ti ti-adjustments-cog" aria-hidden="true"></i></div>
+            <div>
+              <span class="self-service-eyebrow">PAINEL ADMINISTRATIVO</span>
+              <h1>Controle de acesso</h1>
+              <p>Defina como o Autoatendimento e os bibliotecários podem operar. As permissões não limitam administradores.</p>
+            </div>
+          </header>
+          <div class="card control-settings-card" data-role="admin">
+            <div class="card-header control-card-heading">
+              <div class="control-card-icon"><i class="ti ti-shield-lock" aria-hidden="true"></i></div>
+              <div><h2>Autoatendimento e permissões</h2><p>As regras abaixo também se aplicam aos bibliotecários.</p></div>
+            </div>
+            <div class="card-body">
+              <div class="control-group-heading">
+                <span class="control-step">01</span>
+                <div><h3>Acesso ao modo</h3><p>Escolha se o Autoatendimento ficará disponível na tela inicial.</p></div>
+              </div>
+              <div class="self-service-settings-list">
+                <label class="control-option control-option-featured" for="self-service-setting-enabled">
+                  <span class="control-option-icon"><i class="ti ti-device-desktop-check" aria-hidden="true"></i></span>
+                  <span class="control-option-copy"><strong>Ativar Autoatendimento</strong><small>Exibe a opção de acesso na tela de entrada do sistema.</small></span>
+                  <input type="checkbox" id="self-service-setting-enabled">
+                </label>
+              </div>
+              <div class="control-group-heading control-group-spaced">
+                <span class="control-step">02</span>
+                <div><h3>Operações permitidas</h3><p>Ative somente as ações que deseja liberar para cada atendimento.</p></div>
+              </div>
+              <div class="self-service-settings-list control-permission-grid">
+                <label class="control-option" for="self-service-setting-allow_borrow">
+                  <span class="control-option-icon control-icon-borrow"><i class="ti ti-book-download" aria-hidden="true"></i></span>
+                  <span class="control-option-copy"><strong>Empréstimos</strong><small>Permite registrar a retirada de livros.</small></span>
+                  <input type="checkbox" id="self-service-setting-allow_borrow">
+                </label>
+                <label class="control-option" for="self-service-setting-allow_return">
+                  <span class="control-option-icon control-icon-return"><i class="ti ti-book-upload" aria-hidden="true"></i></span>
+                  <span class="control-option-copy"><strong>Devoluções</strong><small>Permite registrar a entrega de livros.</small></span>
+                  <input type="checkbox" id="self-service-setting-allow_return">
+                </label>
+                <label class="control-option" for="self-service-setting-allow_renew">
+                  <span class="control-option-icon control-icon-renew"><i class="ti ti-refresh" aria-hidden="true"></i></span>
+                  <span class="control-option-copy"><strong>Renovações</strong><small>Permite estender o prazo de empréstimo.</small></span>
+                  <input type="checkbox" id="self-service-setting-allow_renew">
+                </label>
+              </div>
+              <div class="control-renewal">
+                <span class="control-option-icon control-icon-renewal"><i class="ti ti-calendar-clock" aria-hidden="true"></i></span>
+                <div class="control-renewal-copy">
+                  <strong>Prazo fixo de renovação</strong>
+                  <small>O mesmo número de dias será aplicado em cada renovação.</small>
+                </div>
+                <label class="control-days-field" for="self-service-setting-renewal_days">
+                  <input type="number" id="self-service-setting-renewal_days" min="1" max="365" step="1" value="7" aria-label="Prazo fixo de renovação em dias">
+                  <span>dias</span>
+                </label>
+              </div>
+              <div class="control-savebar">
+                <span id="self-service-settings-status" role="status" aria-live="polite">Carregando controles...</span>
+                <button type="button" class="btn btn-primary" id="self-service-settings-save"><i class="ti ti-device-floppy" aria-hidden="true"></i>Salvar alterações</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- CONFIG -->
         <section class="page" id="page-config" aria-label="Configurações">
           <div class="card" style="max-width:760px;">
@@ -484,12 +572,7 @@
       </button>
       <div id="renew-qr-status" class="renew-qr-status" role="status" aria-live="polite">A leitura do QR é obrigatória para confirmar a renovação.</div>
     </section>
-    <div class="form-group"><label>Estender prazo por</label>
-      <select id="renew-days">
-        <option value="7">7 dias (padrão)</option><option value="14">14 dias</option>
-        <option value="3">3 dias</option><option value="30">30 dias</option>
-      </select>
-    </div>
+    <div class="form-group"><label>Prazo fixo configurado pelo administrador</label><p id="renew-days" aria-live="polite"></p></div>
     <div class="alert alert-blue"><i class="ti ti-calendar-due"></i><span id="renew-new-date-text"></span></div>
   </div>
   <div class="modal-foot"><button class="btn" onclick="Utils.closeModal('modal-renewal')">Cancelar</button><button class="btn btn-primary" id="renew-confirm-btn" onclick="confirmRenewal()" disabled><i class="ti ti-rotate-clockwise"></i>Confirmar renovação</button></div>

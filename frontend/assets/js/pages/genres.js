@@ -75,7 +75,11 @@ async function saveGenre() {
 }
 
 async function deleteGenre(id) {
-  if (!confirm("Excluir este gênero? Os livros vinculados ficarão sem gênero.")) return;
+  if (!await Utils.confirmDialog("Excluir este gênero? Os livros vinculados ficarão sem gênero.", {
+    title: "Excluir gênero",
+    confirmText: "Excluir gênero",
+    danger: true,
+  })) return;
   try {
     await API.genres.delete(id);
     Utils.toast("Gênero excluído.","info");

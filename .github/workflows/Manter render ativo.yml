@@ -1,0 +1,21 @@
+name: Manter Render Ativo
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Acordar o backend no Render
+        run: |
+          set -euo pipefail
+          echo "Fazendo ping no backend do Render..."
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
+            "https://gerenciamento-de-emprestimo-de-livros-de-3rmn.onrender.com/api/health"

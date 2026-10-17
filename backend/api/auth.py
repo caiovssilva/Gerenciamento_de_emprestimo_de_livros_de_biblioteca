@@ -428,13 +428,26 @@ def self_service_create_loan():
         return error_response
 
     body = request.get_json(force=True) or {}
-    if not body.get("livro_id"):
-        return jsonify({"error": "Selecione um livro para continuar."}), 400
+    exemplar_qr = str(body.get("exemplar_qr") or "").strip()
+    if not exemplar_qr:
+        return jsonify({"error": "Leia o QR Code do exemplar para continuar."}), 400
+
+    from scanner.routes import _resolve_qr
+
+    resolved = _resolve_qr(exemplar_qr)
+    book = resolved.get("data") or {}
+    if resolved.get("type") != "book" or not book.get("exemplar_code"):
+        return jsonify({"error": "O QR Code não identifica um exemplar cadastrado."}), 400
 
     from api.loans import _create_loan_record
 
     return _create_loan_record(
-        {"livro_id": body["livro_id"], "dias": 7, "observacao": ""},
+        {
+            "livro_id": book["id"],
+            "exemplar": book["exemplar_code"],
+            "dias": 7,
+            "observacao": "",
+        },
         forced_student_id=student_id,
         created_by_override="autoatendimento",
     )

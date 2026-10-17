@@ -14,7 +14,6 @@ let pendingReturnLoanId = null;
 let pendingDevolutionQr = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
-let selfServiceBooks = [];
 let selfServiceHistory = [];
 let selfServiceSettings = {
   enabled: false,
@@ -322,6 +321,7 @@ async function _finishLogin(user, showRoleToast) {
     Utils.el("sb-user-name").textContent = user.name;
     Utils.el("sb-avatar-initials").textContent = user.name.split(" ").map(word => word[0]).slice(0, 2).join("").toUpperCase();
     Utils.el("sb-role-badge").textContent = "Autoatendimento";
+    updateSelfServiceBorrowButton();
     navigateTo("auto-historico");
     return;
   }
@@ -387,11 +387,25 @@ function updateSelfServiceEntryButton() {
   button.title = selfServiceSettings.enabled ? "Abrir Autoatendimento" : "Autoatendimento desativado";
 }
 
+function updateSelfServiceBorrowButton() {
+  const button = Utils.el("self-service-borrow-scan-btn");
+  if (!button) return;
+  const enabled = currentUser?.role === "self_service" && isOperationAllowedForCurrentUser("allow_borrow");
+  button.disabled = !enabled;
+  button.setAttribute("aria-disabled", String(!enabled));
+  button.title = enabled ? "Ler o QR Code do exemplar" : "Empréstimos pelo Autoatendimento estão desativados";
+  const status = Utils.el("self-service-borrow-status");
+  if (status && currentUser?.role === "self_service" && !enabled) {
+    status.textContent = "Empréstimos pelo Autoatendimento estão desativados pelo administrador.";
+  }
+}
+
 async function loadSelfServiceSettings() {
   const status = Utils.el("self-service-settings-status");
   try {
     selfServiceSettings = await API.controle.selfServiceSettings();
     updateSelfServiceEntryButton();
+    updateSelfServiceBorrowButton();
     for (const key of ["enabled", "allow_borrow", "allow_return", "allow_renew"]) {
       const input = Utils.el(`self-service-setting-${key}`);
       if (input) input.checked = selfServiceSettings[key];
@@ -404,6 +418,7 @@ async function loadSelfServiceSettings() {
     if (status) status.textContent = `Não foi possível carregar os controles: ${error.message}`;
     console.error("Erro ao carregar controles do Autoatendimento:", error);
     updateSelfServiceEntryButton();
+    updateSelfServiceBorrowButton();
     return null;
   }
 }
@@ -618,10 +633,7 @@ function navigateTo(page) {
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") { Charts.init(); Reports.init(); }
   if (page==="controle") loadSelfServiceSettings();
-  if (page==="auto-historico") {
-    loadSelfServiceHistory();
-    loadSelfServiceBooks();
-  }
+  if (page==="auto-historico") loadSelfServiceHistory();
   if (page==="config" && isLibrarian()) {
     Utils.el("topbar-actions").innerHTML = "";
   }
@@ -727,93 +739,55 @@ async function operateSelfServiceLoan(loanId, action) {
         Utils.toast("Livro devolvido.", "success");
       }
       await loadSelfServiceHistory();
-      if (isOperationAllowedForCurrentUser("allow_borrow")) await loadSelfServiceBooks();
     });
   } catch (error) {
     Utils.toast(`Não foi possível concluir a operação: ${error.message}`, "error");
   }
 }
 
-async function loadSelfServiceBooks() {
-  const status = Utils.el("self-service-books-status");
-  const list = Utils.el("self-service-books-list");
-  if (!currentUser?.accessToken || !status || !list) return;
-  if (!isOperationAllowedForCurrentUser("allow_borrow")) {
-    status.textContent = "Empréstimos pelo Autoatendimento estão desativados pelo administrador.";
-    list.innerHTML = "";
-    Utils.el("self-service-books-count").textContent = "";
-    return;
-  }
-  status.textContent = "Carregando livros disponíveis...";
-  try {
-    selfServiceBooks = await API.auth.selfServiceBooks(currentUser.accessToken);
-    renderSelfServiceBooks();
-  } catch (error) {
-    status.textContent = error.message || "Não foi possível carregar o acervo.";
-    Utils.el("self-service-books-count").textContent = "";
-  }
-}
-
-function renderSelfServiceBooks() {
-  const status = Utils.el("self-service-books-status");
-  const list = Utils.el("self-service-books-list");
-  const count = Utils.el("self-service-books-count");
-  if (!status || !list) return;
-
-  const query = String(Utils.el("self-service-books-search")?.value || "").trim().toLocaleLowerCase();
-  const matches = selfServiceBooks.filter((book) =>
-    [book.titulo, book.autor, book.isbn].some((value) => String(value || "").toLocaleLowerCase().includes(query))
-  );
-  count.textContent = `${matches.length} ${matches.length === 1 ? "livro disponível" : "livros disponíveis"}`;
-
-  if (!matches.length) {
-    status.textContent = selfServiceBooks.length ? "Nenhum livro corresponde à busca." : "Nenhum exemplar disponível no momento.";
-    list.innerHTML = "";
+async function startSelfServiceBookScan() {
+  const button = Utils.el("self-service-borrow-scan-btn");
+  const status = Utils.el("self-service-borrow-status");
+  if (!currentUser?.accessToken || !isOperationAllowedForCurrentUser("allow_borrow")) {
+    updateSelfServiceBorrowButton();
     return;
   }
 
-  status.textContent = "";
-  list.innerHTML = matches.map((book) => `<article class="self-service-book-item">
-    <div class="self-service-book-info">
-      <strong>${escapeSelfServiceHtml(book.titulo)}</strong>
-      <span>${escapeSelfServiceHtml(book.autor || "Autor não informado")}</span>
-      <small>${book.available_copies} ${book.available_copies === 1 ? "exemplar disponível" : "exemplares disponíveis"}</small>
-    </div>
-    <button type="button" class="btn btn-primary self-service-borrow-btn" data-self-service-book-id="${escapeSelfServiceHtml(book.id)}">
-      <i class="ti ti-book-download" aria-hidden="true"></i> Pegar emprestado
-    </button>
-  </article>`).join("");
-
-  list.querySelectorAll("[data-self-service-book-id]").forEach((button) => {
-    button.addEventListener("click", () => borrowSelfServiceBook(button.dataset.selfServiceBookId, button));
-  });
-}
-
-async function borrowSelfServiceBook(bookId, button) {
-  if (!currentUser?.accessToken || button?.disabled) return;
-  const book = selfServiceBooks.find((item) => String(item.id) === String(bookId));
-  if (!book) return;
-
-  if (button) {
-    button.disabled = true;
-    button.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Registrando...';
-  }
-  const status = Utils.el("self-service-books-status");
+  if (status) status.textContent = "Aponte a câmera para o QR Code individual do exemplar.";
   try {
-    await API.auth.selfServiceCreateLoan(currentUser.accessToken, { livro_id: book.id });
-    status.textContent = `Empréstimo registrado: ${book.titulo}.`;
-    await Promise.all([loadSelfServiceHistory(), loadSelfServiceBooks()]);
-  } catch (error) {
-    status.textContent = error.message || "Não foi possível registrar o empréstimo.";
-    if (button) {
-      button.disabled = false;
-      button.innerHTML = '<i class="ti ti-book-download" aria-hidden="true"></i> Pegar emprestado';
-    }
-  }
-}
+    await QRScanner.start(null, async (result) => {
+      const code = String(result?.primary || "").trim();
+      if (!code) {
+        if (status) status.textContent = "Não foi possível ler o QR Code. Tente novamente.";
+        return;
+      }
 
-function filterSelfServiceBooks() {
-  renderSelfServiceBooks();
+      const originalLabel = button?.innerHTML;
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i><span>Registrando...</span>';
+      }
+      if (status) status.textContent = "Validando o exemplar cadastrado...";
+      try {
+        await API.auth.selfServiceCreateLoan(currentUser.accessToken, { exemplar_qr: code });
+        if (status) status.textContent = "Empréstimo registrado. Seu histórico foi atualizado.";
+        Utils.toast("Empréstimo registrado com sucesso.", "success");
+        await loadSelfServiceHistory();
+      } catch (error) {
+        if (status) status.textContent = error.message || "Não foi possível registrar o empréstimo.";
+        Utils.toast(error.message || "Não foi possível registrar o empréstimo.", "error");
+      } finally {
+        if (button && originalLabel !== undefined) button.innerHTML = originalLabel;
+        updateSelfServiceBorrowButton();
+      }
+    }, {
+      onError: (error) => {
+        if (status) status.textContent = `${error.message || "Não foi possível iniciar a câmera."} Verifique a permissão da câmera.`;
+      },
+    });
+  } catch (error) {
+    if (status) status.textContent = `${error.message || "Não foi possível iniciar a câmera."} Verifique a permissão da câmera.`;
+  }
 }
 
 // ── Empréstimo ────────────────────────────────────────────────────────
@@ -1608,7 +1582,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   Utils.el("self-service-scan-btn")?.addEventListener("click", startSelfServiceLogin);
   Utils.el("self-service-exit-btn")?.addEventListener("click", returnFromSelfServiceLoginScreen);
   Utils.el("self-service-settings-save")?.addEventListener("click", saveSelfServiceSettings);
-  Utils.el("self-service-books-search")?.addEventListener("input", filterSelfServiceBooks);
+  Utils.el("self-service-borrow-scan-btn")?.addEventListener("click", startSelfServiceBookScan);
 
   // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)
   Utils.el("login-card-form")?.querySelector(".btn-qr-login")?.addEventListener("click", startQRLogin);

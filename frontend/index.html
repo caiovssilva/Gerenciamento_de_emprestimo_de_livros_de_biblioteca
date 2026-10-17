@@ -147,8 +147,18 @@
             </div>
             <button class="btn self-service-logout" type="button" onclick="doLogout()"><i class="ti ti-logout" aria-hidden="true"></i>Sair</button>
           </div>
+          <section class="self-service-borrow-section" aria-label="Novo empréstimo">
+            <div class="self-service-borrow-copy">
+              <span class="self-service-eyebrow">NOVO EMPRÉSTIMO</span>
+              <p>Escaneie o QR Code individual do exemplar que deseja levar.</p>
+            </div>
+            <button class="self-service-borrow-scan" type="button" id="self-service-borrow-scan-btn" aria-describedby="self-service-borrow-status" disabled>
+              <i class="ti ti-camera" aria-hidden="true"></i><span>Pegar mais livros</span>
+            </button>
+          </section>
+          <p class="self-service-borrow-status" id="self-service-borrow-status" role="status" aria-live="polite">Aponte a câmera para o QR Code individual do exemplar.</p>
           <section class="self-service-history-section" aria-labelledby="self-service-history-title">
-            <h2 class="self-service-section-title" id="self-service-history-title">Meu histórico</h2>
+            <h2 class="self-service-section-title" id="self-service-history-title">Movimentações</h2>
             <div id="self-service-history-status" role="status" aria-live="polite"></div>
             <div class="tbl-wrap self-service-history-table-wrap">
               <table class="self-service-history-table">
@@ -156,18 +166,6 @@
                 <tbody id="self-service-history-rows"></tbody>
               </table>
             </div>
-          </section>
-          <section class="self-service-catalog" aria-labelledby="self-service-catalog-title">
-            <div class="self-service-catalog-heading">
-              <h2 class="self-service-section-title" id="self-service-catalog-title">Acervo disponível</h2>
-              <span id="self-service-books-count" aria-live="polite"></span>
-            </div>
-            <div class="form-group self-service-book-search">
-              <label for="self-service-books-search">Buscar livro</label>
-              <input type="search" id="self-service-books-search" placeholder="Título, autor ou ISBN">
-            </div>
-            <div id="self-service-books-status" role="status" aria-live="polite"></div>
-            <div id="self-service-books-list" class="self-service-books-list"></div>
           </section>
         </section>
 

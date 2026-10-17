@@ -5,10 +5,9 @@ const vm = require('vm');
 
 const loginMarkup = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 assert.match(loginMarkup, /id="self-service-student-card"/);
-assert.match(loginMarkup, /id="self-service-books-search"/);
-assert.match(loginMarkup, /id="self-service-books-list"/);
+assert.doesNotMatch(loginMarkup, /self-service-books-search|self-service-books-list|self-service-catalog/);
+assert.match(loginMarkup, /id="self-service-borrow-scan-btn"/);
 assert.match(loginMarkup, /id="self-service-history-rows"/);
-assert.match(loginMarkup, /id="self-service-books-list"/);
 assert.doesNotMatch(loginMarkup, /data-self-service-tab|self-service-panel-/);
 assert.match(loginMarkup, /id="self-service-kiosk-status"/);
 assert.match(loginMarkup, /id="self-service-scan-btn"/);
@@ -47,7 +46,7 @@ const getElement = (id) => {
   const page = pages.find((item) => item.id === id);
   if (page) return page;
   if (!elements.has(id)) {
-    elements.set(id, { style: {}, classList: classList(), textContent: '', innerHTML: '', value: '' });
+    elements.set(id, { style: {}, classList: classList(), textContent: '', innerHTML: '', value: '', setAttribute: () => {} });
   }
   return elements.get(id);
 };
@@ -79,7 +78,6 @@ const context = {
   renderBooks: () => {},
   renderLoans: () => {},
   loadSelfServiceHistory: () => {},
-  loadSelfServiceBooks: () => {},
   resetLoanForm: () => {},
   renderLoanScanPanel: () => {},
 };
@@ -106,9 +104,7 @@ vm.runInContext(
   );
   vm.runInContext("currentUser = { role: 'self_service' }", context);
   let historyLoads = 0;
-  let bookLoads = 0;
   context.loadSelfServiceHistory = () => { historyLoads += 1; };
-  context.loadSelfServiceBooks = () => { bookLoads += 1; };
   context.navigateTo('relatorios');
   assert.strictEqual(
     pages.find((page) => page.classList.contains('active')).id,
@@ -116,7 +112,28 @@ vm.runInContext(
     'autoatendimento não deve navegar para páginas administrativas',
   );
   assert.strictEqual(historyLoads, 1, 'a única tela carrega o histórico do aluno');
-  assert.strictEqual(bookLoads, 1, 'a única tela carrega o acervo para novos empréstimos');
+  assert.doesNotMatch(appSource, /loadSelfServiceBooks|renderSelfServiceBooks|selfServiceBooks/);
+
+  let scannedLoanBody;
+  let scanCallback;
+  context.QRScanner = { start: async (_input, callback) => { scanCallback = callback; } };
+  context.API = {
+    auth: {
+      selfServiceCreateLoan: async (token, body) => {
+        assert.strictEqual(token, 'student-token');
+        scannedLoanBody = body;
+      },
+    },
+  };
+  context.Utils.toast = () => {};
+  context.loadSelfServiceHistory = async () => {};
+  vm.runInContext(
+    "currentUser = { role: 'self_service', accessToken: 'student-token' }; selfServiceSettings.allow_borrow = true",
+    context,
+  );
+  await context.startSelfServiceBookScan();
+  await scanCallback({ primary: 'EXEMPLAR-book-1-EX-001-copy-1' });
+  assert.strictEqual(JSON.stringify(scannedLoanBody), JSON.stringify({ exemplar_qr: 'EXEMPLAR-book-1-EX-001-copy-1' }));
 
   const qrLogins = [];
   let qrCallback;

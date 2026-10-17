@@ -198,6 +198,19 @@ def decode_image():
         primary = decoded[0].data.decode("utf-8", errors="replace")
 
         resolved = _resolve_qr(primary)
+        if session.get("access_scope") == "self_service":
+            data = resolved.get("data") or {}
+            if resolved.get("type") != "book" or not data.get("exemplar_code"):
+                resolved = {"type": "unknown", "data": None}
+            else:
+                resolved = {
+                    "type": "book",
+                    "data": {
+                        "id": data.get("id"),
+                        "exemplar_code": data.get("exemplar_code"),
+                        "exemplar_id": data.get("exemplar_id"),
+                    },
+                }
         return jsonify({
             "codes":   [d.data.decode("utf-8", errors="replace") for d in decoded],
             "primary": primary,

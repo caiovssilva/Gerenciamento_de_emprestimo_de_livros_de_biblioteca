@@ -1,60 +1,54 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import utils.supabase_client as sb
 
 
-def test_get_client_retries_after_60_seconds(monkeypatch):
+def test_get_client_retries_after_connection_failure(monkeypatch):
     monkeypatch.setattr(sb, "_URL", "https://example.supabase.co")
     monkeypatch.setattr(sb, "_KEY", "example-key")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "example-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "example-service-key")
     monkeypatch.setattr(sb, "_client", None)
-    monkeypatch.setattr(sb, "_offline", True)
-    monkeypatch.setattr(sb, "_last_attempt", 0)
 
     class FailingClient:
-        def __init__(self, url, key):
+        def __init__(self, _url, _key):
             raise ConnectionError("simulated startup failure")
 
     class SuccessfulClient:
         def __init__(self, url, key):
             self.url = url
             self.key = key
-        def table(self, name):
-            return sb._OfflineQuery()
 
     monkeypatch.setattr(sb, "SupabaseClient", FailingClient)
-    client = sb.get_client()
-    assert isinstance(client, sb._OfflineClient)
+    with pytest.raises(ConnectionError, match="Supabase indisponível"):
+        sb.get_client()
+    assert sb._client is None
 
-    # Subsequent calls before 60s should not retry
-    last_attempt = sb._last_attempt
-    client2 = sb.get_client()
-    assert isinstance(client2, sb._OfflineClient)
-    assert sb._last_attempt == last_attempt
-
-    # After 60 seconds, should try to reconnect again
-    monkeypatch.setattr(sb, "_last_attempt", last_attempt - 61)
     monkeypatch.setattr(sb, "SupabaseClient", SuccessfulClient)
-    client3 = sb.get_client()
-    assert isinstance(client3, SuccessfulClient)
-    assert sb._offline is False
+    client = sb.get_client()
+    assert isinstance(client, SuccessfulClient)
+    assert client.url == "https://example.supabase.co"
+    assert client.key == "example-service-key"
 
 
 def test_get_client_returns_cached_connection_when_online(monkeypatch):
     monkeypatch.setattr(sb, "_URL", "https://example.supabase.co")
     monkeypatch.setattr(sb, "_KEY", "example-key")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "example-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "example-service-key")
     monkeypatch.setattr(sb, "_client", None)
-    monkeypatch.setattr(sb, "_offline", False)
-    monkeypatch.setattr(sb, "_last_attempt", 0)
 
     class SuccessfulClient:
         def __init__(self, url, key):
             self.url = url
             self.key = key
-        def table(self, name):
-            return sb._OfflineQuery()
 
     monkeypatch.setattr(sb, "SupabaseClient", SuccessfulClient)
     client = sb.get_client()

@@ -213,6 +213,53 @@ def test_self_service_allows_only_own_history_and_logout(monkeypatch):
     assert logout.status_code == 200
 
 
+def test_self_service_can_login_decode_qr_and_load_runtime_config(monkeypatch):
+    import api.controle as controle_module
+
+    settings = {
+        **controle_module.DEFAULT_SETTINGS,
+        "enabled": True,
+        "allow_return": True,
+    }
+    client = FakeClient({
+        "livros": [],
+        "alunos": [{"id": "student-1", "nome": "Ana", "carteirinha": "CARD-1"}],
+        "usuarios": [],
+    })
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setattr(utils, "get_client", lambda: client)
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: settings)
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-1"})
+        headers = {"Authorization": f"Bearer {login.get_json()['token']}"}
+        staff_login = test_client.post(
+            "/api/auth/login",
+            json={"login": "unknown-user", "password": "invalid"},
+            headers=headers,
+        )
+        qr_decode = test_client.post(
+            "/api/qr/decode", json={"image": "invalid-image-data"}, headers=headers,
+        )
+        settings_response = test_client.get("/api/controle/autoatendimento", headers=headers)
+        config_responses = [
+            test_client.get(path, headers=headers)
+            for path in (
+                "/api/auth/config/supabase",
+                "/api/config/supabase",
+                "/api/auth/supabase-config",
+                "/api/supabase-config",
+            )
+        ]
+
+    assert login.status_code == 200
+    assert staff_login.status_code == 401
+    assert qr_decode.status_code == 400
+    assert settings_response.status_code == 200
+    assert [response.status_code for response in config_responses] == [200, 200, 200, 200]
+
+
 def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
     import api.loans as loans_module
 

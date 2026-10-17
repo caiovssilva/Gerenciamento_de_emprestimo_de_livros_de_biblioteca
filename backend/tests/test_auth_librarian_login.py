@@ -1,13 +1,14 @@
-import crypt as unix_crypt
 import os
 import sys
 
+import bcrypt
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app import app
 import api.auth as auth_module
+import utils
 
 
 @pytest.fixture()
@@ -22,6 +23,7 @@ def _make_fake_client(users_by_login):
         def __init__(self, rows):
             self._rows = rows
             self._filters = {}
+            self._updated = False
 
         def select(self, *args, **kwargs):
             return self
@@ -30,16 +32,40 @@ def _make_fake_client(users_by_login):
             self._filters[field] = value
             return self
 
+        def in_(self, field, values):
+            self._filters[field] = values
+            return self
+
+        def limit(self, _count):
+            return self
+
+        def update(self, _values):
+            self._updated = True
+            return self
+
         def execute(self):
-            login = self._filters.get("login")
-            return self._rows.get(login, [])
+            if self._updated:
+                return []
+            rows = [row for users in self._rows.values() for row in users]
+            return [
+                row for row in rows
+                if all(
+                    row.get(field) in value if isinstance(value, (list, tuple, set)) else row.get(field) == value
+                    for field, value in self._filters.items()
+                )
+            ]
 
     class FakeClient:
         def table(self, name):
-            assert name == "usuarios"
-            return FakeQuery(users_by_login)
+            return FakeQuery(users_by_login if name == "usuarios" else {})
 
     return FakeClient()
+
+
+def _patch_client(monkeypatch, users):
+    fake_client = _make_fake_client(users)
+    monkeypatch.setattr(auth_module, "get_client", lambda: fake_client)
+    monkeypatch.setattr(utils, "get_client", lambda: fake_client)
 
 
 def _user_row(login, nome, senha):
@@ -48,9 +74,9 @@ def _user_row(login, nome, senha):
 
 def test_login_as_admin_returns_admin_access(client, monkeypatch):
     users = {
-        "admin": [_user_row("admin", "Administrador", unix_crypt.crypt("narceu2026", unix_crypt.mksalt()))],
+        "admin": [_user_row("admin", "Administrador", bcrypt.hashpw(b"narceu2026", bcrypt.gensalt()).decode())],
     }
-    monkeypatch.setattr(auth_module, "get_client", lambda: _make_fake_client(users))
+    _patch_client(monkeypatch, users)
 
     response = client.post(
         "/api/auth/login",
@@ -67,7 +93,7 @@ def test_login_as_biblioteca_alias_returns_librarian_access(client, monkeypatch)
     users = {
         "biblioteca": [_user_row("biblioteca", "Bibliotecária", "narceu2026")],
     }
-    monkeypatch.setattr(auth_module, "get_client", lambda: _make_fake_client(users))
+    _patch_client(monkeypatch, users)
 
     response = client.post(
         "/api/auth/login",
@@ -84,7 +110,7 @@ def test_login_with_plain_text_password(client, monkeypatch):
     users = {
         "admin": [_user_row("admin", "Administrador", "narceu2026")],
     }
-    monkeypatch.setattr(auth_module, "get_client", lambda: _make_fake_client(users))
+    _patch_client(monkeypatch, users)
 
     response = client.post(
         "/api/auth/login",
@@ -97,19 +123,16 @@ def test_login_with_plain_text_password(client, monkeypatch):
     assert payload["login"] == "admin"
 
 
-def test_login_uses_default_local_fallback_when_supabase_is_offline(client, monkeypatch):
-    class OfflineClient:
-        def table(self, _name):
-            raise Exception("could not find the table — offline mode")
+def test_login_returns_database_unavailable_when_supabase_is_offline(client, monkeypatch):
+    def unavailable_client():
+        raise ConnectionError("Supabase indisponível")
 
-    monkeypatch.setattr(auth_module, "get_client", lambda: OfflineClient())
+    monkeypatch.setattr(utils, "get_client", unavailable_client)
 
     response = client.post(
         "/api/auth/login",
         json={"login": "admin", "password": "narceu2026"},
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["access"] == "admin"
-    assert payload["login"] == "admin"
+    assert response.status_code == 503
+    assert response.get_json()["code"] == "DATABASE_UNAVAILABLE"

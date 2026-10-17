@@ -111,3 +111,62 @@ def test_get_student_resolves_dotted_card_number_without_uuid_lookup(monkeypatch
 
     assert response.status_code == 200
     assert response.get_json()["id"] == "student-uuid"
+
+
+def test_self_service_qr_decode_exposes_only_registered_exemplar_data(client, monkeypatch):
+    import api.controle as controle_module
+    import scanner.routes as scanner_module
+    import utils
+
+    class Query:
+        def select(self, *_columns):
+            return self
+
+        def limit(self, _count):
+            return self
+
+        def execute(self):
+            return []
+
+    class DatabaseClient:
+        def table(self, _name):
+            return Query()
+
+    settings = {
+        **controle_module.DEFAULT_SETTINGS,
+        "enabled": True,
+        "allow_return": True,
+    }
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: settings)
+    monkeypatch.setattr(utils, "get_client", lambda: DatabaseClient())
+    monkeypatch.setattr(scanner_module, "_resolve_qr", lambda code: {
+        "type": "student" if code == "CARD-SECRET" else "book",
+        "data": {
+            "id": "student-secret" if code == "CARD-SECRET" else "book-1",
+            "nome": "Dados privados",
+            "titulo": "Livro cadastrado",
+            "exemplar_code": None if code == "CARD-SECRET" else "004",
+            "exemplar_id": None if code == "CARD-SECRET" else "copy-secret",
+        },
+    })
+
+    with client.session_transaction() as flask_session:
+        flask_session["access_scope"] = "self_service"
+
+    student_response = client.post(
+        "/api/qr/decode", json={"image": _make_qr_image("CARD-SECRET")},
+    )
+    exemplar_response = client.post(
+        "/api/qr/decode", json={"image": _make_qr_image("EXEMPLAR-book-1-EX-004-copy-secret")},
+    )
+
+    assert student_response.status_code == 200
+    assert student_response.get_json()["type"] == "unknown"
+    assert student_response.get_json()["data"] is None
+    assert exemplar_response.status_code == 200
+    assert exemplar_response.get_json()["type"] == "book"
+    assert exemplar_response.get_json()["data"] == {
+        "id": "book-1",
+        "exemplar_code": "004",
+        "exemplar_id": "copy-secret",
+    }

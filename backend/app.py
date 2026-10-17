@@ -109,9 +109,19 @@ def restrict_self_service_api():
 
     if scope != "self_service":
         return None
+    if request.path == "/api/auth/login" and request.method == "POST":
+        return None
     if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
     if request.path == "/api/health" and request.method == "GET":
+        return None
+    if request.method == "GET" and request.path in {
+        "/api/controle/autoatendimento",
+        "/api/auth/config/supabase",
+        "/api/config/supabase",
+        "/api/auth/supabase-config",
+        "/api/supabase-config",
+    }:
         return None
     from api.controle import self_service_operation_allowed
     if not self_service_operation_allowed():
@@ -126,6 +136,10 @@ def restrict_self_service_api():
         if not self_service_operation_allowed("allow_borrow"):
             return jsonify({"error": "Empréstimos pelo Autoatendimento estão desativados pelo administrador."}), 403
         return None
+    if request.path == "/api/qr/decode" and request.method == "POST":
+        if any(self_service_operation_allowed(setting) for setting in ("allow_borrow", "allow_return", "allow_renew")):
+            return None
+        return jsonify({"error": "Leitura de QR Code desativada pelo administrador."}), 403
     if request.path.startswith("/api/auth/self-service/loans/") and request.method == "POST":
         return None
     return jsonify({"error": "A sessão de autoatendimento permite apenas operar os empréstimos da carteirinha lida."}), 403

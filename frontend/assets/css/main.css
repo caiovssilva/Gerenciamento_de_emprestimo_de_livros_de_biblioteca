@@ -410,12 +410,22 @@ body.theme-dark #login-screen {
 .self-service-history-page { width: min(100%, 1080px); margin: 0 auto; padding: 1.5rem clamp(1rem, 3vw, 2.25rem); }
 .self-service-history-heading {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  padding: .25rem 0 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem;
+  padding: .35rem 0 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem;
 }
 .self-service-eyebrow { color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .self-service-history-heading h1 { margin: .35rem 0 .4rem; font-size: 25px; line-height: 1.2; }
-.self-service-history-heading p { margin-top: .2rem; color: var(--muted); font-size: 13px; }
-.self-service-logout { display: inline-flex; align-items: center; gap: .4rem; }
+.self-service-student-identity { min-width: 0; }
+.self-service-student-meta { display: flex; flex-wrap: wrap; gap: .4rem .9rem; }
+.self-service-history-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+.self-service-history-heading p:not(:empty)::before { content: "•"; margin-right: .45rem; color: var(--green); }
+.self-service-session-close {
+  display: inline-grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center;
+  border: 1px solid var(--border); border-radius: 50%; color: var(--muted); background: var(--surface);
+  cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.self-service-session-close:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); transform: rotate(90deg); }
+.self-service-session-close:focus-visible { outline: 3px solid rgba(22, 163, 74, .28); outline-offset: 3px; }
+.self-service-session-close i { font-size: 21px; }
 .self-service-borrow-section {
   display: flex; min-height: 88px; align-items: center; justify-content: space-between; gap: 1.25rem;
   margin: 1.25rem 0 .5rem; padding: 1rem 1.1rem;
@@ -440,6 +450,8 @@ body.theme-dark #login-screen {
 #self-service-history-status { padding: .75rem 0; color: var(--muted); }
 .self-service-history-table-wrap { overflow-x: auto; }
 .self-service-history-table { min-width: 600px; }
+.self-service-history-table tbody tr { transition: background .15s ease; }
+.self-service-history-table tbody tr:hover { background: var(--bg); }
 .self-service-history-table td:first-child strong,
 .self-service-history-table td:first-child small { display: block; }
 .self-service-history-table td:first-child small { margin-top: .25rem; color: var(--muted); }
@@ -454,7 +466,7 @@ body.theme-dark #login-screen {
   .self-service-history-page { padding: 1rem; }
   .self-service-history-heading { align-items: flex-start; }
   .self-service-history-heading h1 { font-size: 21px; }
-  .self-service-logout { flex-shrink: 0; }
+  .self-service-session-close { width: 40px; height: 40px; }
   .self-service-borrow-section { align-items: stretch; flex-direction: column; gap: .8rem; padding: .9rem; }
   .self-service-borrow-scan { width: 100%; }
 }

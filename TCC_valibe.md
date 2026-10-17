@@ -3,7 +3,7 @@
 **Arquivo:** `TCC_valibe.md`  
 **Data da análise inicial:** 02/10/2026
 
-**Última atualização verificada:** terça-feira, 06/10/2026
+**Última atualização verificada:** sábado, 17/10/2026
 **Natureza do documento:** documentação técnica, guia de estudo e preparação para relatório escolar.
 
 > Apesar do nome do arquivo, este documento não afirma que o projeto é um TCC. O repositório apresenta um projeto escolar de gerenciamento de empréstimos de uma biblioteca. Quando uma informação não pôde ser comprovada, este documento usa a frase: **"Não foi possível confirmar esta informação no estado atual do projeto."**
@@ -24,6 +24,19 @@ A análise seguiu esta ordem de confiança:
 
 Quando uma documentação antiga divergia do código, o código atual foi considerado a referência principal. Números, estatísticas, credenciais, tokens e chaves não foram incluídos.
 
+## Atualização verificada em 17/10/2026
+
+Esta atualização substitui os resultados de testes anteriores quando houver divergência. O branch atual é `fix/login-error-message`, revisão `e888258`. A verificação foi feita com o ambiente `.venv312` do projeto, sem alterar banco, Secrets ou arquivos de dados.
+
+- A suíte backend completa passou: `68 passed, 3 warnings` em `12,62 s`.
+- Os cinco testes frontend disponíveis passaram: ISBN, modais, navegação, scanner QR e relatórios/CSV.
+- O Python padrão do ambiente é 3.14 e não possui as dependências do projeto; nele a coleta falhou por módulos ausentes. O resultado funcional acima foi obtido no Python 3.12 do `.venv312`.
+- O autoatendimento agora autentica o aluno, mostra histórico e permite iniciar empréstimo lendo o QR individual do exemplar. O backend ignora `aluno_id` enviado pelo cliente e usa o aluno da sessão; QR genérico de livro ou QR de outro aluno é recusado.
+- O autoatendimento deixou de depender da listagem de catálogo para iniciar empréstimos. A leitura precisa resolver um exemplar cadastrado e disponível.
+- Foram adicionados/ajustados diálogos de confirmação, exportação CSV e remoção de duplicidades nos relatórios.
+- O commit atual contém testes para autenticação do bibliotecário, autenticação do autoatendimento, resolução de QR, reconexão, navegação e modal. Isso explica a diferença para o snapshot de 04/10, que tinha seis falhas.
+- Os três avisos atuais são depreciações de `crypt`/Passlib e dos parâmetros `timeout` e `verify` usados pelo cliente Supabase. Não houve falha de teste.
+
 ## Atualização verificada em 06/10/2026
 
 Esta atualização registra a exigência de QR do exemplar no processo de devolução e os testes focados executados nessa data.
@@ -34,7 +47,7 @@ Esta atualização registra a exigência de QR do exemplar no processo de devolu
 - O aumento da quantidade no cadastro de livro cria metadados, ID e QR para cada nova cópia. Os exemplares existentes mantêm seus códigos; a redução pelo campo de quantidade é recusada para evitar renumeração, devendo ser feita pela exclusão individual no modal.
 - As rotas `/api/genres/` e `/api/rooms/` deixaram de consultar livros/alunos separadamente para cada gênero/sala. Agora consultam os identificadores relacionados uma vez e agregam as contagens em memória.
 - Medições HTTP locais após a alteração: gêneros passou de aproximadamente `3,13 s` para `1,73 s`; salas, de `2,16 s` para `1,25 s`. Ambas responderam HTTP 200. As medições são do ambiente local conectado ao Supabase, não um benchmark de produção.
-- Na regressão mais recente, os testes backend focados de catálogo, exemplares, devolução, QR e cartões passaram: `15 passed`; os quatro testes frontend também passaram. A suíte backend completa não foi executada nesta atualização; o último resultado completo registrado continua sendo o de 04/10 (`32 passed, 6 failed, 3 warnings`).
+- Na regressão focada de 06/10, os testes backend de catálogo, exemplares, devolução, QR e cartões passaram: `15 passed`; os quatro testes frontend também passaram. Esse é um snapshot histórico; a regressão completa de 17/10 está registrada acima.
 
 ## Atualização verificada em 04/10/2026
 
@@ -109,16 +122,16 @@ O backend calcula papéis no login, mas não há middleware que obrigue as chama
 
 - A aplicação Flask inicia e serve o frontend.
 - O endpoint `/api/health` respondeu com banco `conectado` durante a análise.
-- Os testes específicos de ISBN/Vision passaram na análise inicial: `24 passed`; na atualização de 04/10 foram `25 passed`.
+- Os testes específicos de ISBN/Vision passaram na análise inicial: `24 passed`; na atualização de 04/10 foram `25 passed`; na suíte atual estão incluídos no resultado de `68 passed`.
 - Os dois testes JavaScript executados passaram:
   - `books ISBN form test passed`;
   - `qr-scanner callback test passed`.
-- A suíte completa Python em 04/10 terminou com `32 passed, 6 failed, 3 warnings`; ver a seção 25.2 atualizada.
+- A suíte completa Python em 17/10 terminou com `68 passed, 3 warnings`; o resultado anterior de 04/10 (`32 passed, 6 failed, 3 warnings`) permanece apenas como histórico.
 - Uma chamada isolada real ao Vision reconheceu o ISBN de um frame sintético. A leitura por câmera física continua não confirmada.
 
 ## 2.5 Limitações principais
 
-- A suíte completa ainda possui sete falhas de testes antigos ou dependentes do ambiente.
+- A suíte completa reproduzida no ambiente `.venv312` não possui falhas; a execução fora dele continua bloqueada por dependências ausentes.
 - A câmera física não foi validada neste ambiente.
 - A leitura real de um ISBN por câmera não foi comprovada com uma imagem física de código de barras.
 - O fallback backend de barcode depende da biblioteca nativa `zbar`, que não estava instalada no ambiente do agente.
@@ -1409,7 +1422,7 @@ Documentos antigos citam Render e workflows, mas não há esses arquivos na árv
 | Fallback de livros | `test_books_fallback.py` | Listagem quando Supabase falha | Executado na suíte geral; resultado individual não foi isolado nesta etapa |
 | Performance de cartão | `test_card_generation_performance.py` | 20 cartões em menos de 1,5 s | Executado na suíte geral; dependente de qrcode/Pillow |
 | Ambiente | `test_env_loading.py` | Prioridade das variáveis do ambiente e fallback `.env` | Passou com valores fictícios e arquivo temporário |
-| ISBN | `test_isbn_lookup.py` | validação, cache, fontes, prioridade, Vision e endpoint | `25 passed` em 04/10/2026 |
+| ISBN | `test_isbn_lookup.py` | validação, cache, fontes, prioridade, Vision e endpoint | incluído em `68 passed` em 17/10/2026 |
 | QR/ID | `test_qr_id_resolution.py` | CRUD e resolução QR | Executado na suíte geral; depende de qrcode/OpenCV/PyZbar |
 | Relatório | `test_reports_student_status.py` | CSV de situação dos alunos | Executado na suíte geral |
 | Reconexão | `test_supabase_reconnect.py` | estado offline/reconexão esperado pelo teste | Falha porque `_offline` não existe no cliente atual |
@@ -1417,18 +1430,16 @@ Documentos antigos citam Render e workflows, mas não há esses arquivos na árv
 | Formulário ISBN | `frontend/tests/books-isbn.test.js` | preenchimento de título, autor, gênero e área | Passou |
 | Scanner JS | `frontend/tests/qr-scanner.test.js` | callback e foco da câmera | Passou |
 
-## 25.2 Resultado reproduzido em 04/10/2026
+## 25.2 Resultado reproduzido em 17/10/2026
 
 Com `.venv312`:
 
 ```text
-Backend completo: 32 passed, 6 failed, 3 warnings
-ISBN/Vision isolado: 25 passed, 1 warning
-Frontend books ISBN: passed
-Frontend qr scanner: passed
+Backend completo: 68 passed, 3 warnings
+Frontend: 5 testes passaram (ISBN, modais, navegação, scanner QR e relatórios/CSV)
 ```
 
-As seis falhas na execução completa foram quatro testes de login e dois testes de reconexão do Supabase. O teste que antes exigia um `backend/.env` foi atualizado para representar Secrets do Codespace e passou. O teste real de Vision usou frame sintético, não a câmera física.
+O resultado anterior de 04/10 teve quatro falhas de login e duas de reconexão do Supabase; após os ajustes de autenticação, autoatendimento e mocks, a regressão de 17/10 não apresentou falhas. Os três avisos atuais são depreciações de `crypt`/Passlib e do cliente Supabase. O teste de Vision usa frame sintético, não a câmera física.
 
 Os testes não comprovam câmera física, deploy, carga real ou segurança completa.
 
@@ -1776,7 +1787,7 @@ Use a tabela da seção 8 e diferencie tecnologia encontrada no código de tecno
 
 Resposta equilibrada:
 
-O núcleo do MVP funciona em partes verificáveis: o servidor inicia, o banco respondeu conectado, o frontend foi servido, os fluxos de ISBN passaram nos testes, o formulário de ISBN passou e o callback do scanner passou. Entretanto, não é possível afirmar que todo o MVP está pronto sem ressalvas, porque a suíte completa possui sete falhas, a câmera física não foi testada, o deploy não foi confirmado e a autorização server-side não está implementada de forma completa.
+O núcleo do MVP funciona em partes verificáveis: o servidor inicia, o frontend é servido, os fluxos de ISBN, QR, autenticação, autoatendimento e relatórios passam nos testes disponíveis e o banco respondeu conectado em verificação anterior. Ainda não é possível afirmar que todo o sistema está pronto sem ressalvas: a câmera física, o deploy e a autorização server-side completa não foram comprovados.
 
 Classificação recomendada: **funcionamento parcial comprovado, com núcleo operacional e limitações pendentes.**
 
@@ -1825,7 +1836,7 @@ Use a seção 32, separando claramente evoluções futuras do que já existe.
 | Backend inicia | CONCLUÍDO | `app.py` executado |
 | Supabase acessível no ambiente | CONCLUÍDO nesta execução | `/api/health` retornou conectado |
 | Cadastro de livros | PARCIAL | Código e rotas existem; E2E remoto não foi completo |
-| Busca manual ISBN | CONCLUÍDO e testado | `25 passed` em 04/10; teste frontend passou |
+| Busca manual ISBN | CONCLUÍDO e testado | incluído em `68 passed` em 17/10; teste frontend passou |
 | Scanner QR/barcode | PARCIAL | código e callback testados; câmera física não confirmada |
 | Groq Vision | PARCIAL | chamada isolada reconheceu ISBN em frame sintético; webcam física não confirmada |
 | Empréstimos | PARCIAL | código e rotas existem; suíte não é E2E completa |
@@ -1838,7 +1849,7 @@ Use a seção 32, separando claramente evoluções futuras do que já existe.
 | Login | PARCIAL | backend verifica credencial; autorização posterior incompleta |
 | Supabase | CONCLUÍDO nesta execução | health conectado |
 | Deploy | NÃO FOI POSSÍVEL CONFIRMAR | sem configuração operacional |
-| Suite completa | PARCIAL | 30 passaram e 7 falharam |
+| Suite completa | CONCLUÍDO no ambiente do projeto | `68 passed, 3 warnings` em 17/10; Python padrão sem dependências não coleta |
 
 ---
 
@@ -2551,8 +2562,8 @@ blueprint
 | Supabase | ✅ confirmado no ambiente | health retornou conectado em 02/10/2026 |
 | QR Code | ⚠️ parcial | geração/resolução implementadas; dependências/câmera variam |
 | Relatórios | ⚠️ parcial | JSON, gráficos, mensal e CSV implementados |
-| Testes específicos | ✅ confirmado | ISBN/Vision 25 passed; frontend 2 passed |
-| Testes completos | ⚠️ parcial | 32 passed, 6 failed, 3 warnings em 04/10/2026 |
+| Testes específicos | ✅ confirmado | incluídos na suíte backend de 68 passed; frontend 5 passed em 17/10 |
+| Testes completos | ✅ no ambiente do projeto | 68 passed, 3 warnings em 17/10/2026 |
 | Deploy | ❓ não confirmado | sem configuração operacional encontrada |
 | Fallback JSON | ⚠️ parcial | existe em módulos, mas pode ser bloqueado pelo guard do app |
 | Autorização server-side | ❌ não implementada no código observado | UI esconde menus, APIs não impõem papel |
@@ -2585,7 +2596,7 @@ As partes que ainda exigem atenção são:
 - modelo e precisão do Groq Vision;
 - deploy.
 
-A conclusão correta não é que tudo está pronto nem que tudo está quebrado. O código demonstra um sistema funcional em desenvolvimento, com módulos importantes implementados, testes específicos positivos e limitações técnicas e de segurança que precisam ser consideradas.
+A conclusão correta não é que tudo está pronto nem que tudo está quebrado. O código demonstra um sistema funcional em desenvolvimento, com módulos importantes implementados e a suíte disponível passando no ambiente do projeto. Ainda existem limitações técnicas e de segurança que precisam ser consideradas, principalmente autorização server-side completa, deploy e validação da câmera física.
 
 ---
 

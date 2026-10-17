@@ -8,6 +8,9 @@ assert.match(loginMarkup, /id="self-service-student-card"/);
 assert.doesNotMatch(loginMarkup, /self-service-books-search|self-service-books-list|self-service-catalog/);
 assert.match(loginMarkup, /id="self-service-borrow-scan-btn"/);
 assert.match(loginMarkup, /id="self-service-history-rows"/);
+assert.match(loginMarkup, /class="self-service-session-close"/);
+assert.match(loginMarkup, /aria-label="Sair do histórico e voltar ao início"/);
+assert.match(loginMarkup, /onclick="leaveSelfServiceStudentSession\(\)"/);
 assert.doesNotMatch(loginMarkup, /data-self-service-tab|self-service-panel-/);
 assert.match(loginMarkup, /id="self-service-kiosk-status"/);
 assert.match(loginMarkup, /id="self-service-scan-btn"/);
@@ -18,6 +21,8 @@ const configPageMarkup = loginMarkup.split('id="page-config"')[1].split('<!--')[
 assert.doesNotMatch(configPageMarkup, /self-service-setting-enabled/);
 const appSource = fs.readFileSync(path.join(__dirname, '../assets/js/app.js'), 'utf8');
 assert.match(appSource, /onError:\s*\(error\)\s*=>/);
+assert.match(appSource, /function leaveSelfServiceStudentSession\(\)/);
+assert.match(appSource, /self-service-login-screen.*style\.display = "flex"/s);
 assert.doesNotMatch(appSource, /onStop:\s*returnFromSelfServiceLoginScreen/);
 
 function classList() {

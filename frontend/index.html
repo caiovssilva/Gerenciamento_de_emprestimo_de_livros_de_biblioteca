@@ -139,13 +139,17 @@
 
         <section class="page self-service-history-page" id="page-auto-historico" aria-label="Meu histórico">
           <div class="self-service-history-heading">
-            <div>
+            <div class="self-service-student-identity">
               <span class="self-service-eyebrow">AUTOATENDIMENTO</span>
               <h1 id="self-service-student-name">Meu histórico</h1>
-              <p id="self-service-student-class"></p>
-              <p id="self-service-student-card"></p>
+              <div class="self-service-student-meta">
+                <p id="self-service-student-class"></p>
+                <p id="self-service-student-card"></p>
+              </div>
             </div>
-            <button class="btn self-service-logout" type="button" onclick="doLogout()"><i class="ti ti-logout" aria-hidden="true"></i>Sair</button>
+            <button class="self-service-session-close" type="button" onclick="leaveSelfServiceStudentSession()" aria-label="Sair do histórico e voltar ao início" title="Voltar à tela inicial do autoatendimento">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           </div>
           <section class="self-service-borrow-section" aria-label="Novo empréstimo">
             <div class="self-service-borrow-copy">

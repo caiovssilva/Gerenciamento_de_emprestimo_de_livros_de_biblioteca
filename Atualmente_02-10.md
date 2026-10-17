@@ -1,4 +1,16 @@
-# Relatorio atual do projeto - atualizado em 06/10/2026
+# Relatorio atual do projeto - atualizado em 17/10/2026
+
+## Registro de atualizacao em 17/10/2026
+
+- Branch e revisao verificados: `fix/login-error-message` / `e888258`.
+- A suite backend completa passou no `.venv312`: `68 passed, 3 warnings` em `12,62 s`.
+- Os cinco testes frontend disponiveis passaram: ISBN, modais, navegacao, scanner QR e relatorios/CSV.
+- O Python 3.14 padrao do ambiente nao tem as dependencias do projeto e falha na coleta; isso nao substitui o resultado obtido no Python 3.12 do `.venv312`.
+- O autoatendimento agora exige login do aluno e leitura do QR individual do exemplar para criar emprestimo. O aluno usado no registro vem da sessao, e nao do `aluno_id` enviado pelo navegador.
+- QR generico de livro, QR de outro aluno ou exemplar nao cadastrado nao inicia emprestimo. A resolucao devolve somente os dados minimos do exemplar autorizado nesse fluxo.
+- O fluxo inclui historico do aluno, logout e navegacao dedicada; a listagem de catalogo foi retirada do autoatendimento para que o emprestimo comece pela leitura do exemplar.
+- Os relatorios receberam remocao de duplicidades e exportacao CSV; os dialogos de confirmacao foram ampliados em varias telas.
+- Os tres avisos sao deprecacoes de `crypt`/Passlib e dos parametros `timeout` e `verify` do cliente Supabase. Nao houve falhas na execucao atual.
 
 ## Registro de atualizacao em 06/10/2026
 
@@ -6,22 +18,22 @@
 - O endpoint `POST /api/loans/<loan_id>/return` exige `exemplar_qr` e valida tambem o identificador da copia. Sem QR, responde HTTP 400; com QR de outro exemplar, responde HTTP 403.
 - Cartoes de livros antigos sem metadados de exemplares agora sao gerados com um QR por copia. Cartoes fisicos antigos com QR generico precisam ser reimpressos.
 - Validacao inicial da devolucao QR: resolucao de QR e geracao de cartoes `7 passed`; testes frontend `4 passed`. A regressao mais recente aparece abaixo.
-- A suite backend completa nao foi reexecutada em 06/10. O resultado anterior, de 04/10, permanece como referencia historica: `32 passed, 6 failed, 3 warnings`, com falhas de login e reconexao Supabase.
+- No snapshot de 06/10, a suite backend completa nao havia sido reexecutada. O resultado de 04/10 (`32 passed, 6 failed, 3 warnings`) e historico e foi superado pela regressao de 17/10.
 - Ao aumentar exemplares pela edicao do livro, o backend cria metadados, IDs e QRs para as novas copias, sem renumerar as existentes. Para reduzir a quantidade, deve-se remover cada exemplar individualmente.
 - As listagens de generos e salas foram otimizadas: as contagens deixaram de executar uma consulta por genero/sala e passaram a usar uma consulta de IDs relacionada, com agregacao em memoria.
 - Medicoes HTTP locais: `/api/genres/` caiu de aproximadamente `3,13 s` para `1,73 s`; `/api/rooms/`, de `2,16 s` para `1,25 s`. Ambas responderam HTTP 200.
-- Regressao mais recente: testes backend focados de catalogo, exemplares, devolucao, QR e cartoes `15 passed`; testes frontend `4 passed`. A suite backend completa nao foi reexecutada nesta medicao.
+- No snapshot de 06/10, a regressao focada registrou testes backend `15 passed` e frontend `4 passed`; esses numeros nao representam a suite atual.
 
 ## Registro de atualizacao
 
 **Data e hora:** domingo, 04/10/2026, 20:59:52 UTC.
 
-**Branch/revisao:** `fix/login-error-message` / `71eab32`.
+**Branch/revisao do snapshot:** `fix/login-error-message` / `71eab32`.
 
 Este registro atualiza fatos verificados nesta data. As secoes seguintes preservam o snapshot de 02/10/2026 e nao foram todas retestadas em 04/10. Quando houver divergencia, este registro e as secoes de testes e Vision abaixo prevalecem. Nenhuma chave ou valor de Secret foi registrado.
 
 - `backend/.env` nao e necessario no Codespace: `load_environment()` usa `override=False`, preserva variaveis injetadas pelo ambiente e aceita `.env` como fallback. O teste correspondente passou com arquivo temporario e valores ficticios.
-- Testes atuais: backend ISBN/Vision `25 passed`; frontend `books ISBN form test passed` e `qr-scanner callback test passed`; backend completo `32 passed, 6 failed, 3 warnings`.
+- Testes daquele snapshot: backend ISBN/Vision `25 passed`; frontend `books ISBN form test passed` e `qr-scanner callback test passed`; backend completo `32 passed, 6 failed, 3 warnings`.
 - As seis falhas do backend completo estao em quatro testes de login e dois de reconexao do Supabase. O teste antigo que exigia `backend/.env` foi adaptado e passou.
 - Uma chamada real isolada ao Groq Vision em 04/10 reconheceu `9788532511010` em um frame sintetico criado em memoria. Isso nao comprova leitura pela camera fisica.
 - O navegador reportou limite de chamadas do Groq; uma chamada Vision isolada posterior funcionou. O scanner agora consulta a cada 5 segundos e aplica espera crescente apos erros. A leitura local continua disponivel.
@@ -30,14 +42,14 @@ Este registro atualiza fatos verificados nesta data. As secoes seguintes preserv
 
 ## 1. Resumo executivo
 
-Em 06/10/2026, a devolucao passou a exigir a leitura do QR individual do exemplar, e a edicao de quantidade passou a criar QRs para novas copias sem alterar os existentes. As contagens de generos e salas tambem foram otimizadas para evitar consultas repetidas. Os endpoints medidos ficaram cerca de 42% a 45% mais rapidos no ambiente local. Na regressao focada mais recente, 15 testes backend e 4 frontend passaram. A suite backend completa nao foi reexecutada; em 04/10, ela teve 32 aprovados, 6 falhas e 3 avisos, com falhas em testes de login e reconexao do Supabase.
+Em 17/10/2026, a suite backend completa passou com 68 testes e 3 avisos no ambiente `.venv312`, e os cinco testes frontend disponiveis tambem passaram. Desde o registro de 06/10, o projeto ganhou autoatendimento com login de aluno, historico, logout e emprestimo iniciado pela leitura do QR individual do exemplar. A devolucao continua exigindo QR do exemplar, a edicao de quantidade preserva os codigos existentes e as contagens de generos/salas continuam agregadas em memoria. Os resultados de 04/10 (`32 passed, 6 failed`) sao historicos e foram superados pela regressao atual.
 
 O navegador havia reportado excesso de chamadas ao Groq. O scanner foi ajustado para aguardar 5 segundos entre requisicoes Vision e usar espera crescente apos falhas. O estado da camera fisica e da URL publica do Codespace permanece nao confirmado.
 
 ## 2. Estado atual do ambiente
 
 - Branch: `fix/login-error-message`
-- Revisao de referencia desta atualizacao: `71eab32`.
+- Revisao de referencia desta atualizacao: `e888258`.
 - O Flask foi iniciado na porta 5000 durante a verificacao; os endpoints locais foram testados depois da inicializacao.
 - O valor do Secret nao foi lido nem incluido neste relatorio. Uma chamada real ao endpoint de chat do Groq respondeu HTTP 200 em verificacao registrada em 02/10; isso confirma a chamada textual naquele momento, nao todas as capacidades da conta.
 - `GROQ_VISION_MODEL`: `qwen/qwen3.8-27b` por padrao.
@@ -228,7 +240,7 @@ O SQL enviado pelo usuario define credenciais diferentes das encontradas no banc
 ### Testes especificos de ISBN e Vision
 
 ```text
-25 passed (04/10/2026)
+68 passed (17/10/2026, incluindo os testes de ISBN/Vision)
 ```
 
 Cobertura inclui:
@@ -258,10 +270,10 @@ qr-scanner callback test passed
 Resultado no `.venv312`:
 
 ```text
-32 passed, 6 failed, 3 warnings (04/10/2026)
+68 passed, 3 warnings (17/10/2026)
 ```
 
-As 6 falhas da execucao de 04/10 sao:
+As 6 falhas da execucao de 04/10 sao historicas e foram eliminadas na execucao atual. Elas eram:
 
 1. quatro testes de autenticacao falham com os clientes simulados usados por esses testes;
 2. dois testes de reconexao esperam atributos offline que nao existem no cliente Supabase atual.
@@ -294,4 +306,4 @@ As demais telas e funcionalidades nao foram alteradas intencionalmente.
 
 ## Conclusao
 
-Em 04/10, os testes focados de ISBN/Vision e os dois testes frontend passaram; a suite backend completa ainda teve seis falhas descritas acima. Uma chamada isolada real ao Groq Vision reconheceu ISBN em frame sintetico, mas a camera fisica nao foi testada. O fallback backend de barcode depende da biblioteca nativa `zbar`. A origem dos `404` vistos na URL publica permanece nao confirmada: o codigo local tem as rotas, e o Flask iniciado respondeu `400` aos payloads de teste invalidos.
+Em 17/10, os cinco testes frontend e os 68 testes backend passaram no `.venv312`, com tres avisos de deprecacao. Uma chamada isolada real ao Groq Vision reconheceu ISBN em frame sintetico, mas a camera fisica continua nao testada. O fallback backend de barcode depende da biblioteca nativa `zbar`. A origem dos `404` vistos na URL publica permanece nao confirmada: o codigo local tem as rotas, e o Flask iniciado respondeu `400` aos payloads de teste invalidos.

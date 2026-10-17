@@ -256,6 +256,21 @@ function returnFromSelfServiceLoginScreen() {
   Utils.el("login-screen").style.display = "flex";
 }
 
+function leaveSelfServiceStudentSession() {
+  if (currentUser?.role !== "self_service") return;
+  API.auth.selfServiceLogout().catch(() => {});
+  currentUser = null;
+  selfServiceHistory = [];
+  clearSessionCookie();
+  clearTimeout(window.__session_timeout_handle);
+  Charts.destroy();
+  Utils.el("app").style.display = "none";
+  Utils.el("login-screen").style.display = "none";
+  Utils.el("self-service-login-screen").style.display = "flex";
+  Utils.el("self-service-kiosk-status").textContent = "Pronto para ler a carteirinha do próximo aluno.";
+  document.body.classList.remove("role-self-service");
+}
+
 async function startSelfServiceLogin() {
   const statusEl = Utils.el("self-service-kiosk-status");
   statusEl.textContent = "Aponte a câmera para o QR Code da carteirinha.";

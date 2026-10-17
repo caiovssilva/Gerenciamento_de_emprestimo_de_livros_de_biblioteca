@@ -78,9 +78,12 @@ def test_self_service_history_is_bound_to_authenticated_student(monkeypatch):
             "/api/auth/self-service/history?student_id=student-2",
             headers={"Authorization": f"Bearer {token}"},
         )
+        health = test_client.get("/api/health")
         forbidden = test_client.get("/api/reports/data")
 
     assert history.status_code == 200
+    assert health.status_code == 200
+    assert health.get_json()["database"] == "conectado"
     payload = history.get_json()
     assert payload["student"]["name"] == "Ana"
     assert payload["student"]["card"] == "CARD-1"

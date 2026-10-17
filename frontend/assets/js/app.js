@@ -618,7 +618,10 @@ function navigateTo(page) {
   if (page==="emprestimo") { renderLoans(); resetLoanForm(); renderLoanScanPanel(); }
   if (page==="relatorios") { Charts.init(); Reports.init(); }
   if (page==="controle") loadSelfServiceSettings();
-  if (page==="auto-historico") showSelfServiceTab("history");
+  if (page==="auto-historico") {
+    loadSelfServiceHistory();
+    loadSelfServiceBooks();
+  }
   if (page==="config" && isLibrarian()) {
     Utils.el("topbar-actions").innerHTML = "";
   }
@@ -628,24 +631,6 @@ function escapeSelfServiceHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[character]);
-}
-
-function showSelfServiceTab(tab = "history") {
-  if (currentUser?.role !== "self_service") return;
-  const selected = ["history", "books"].includes(tab) ? tab : "history";
-  Utils.qsa("[data-self-service-tab]").forEach((button) => {
-    const active = button.dataset.selfServiceTab === selected;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-  });
-  Utils.qsa(".self-service-panel").forEach((panel) => {
-    const active = panel.id === `self-service-panel-${selected}`;
-    panel.classList.toggle("active", active);
-    panel.hidden = !active;
-  });
-
-  if (selected === "history") loadSelfServiceHistory();
-  if (selected === "books") loadSelfServiceBooks();
 }
 
 async function loadSelfServiceHistory() {
@@ -664,6 +649,7 @@ async function loadSelfServiceHistory() {
     status.textContent = "";
     if (!selfServiceHistory.length) {
       status.textContent = "Nenhuma movimentação encontrada.";
+      _renderSelfServiceStudentHistory(student);
       return;
     }
     rows.innerHTML = selfServiceHistory.map((loan) => {
@@ -692,9 +678,24 @@ async function loadSelfServiceHistory() {
         button.dataset.selfServiceAction,
       ));
     });
+    _renderSelfServiceStudentHistory(student);
   } catch (error) {
     status.textContent = error.message || "Não foi possível carregar seu histórico.";
   }
+}
+
+function _renderSelfServiceStudentHistory(student = {}) {
+  const name = student.name || currentUser?.name || "Aluno";
+  const active = selfServiceHistory.filter(loan => !loan.returned_at);
+  const overdue = active.filter(loan => loan.due_date && Utils.daysLeft(loan.due_date) < 0);
+  Utils.el("self-service-student-name").textContent = name;
+  Utils.el("self-service-student-class").textContent = student.class ? `Turma ${student.class}` : "";
+  Utils.el("self-service-student-card").textContent = student.card
+    ? `Carteirinha ${student.card}`
+    : "Carteirinha não informada";
+  Utils.el("self-service-history-status").textContent = selfServiceHistory.length
+    ? `${selfServiceHistory.length} movimentação(ões) · ${active.length} empréstimo(s) ativo(s)${overdue.length ? ` · ${overdue.length} atrasado(s)` : ""}`
+    : "Nenhuma movimentação encontrada.";
 }
 
 async function operateSelfServiceLoan(loanId, action) {
@@ -1607,9 +1608,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   Utils.el("self-service-scan-btn")?.addEventListener("click", startSelfServiceLogin);
   Utils.el("self-service-exit-btn")?.addEventListener("click", returnFromSelfServiceLoginScreen);
   Utils.el("self-service-settings-save")?.addEventListener("click", saveSelfServiceSettings);
-  Utils.qsa("[data-self-service-tab]").forEach(button => {
-    button.addEventListener("click", () => showSelfServiceTab(button.dataset.selfServiceTab));
-  });
   Utils.el("self-service-books-search")?.addEventListener("input", filterSelfServiceBooks);
 
   // Ações principais sem depender de onclick inline (compatível com CSP mais restritiva)

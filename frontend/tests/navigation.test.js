@@ -7,8 +7,9 @@ const loginMarkup = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8
 assert.match(loginMarkup, /id="self-service-student-card"/);
 assert.match(loginMarkup, /id="self-service-books-search"/);
 assert.match(loginMarkup, /id="self-service-books-list"/);
-assert.match(loginMarkup, /data-self-service-tab="history">Histórico/);
-assert.match(loginMarkup, /data-self-service-tab="books">Acervo/);
+assert.match(loginMarkup, /id="self-service-history-rows"/);
+assert.match(loginMarkup, /id="self-service-books-list"/);
+assert.doesNotMatch(loginMarkup, /data-self-service-tab|self-service-panel-/);
 assert.match(loginMarkup, /id="self-service-kiosk-status"/);
 assert.match(loginMarkup, /id="self-service-scan-btn"/);
 assert.match(loginMarkup, /id="self-service-exit-btn"/);
@@ -41,16 +42,6 @@ const navButtons = ['dashboard', 'emprestimo', 'livros', 'salas', 'generos', 'co
   dataset: { page: name },
   classList: classList(),
 }));
-const selfServiceTabs = ['history', 'books'].map((tab) => ({
-  dataset: { selfServiceTab: tab },
-  classList: classList(),
-  setAttribute: () => {},
-}));
-const selfServicePanels = ['history', 'books'].map((tab) => ({
-  id: `self-service-panel-${tab}`,
-  hidden: tab !== 'history',
-  classList: classList(),
-}));
 const elements = new Map();
 const getElement = (id) => {
   const page = pages.find((item) => item.id === id);
@@ -77,9 +68,7 @@ const context = {
   Utils: {
     el: getElement,
     qsa: (selector) => selector === '.page' ? pages
-      : selector === '.nav-btn[data-page]' ? navButtons
-        : selector === '[data-self-service-tab]' ? selfServiceTabs
-          : selector === '.self-service-panel' ? selfServicePanels : [],
+      : selector === '.nav-btn[data-page]' ? navButtons : [],
     qs: (selector) => {
       if (selector === '.page.active') return pages.find((page) => page.classList.contains('active'));
       const match = selector.match(/^\.nav-btn\[data-page="([^"]+)"\]$/);
@@ -116,24 +105,18 @@ vm.runInContext(
     'a conclusão da sincronização não deve substituir a página escolhida',
   );
   vm.runInContext("currentUser = { role: 'self_service' }", context);
+  let historyLoads = 0;
+  let bookLoads = 0;
+  context.loadSelfServiceHistory = () => { historyLoads += 1; };
+  context.loadSelfServiceBooks = () => { bookLoads += 1; };
   context.navigateTo('relatorios');
   assert.strictEqual(
     pages.find((page) => page.classList.contains('active')).id,
     'page-auto-historico',
     'autoatendimento não deve navegar para páginas administrativas',
   );
-  let historyLoads = 0;
-  let bookLoads = 0;
-  context.loadSelfServiceHistory = () => { historyLoads += 1; };
-  context.loadSelfServiceBooks = () => { bookLoads += 1; };
-  context.showSelfServiceTab('books');
-  assert.strictEqual(selfServiceTabs[1].classList.contains('active'), true);
-  assert.strictEqual(selfServicePanels[1].hidden, false);
-  assert.strictEqual(bookLoads, 1);
-  context.showSelfServiceTab('history');
-  assert.strictEqual(selfServiceTabs[0].classList.contains('active'), true);
-  assert.strictEqual(selfServicePanels[0].hidden, false);
-  assert.strictEqual(historyLoads, 1);
+  assert.strictEqual(historyLoads, 1, 'a única tela carrega o histórico do aluno');
+  assert.strictEqual(bookLoads, 1, 'a única tela carrega o acervo para novos empréstimos');
 
   const qrLogins = [];
   let qrCallback;

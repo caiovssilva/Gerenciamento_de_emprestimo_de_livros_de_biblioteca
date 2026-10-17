@@ -111,6 +111,8 @@ def restrict_self_service_api():
         return None
     if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
+    if request.path == "/api/health" and request.method == "GET":
+        return None
     from api.controle import self_service_operation_allowed
     if not self_service_operation_allowed():
         return jsonify({"error": "O Autoatendimento está desativado pelo administrador."}), 403

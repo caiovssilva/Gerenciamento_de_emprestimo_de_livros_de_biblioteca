@@ -416,15 +416,7 @@ body.theme-dark #login-screen {
 .self-service-history-heading h1 { margin-top: .35rem; font-size: 24px; }
 .self-service-history-heading p { margin-top: .25rem; color: var(--muted); }
 .self-service-logout { display: inline-flex; align-items: center; gap: .4rem; }
-.self-service-tabs { display: flex; gap: 1.25rem; border-bottom: 1px solid var(--border); }
-.self-service-tab {
-  min-height: 44px; padding: 0 .15rem; border: 0; border-bottom: 2px solid transparent;
-  color: var(--muted); background: transparent; font-weight: 600; cursor: pointer;
-}
-.self-service-tab.active { color: var(--brand); border-bottom-color: var(--brand); }
-.self-service-panel { display: none; padding-top: 1rem; }
-.self-service-panel.active { display: block; }
-.self-service-panel[hidden] { display: none !important; }
+.self-service-history-section { padding-top: 1rem; }
 .self-service-section-title { margin: 0 0 .75rem; font-size: 18px; }
 #self-service-history-status { padding: .75rem 0; color: var(--muted); }
 .self-service-history-table-wrap { overflow-x: auto; }

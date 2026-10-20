@@ -182,6 +182,10 @@ async function doLogin() {
       const error = await response.json().catch(() => null);
       if (response.status === 401) {
         errEl.textContent = error?.error || "Usuário ou senha incorretos.";
+      } else if (response.status === 503) {
+        errEl.textContent = error?.error || "Banco indisponível. Verifique a conexão do servidor.";
+      } else if (response.status >= 500) {
+        errEl.textContent = error?.error || "Erro interno no servidor. Consulte os logs do backend.";
       } else {
         errEl.textContent = error?.error || "Erro ao fazer login.";
       }

@@ -94,13 +94,15 @@ def _get_user_by_login(login_str: str):
     # Try exact match first (fast). If no result, fallback to reading
     # all users and matching case-insensitively to tolerate different
     # capitalization in the stored `login` values.
+    lookup_error = None
     try:
         rows = sb_exec(
             sb.table("usuarios")
             .select("id,nome,login,senha")
             .in_("login", login_candidates)
         )
-    except Exception:
+    except Exception as error:
+        lookup_error = error
         rows = []
 
     if rows:
@@ -113,8 +115,12 @@ def _get_user_by_login(login_str: str):
             for r in all_rows:
                 if (r.get("login") or "").strip().lower() in login_candidates:
                     return r
-    except Exception:
-        pass
+    except Exception as error:
+        if lookup_error is not None:
+            raise ConnectionError("Não foi possível consultar a tabela de usuários") from error
+
+    if lookup_error is not None:
+        raise ConnectionError("Não foi possível consultar a tabela de usuários") from lookup_error
 
     return None
 
@@ -267,6 +273,13 @@ def login():
             "name": user.get("nome") or user.get("name")
         }), 200
     
+    except ConnectionError as e:
+        current_app.logger.error(f"Banco indisponível durante login: {e}")
+        return jsonify({
+            "error": "Banco de dados indisponível. Verifique a configuração do Supabase.",
+            "code": "DATABASE_UNAVAILABLE",
+            "retry_after": 3,
+        }), 503
     except Exception as e:
         current_app.logger.error(f"Erro ao fazer login: {e}")
         return jsonify({"error": "Erro ao processar login"}), 500

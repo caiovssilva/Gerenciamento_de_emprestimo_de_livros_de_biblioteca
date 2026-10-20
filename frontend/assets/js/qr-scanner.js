@@ -31,6 +31,7 @@ const QRScanner = (() => {
   let _frameRequestActive = false;
   let _frameIntervalMs = 1000;
   let _nextFrameAt = 0;
+  let _stopping = false;
 
   function _getBarcodeDetector() {
     if (_barcodeDetector !== null) return _barcodeDetector;
@@ -85,6 +86,9 @@ const QRScanner = (() => {
     _statusEl = root.querySelector(".cam-status");
     _cancelBtnEl = root.querySelector(".cam-cancel-btn");
 
+    root.addEventListener("modal:closed", () => {
+      if (_container === root) stop();
+    });
     _cancelBtnEl?.addEventListener("click", stop);
     _refreshBtnEl?.addEventListener("click", () => refreshCameras());
     _selectEl?.addEventListener("change", async (event) => {
@@ -167,7 +171,13 @@ const QRScanner = (() => {
   }
 
   async function _startStream(constraints) {
-    _stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const container = _container;
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (!container || _container !== container) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    _stream = stream;
     if (_videoEl) {
       _videoEl.style.transform = "none";
       _videoEl.style.webkitTransform = "none";
@@ -180,6 +190,7 @@ const QRScanner = (() => {
   }
 
   async function _startWithPreferredCamera() {
+    const container = _container;
     const candidates = [];
 
     if (_preferredCameraId) {
@@ -200,6 +211,7 @@ const QRScanner = (() => {
         return;
       } catch (error) {
         lastError = error;
+        if (_container !== container) return;
       }
     }
 
@@ -209,6 +221,7 @@ const QRScanner = (() => {
   async function switchCamera(deviceId) {
     if (_switching) return;
     _switching = true;
+    const container = _container;
     try {
       _preferredCameraId = deviceId;
       clearInterval(_timer);
@@ -219,7 +232,9 @@ const QRScanner = (() => {
       }
       if (_statusEl) _statusEl.textContent = "Trocando câmera...";
       await _startWithPreferredCamera();
+      if (_container !== container) return;
       await refreshCameras();
+      if (_container !== container) return;
       if (_statusEl) _statusEl.textContent = "Procurando código...";
       _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
     } catch (error) {
@@ -353,42 +368,55 @@ const QRScanner = (() => {
   }
 
   function stop() {
-    if (typeof _onStop === "function") _onStop();
-    clearInterval(_timer);
-    _timer = null;
+    if (_stopping) return;
+    _stopping = true;
+    const onStop = _onStop;
 
-    if (_stream) {
-      _stream.getTracks().forEach((track) => track.stop());
-      _stream = null;
-    }
+    try {
+      clearInterval(_timer);
+      _timer = null;
 
-    if (_container) {
-      if (_container.classList.contains("open")) Utils.closeModal(_container.id);
-      _container.remove();
+      if (_stream) {
+        _stream.getTracks().forEach((track) => track.stop());
+        _stream = null;
+      }
+
+      if (_videoEl) {
+        _videoEl.pause?.();
+        _videoEl.srcObject = null;
+      }
+
+      if (_container) {
+        if (_container.classList.contains("open")) Utils.closeModal(_container.id);
+        _container.remove();
+      }
+      _container = null;
+      _callback = null;
+      _inputId = null;
+      _preferredCameraId = null;
+      _availableCameras = [];
+      _switching = false;
+      _decoding = false;
+      _retryAt = 0;
+      _lastDecodedValue = "";
+      _lastReadAt = 0;
+      _frameHandler = null;
+      _onStop = null;
+      _frameRequestActive = false;
+      _frameIntervalMs = 1000;
+      _nextFrameAt = 0;
+      _barcodeDetector = null;
+      _videoEl = null;
+      _canvasEl = null;
+      _statusEl = null;
+      _selectEl = null;
+      _cancelBtnEl = null;
+      _refreshBtnEl = null;
+      _onError = null;
+    } finally {
+      _stopping = false;
+      if (typeof onStop === "function") onStop();
     }
-    _container = null;
-    _callback = null;
-    _inputId = null;
-    _preferredCameraId = null;
-    _availableCameras = [];
-    _switching = false;
-    _decoding = false;
-    _retryAt = 0;
-    _lastDecodedValue = "";
-    _lastReadAt = 0;
-    _frameHandler = null;
-    _onStop = null;
-    _frameRequestActive = false;
-    _frameIntervalMs = 1000;
-    _nextFrameAt = 0;
-    _barcodeDetector = null;
-    _videoEl = null;
-    _canvasEl = null;
-    _statusEl = null;
-    _selectEl = null;
-    _cancelBtnEl = null;
-    _refreshBtnEl = null;
-    _onError = null;
   }
 
   return {
@@ -402,15 +430,19 @@ const QRScanner = (() => {
       _frameIntervalMs = Math.max(500, Number(options.frameIntervalMs) || 1000);
       _nextFrameAt = 0;
       _buildUI();
+      const container = _container;
 
       try {
         if (_statusEl) _statusEl.textContent = "Solicitando permissão da câmera...";
         await _startWithPreferredCamera();
+        if (_container !== container) return;
         await refreshCameras();
+        if (_container !== container) return;
         if (_statusEl) _statusEl.textContent = "Procurando código...";
         clearInterval(_timer);
         _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
       } catch (error) {
+        if (_container !== container) return;
         if (_statusEl) _statusEl.textContent = "Câmera indisponível.";
         if (_onError) _onError(error);
         Utils.toast("Câmera indisponível: " + error.message, "error");

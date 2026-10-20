@@ -99,7 +99,7 @@ cp backend/.env.example backend/.env
 
 ### Consulta de ISBN e leitura visual
 
-O cadastro de livros usa o Groq para obter uma sugestão inicial de metadados e consulta Google Books, ISBNsearch e Open Library em paralelo para confirmar ou complementar o resultado. O sistema preserva os dados do Groq quando as fontes externas não retornam dados.
+O cadastro de livros usa o Groq para obter uma sugestão inicial de metadados e consulta Google Books, ISBNsearch e Open Library em paralelo para confirmar ou complementar o resultado. Se não houver título e autor completos, tenta também a busca da Open Library; o ISBNdb pode ser habilitado com `ISBNDB_API_KEY` nas variáveis de ambiente do backend. Para ativá-lo no Render, adicione essa variável em **Environment** com uma chave obtida no ISBNdb. O sistema preserva os dados do Groq quando as fontes externas não retornam dados.
 
 Na câmera do cadastro de livros, escolha `Groq Vision` ou `OpenAI Vision`; a opção fica salva neste navegador. A leitura local de códigos de barras continua disponível via `pyzbar` no backend e `BarcodeDetector` no navegador, sem depender do provedor de visão.
 

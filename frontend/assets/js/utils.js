@@ -59,12 +59,14 @@ const Utils = {
   closeModal(id, { restoreFocus = true } = {}) {
     const el = document.getElementById(id);
     if (!el) return;
+    const wasOpen = el.classList.contains("open");
     el.classList.remove("open");
     el.style.zIndex = "";
     _syncModalInteraction();
     const previousFocus = _modalFocus.get(el);
     _modalFocus.delete(el);
     if (restoreFocus && previousFocus?.isConnected && !previousFocus.inert) previousFocus.focus();
+    if (wasOpen) el.dispatchEvent(new Event("modal:closed"));
   },
 
   confirmDialog(message, {

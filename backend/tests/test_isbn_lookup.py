@@ -1,4 +1,6 @@
 import base64
+import io
+import json
 import sys
 from pathlib import Path
 
@@ -8,11 +10,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import api.books as books
 
+openlibrary_search_lookup = books._openlibrary_search_lookup
+isbndb_lookup = books._isbndb_lookup
+
+
+def _isbn13_for_sequence(sequence):
+    body = f"978{sequence:09d}"
+    weighted_sum = sum(int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(body))
+    return body + str((10 - weighted_sum % 10) % 10)
+
 
 @pytest.fixture(autouse=True)
-def clear_isbn_cache():
+def clear_isbn_cache(monkeypatch):
     books._ISBN_CACHE.clear()
     books._ISBN_CACHE_TIMESTAMPS.clear()
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_openlibrary_search_lookup", not_found)
+    monkeypatch.setattr(books, "_isbndb_lookup", not_found)
+    monkeypatch.delenv("ISBNDB_API_KEY", raising=False)
     yield
     books._ISBN_CACHE.clear()
     books._ISBN_CACHE_TIMESTAMPS.clear()
@@ -28,6 +43,28 @@ def test_validate_isbn10_and_isbn13_with_formatting():
 def test_invalid_checksum_is_rejected_before_lookup(isbn):
     with pytest.raises(ValueError):
         books._lookup_isbn(isbn)
+
+
+@pytest.mark.parametrize("sequence", range(100))
+def test_lookup_pipeline_handles_100_varied_valid_isbns(monkeypatch, sequence):
+    isbn = _isbn13_for_sequence(sequence)
+    normalized = books._normalize_isbn(isbn)
+    result = {
+        "isbn": normalized,
+        "titulo": f"Livro de teste {sequence}",
+        "autor": f"Autor {sequence}",
+        "categorias": ["Testes"],
+    }
+    for provider in ("_google_books_lookup", "_isbnsearch_lookup", "_openlibrary_lookup"):
+        monkeypatch.setattr(books, provider, lambda _isbn, value=result: value)
+    monkeypatch.setattr(books, "_match_genre", lambda _categories: ("", ""))
+
+    formatted_isbn = f"{isbn[:3]}-{isbn[3:6]}-{isbn[6:10]}-{isbn[10:]}"
+    lookup = books._lookup_isbn(formatted_isbn)
+
+    assert lookup["isbn"] == normalized
+    assert lookup["titulo"] == f"Livro de teste {sequence}"
+    assert lookup["autor"] == f"Autor {sequence}"
 
 
 def test_fallback_complements_partial_data_and_caches_only_complete_result(monkeypatch):
@@ -435,6 +472,86 @@ def test_all_not_found_providers_return_lookup_error(monkeypatch):
 
     with pytest.raises(LookupError):
         books._lookup_isbn("9788576831303")
+
+
+def test_openlibrary_search_is_used_when_primary_sources_find_nothing(monkeypatch):
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", not_found)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_search_lookup", lambda _isbn: {
+        "isbn": "9788576831303", "titulo": "Diário de um banana", "autor": "Jeff Kinney", "categorias": ["Fiction"]
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788576831303")
+
+    assert result["titulo"] == "Diário de um banana"
+    assert result["autor"] == "Jeff Kinney"
+
+
+def test_openlibrary_search_requires_exact_isbn_match(monkeypatch):
+    response = io.BytesIO(json.dumps({"docs": [{
+        "isbn": ["9780000000002"], "title": "Outro livro", "author_name": ["Outro autor"]
+    }]}).encode())
+    monkeypatch.setattr(books, "_open_provider", lambda _request, _source: response)
+
+    with pytest.raises(LookupError):
+        openlibrary_search_lookup("9788576831303")
+
+
+def test_openlibrary_search_maps_metadata_for_exact_isbn(monkeypatch):
+    response = io.BytesIO(json.dumps({"docs": [{
+        "isbn": ["978-85-7683-130-3"], "title": "Diário de um banana",
+        "author_name": ["Jeff Kinney"], "subject": ["Fiction"]
+    }]}).encode())
+    monkeypatch.setattr(books, "_open_provider", lambda _request, _source: response)
+
+    result = openlibrary_search_lookup("9788576831303")
+
+    assert result == {
+        "isbn": "9788576831303", "titulo": "Diário de um banana",
+        "autor": "Jeff Kinney", "categorias": ["Fiction"]
+    }
+
+
+def test_isbndb_is_used_as_fallback_when_configured(monkeypatch):
+    monkeypatch.setenv("ISBNDB_API_KEY", "test-key")
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", not_found)
+    monkeypatch.setattr(books, "_isbnsearch_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_search_lookup", not_found)
+    monkeypatch.setattr(books, "_isbndb_lookup", lambda _isbn: {
+        "isbn": "9788576831303", "titulo": "Diário de um banana", "autor": "Jeff Kinney", "categorias": []
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda categories: ("", ""))
+
+    result = books._lookup_isbn("9788576831303")
+
+    assert result["titulo"] == "Diário de um banana"
+    assert result["autor"] == "Jeff Kinney"
+
+
+def test_isbndb_lookup_uses_optional_api_key(monkeypatch):
+    monkeypatch.setenv("ISBNDB_API_KEY", "test-key")
+    response = io.BytesIO(json.dumps({"book": {
+        "title": "Diário de um banana", "authors": ["Jeff Kinney"], "subjects": ["Fiction"]
+    }}).encode())
+    requests = []
+
+    def open_provider(request, source):
+        requests.append((request, source))
+        return response
+
+    monkeypatch.setattr(books, "_open_provider", open_provider)
+
+    result = isbndb_lookup("9788576831303")
+
+    assert result["titulo"] == "Diário de um banana"
+    assert result["autor"] == "Jeff Kinney"
+    assert requests[0][0].get_header("Authorization") == "test-key"
+    assert requests[0][1] == "ISBNdb"
 
 
 def test_route_distinguishes_invalid_and_not_found(monkeypatch):

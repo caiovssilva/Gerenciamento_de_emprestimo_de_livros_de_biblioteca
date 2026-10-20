@@ -20,6 +20,7 @@ class FakeElement {
       remove: (value) => this._classes.delete(value),
       contains: (value) => this._classes.has(value),
     };
+    this.pause = () => { this.paused = true; };
     this.dataset = {};
     this._lookup = {};
     this.readyState = 2;
@@ -87,26 +88,31 @@ const utilsStub = {
   },
   closeModal(id) {
     modalEvents.push(`close:${id}`);
-    documentStub.body.children.find((child) => child.id === id)?.classList.remove('open');
+    const overlay = [...documentStub.body.children].reverse().find((child) => child.id === id && !child.removed);
+    overlay?.classList.remove('open');
+    overlay?.dispatchEvent({ type: 'modal:closed' });
   },
 };
 
+let qrValue = 'ABC123';
 const windowStub = {
-  jsQR: () => ({ data: 'ABC123' }),
+  jsQR: () => qrValue ? ({ data: qrValue }) : null,
 };
 
 const focusApplications = [];
+let trackStopCount = 0;
+let nextMediaRequest = null;
 const videoTrack = {
   getCapabilities: () => ({ focusMode: ['continuous'] }),
   applyConstraints: async (constraints) => {
     focusApplications.push(constraints);
   },
-  stop: () => {},
+  stop: () => { trackStopCount += 1; },
 };
 
 const navigatorStub = {
   mediaDevices: {
-    getUserMedia: async () => ({
+    getUserMedia: async () => nextMediaRequest || ({
       getTracks: () => [videoTrack],
       getVideoTracks: () => [videoTrack],
     }),
@@ -153,6 +159,34 @@ vm.runInContext(source, context);
     'continuous',
     'O scanner deveria aplicar foco contínuo quando a câmera o anuncia',
   );
+
+  const firstOverlay = documentStub.body.children.find((child) => child.id === 'cam-overlay');
+  const firstVideo = firstOverlay.querySelector('#cam-video');
+  assert.strictEqual(trackStopCount, 1, 'A câmera deveria desligar após ler um código');
+  assert.strictEqual(firstVideo.srcObject, null, 'O vídeo deveria soltar a stream após a leitura');
+
+  qrValue = null;
+  await context.window.QRScanner.start(null, () => {});
+  const activeOverlay = [...documentStub.body.children].reverse().find((child) => child.id === 'cam-overlay' && !child.removed);
+  const activeVideo = activeOverlay.querySelector('#cam-video');
+  assert.ok(activeVideo.srcObject, 'A câmera deveria estar ligada antes de fechar o modal');
+  utilsStub.closeModal('cam-overlay');
+  assert.strictEqual(trackStopCount, 2, 'A câmera deveria desligar ao fechar o modal externamente');
+  assert.strictEqual(activeVideo.srcObject, null, 'O vídeo deveria soltar a stream ao fechar o modal');
+
+  let resolvePendingStream;
+  nextMediaRequest = new Promise((resolve) => { resolvePendingStream = resolve; });
+  const pendingStart = context.window.QRScanner.start(null, () => {});
+  await Promise.resolve();
+  const pendingOverlay = [...documentStub.body.children].reverse().find((child) => child.id === 'cam-overlay' && !child.removed);
+  utilsStub.closeModal('cam-overlay');
+  resolvePendingStream({
+    getTracks: () => [videoTrack],
+    getVideoTracks: () => [videoTrack],
+  });
+  await pendingStart;
+  assert.strictEqual(trackStopCount, 3, 'A stream que chega depois do fechamento deveria ser parada imediatamente');
+  assert.strictEqual(pendingOverlay.removed, true, 'A tela fechada não deveria ser reaberta após liberar a câmera');
   console.log('qr-scanner callback test passed');
 })().catch((error) => {
   console.error(error);

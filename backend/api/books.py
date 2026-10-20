@@ -393,6 +393,80 @@ def _openlibrary_lookup(isbn: str) -> dict:
     return {"isbn": normalized, "titulo": title, "autor": author_text, "categorias": categories}
 
 
+def _openlibrary_search_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
+    url = (
+        "https://openlibrary.org/search.json?isbn=" + normalized
+        + "&fields=isbn,title,author_name,subject&limit=5"
+    )
+    request_obj = Request(url, headers={"Accept": "application/json", "User-Agent": "Biblioteca/1.0"})
+    try:
+        with _open_provider(request_obj, "Open Library Search") as response:
+            data = json.load(response)
+    except (ValueError, TypeError) as exc:
+        raise _ProviderError("Open Library Search", "A busca da Open Library retornou uma resposta inválida.") from exc
+
+    for book in data.get("docs") or []:
+        if not isinstance(book, dict):
+            continue
+        identifiers = book.get("isbn") or []
+        if isinstance(identifiers, str):
+            identifiers = [identifiers]
+        if normalized not in {_normalize_isbn(value) for value in identifiers}:
+            continue
+        title = str(book.get("title") or "").strip()
+        authors = book.get("author_name") or []
+        categories = book.get("subject") or []
+        if isinstance(authors, str):
+            authors = [authors]
+        if isinstance(categories, str):
+            categories = [categories]
+        if title or authors or categories:
+            return {
+                "isbn": normalized,
+                "titulo": title,
+                "autor": ", ".join(str(author).strip() for author in authors if str(author).strip()),
+                "categorias": [str(category).strip() for category in categories if str(category).strip()],
+            }
+    raise LookupError("Livro não encontrado para este ISBN.")
+
+
+def _isbndb_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
+    api_key = os.getenv("ISBNDB_API_KEY", "").strip()
+    if not api_key:
+        raise LookupError("ISBNdb não configurado.")
+
+    request_obj = Request(
+        "https://api2.isbndb.com/book/" + normalized,
+        headers={"Accept": "application/json", "Authorization": api_key},
+    )
+    try:
+        with _open_provider(request_obj, "ISBNdb") as response:
+            data = json.load(response)
+    except (ValueError, TypeError) as exc:
+        raise _ProviderError("ISBNdb", "O ISBNdb retornou uma resposta inválida.") from exc
+
+    book = data.get("book") or {}
+    authors = book.get("authors") or []
+    categories = book.get("subjects") or []
+    if isinstance(authors, str):
+        authors = [authors]
+    if isinstance(categories, str):
+        categories = [categories]
+    result = {
+        "isbn": normalized,
+        "titulo": str(book.get("title") or "").strip(),
+        "autor": ", ".join(str(author).strip() for author in authors if str(author).strip()),
+        "categorias": [str(category).strip() for category in categories if str(category).strip()],
+    }
+    if not any((result["titulo"], result["autor"], result["categorias"])):
+        raise LookupError("Livro não encontrado para este ISBN.")
+    return result
+
+
 def _match_genre(categories: list[str]) -> tuple[str, str]:
     """Relaciona categorias externas a um gênero cadastrado no sistema."""
     def normalize(value):
@@ -519,6 +593,25 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
         except (AttributeError, TypeError) as exc:
             errors.append(_ProviderError(provider_name, "A fonte retornou dados inválidos."))
             logger.warning("Consulta de ISBN falhou no provedor %s: %s", provider_name, exc)
+
+    has_complete_metadata = any(
+        result.get("titulo") and result.get("autor") for _, result in bibliographic_results
+    )
+    if not has_complete_metadata:
+        fallback_providers = [("Open Library Search", _openlibrary_search_lookup)]
+        if os.getenv("ISBNDB_API_KEY", "").strip():
+            fallback_providers.append(("ISBNdb", _isbndb_lookup))
+        with ThreadPoolExecutor(max_workers=len(fallback_providers)) as executor:
+            fallback_responses = list(executor.map(call_provider, fallback_providers))
+        for provider_name, found, error in fallback_responses:
+            if error:
+                errors.append(error)
+                if isinstance(error, _ProviderError):
+                    unavailable_provider = True
+                    logger.warning("Consulta de ISBN falhou no provedor %s: %s", error.source, error)
+                continue
+            if isinstance(found, dict):
+                bibliographic_results.append((provider_name, found))
 
     result = None
     if bibliographic_results or groq_result is not None:

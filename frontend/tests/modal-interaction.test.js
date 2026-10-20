@@ -52,6 +52,10 @@ function makeElement(id, options = {}) {
     dispatch: (name, event = {}) => {
       (eventHandlers.get(name) || []).forEach((handler) => handler({ target: element, ...event }));
     },
+    dispatchEvent: (event) => {
+      element.dispatch(event.type, event);
+      return true;
+    },
     remove: () => {
       element.isConnected = false;
       if (element.parentOverlay) {
@@ -150,6 +154,9 @@ document.activeElement = trigger;
 
 const context = {
   document,
+  Event: class Event {
+    constructor(type) { this.type = type; }
+  },
   getComputedStyle: (element) => ({ zIndex: element.style.zIndex || element.cssZIndex }),
 };
 vm.createContext(context);

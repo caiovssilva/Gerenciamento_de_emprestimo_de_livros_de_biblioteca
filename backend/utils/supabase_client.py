@@ -47,6 +47,7 @@ class SupabaseTable:
     def order(self, f, desc=False):   self.q = self.q.order(f, desc=desc);            return self
     def limit(self, n):               self.q = self.q.limit(n);                       return self
     def eq(self, f, v):               self.q = self.q.eq(f, v);                       return self
+    def in_(self, f, values):         self.q = self.q.in_(f, values);                 return self
     def is_(self, f, v):              self.q = self.q.is_(f, None if v=="null" else v); return self
     def insert(self, p):              self.q = self.q.insert(p);                      return self
     def update(self, p):              self.q = self.q.update(p);                      return self

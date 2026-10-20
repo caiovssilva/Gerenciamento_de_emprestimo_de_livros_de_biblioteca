@@ -87,10 +87,12 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 def _get_user_by_login(login_str: str):
     sb = get_client()
     requested_login = (login_str or "").strip().lower()
-    canonical_login = LOGIN_ALIASES.get(requested_login, requested_login)
-    login_candidates = [canonical_login]
-    if requested_login not in login_candidates:
-        login_candidates.append(requested_login)
+    login_candidates = [requested_login]
+    for alias, canonical in LOGIN_ALIASES.items():
+        if requested_login in (alias, canonical):
+            for candidate in (alias, canonical):
+                if candidate not in login_candidates:
+                    login_candidates.append(candidate)
     # Try exact match first (fast). If no result, fallback to reading
     # all users and matching case-insensitively to tolerate different
     # capitalization in the stored `login` values.

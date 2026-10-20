@@ -354,6 +354,8 @@ def _isbnsearch_lookup(isbn: str) -> dict:
 
     title = re.sub(r"^ISBN\s+\S+\s*-\s*", "", parser.title, flags=re.IGNORECASE).strip()
     authors = re.sub(r"\s*[-|].*$", "", parser.authors).strip()
+    if re.search(r"checking your browser|just a moment|enable javascript|cloudflare", title, re.IGNORECASE):
+        raise _ProviderError("ISBNsearch", "ISBNsearch retornou uma página de bloqueio.")
     if not title or title.upper().startswith("ISBN "):
         raise LookupError("Livro não encontrado para este ISBN.")
 

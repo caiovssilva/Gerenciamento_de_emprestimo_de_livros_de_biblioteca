@@ -12,6 +12,7 @@ import api.books as books
 
 openlibrary_search_lookup = books._openlibrary_search_lookup
 isbndb_lookup = books._isbndb_lookup
+google_books_page_lookup = books._google_books_page_lookup
 
 
 def _isbn13_for_sequence(sequence):
@@ -25,6 +26,7 @@ def clear_isbn_cache(monkeypatch):
     books._ISBN_CACHE.clear()
     books._ISBN_CACHE_TIMESTAMPS.clear()
     not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_page_lookup", not_found)
     monkeypatch.setattr(books, "_openlibrary_search_lookup", not_found)
     monkeypatch.setattr(books, "_isbndb_lookup", not_found)
     monkeypatch.delenv("ISBNDB_API_KEY", raising=False)
@@ -474,6 +476,51 @@ def test_all_not_found_providers_return_lookup_error(monkeypatch):
         books._lookup_isbn("9788576831303")
 
 
+def test_isbn_lookup_returns_not_found_when_a_provider_responds_and_others_fail(monkeypatch):
+    def unavailable(provider):
+        return lambda _isbn: (_ for _ in ()).throw(books._ProviderError(provider, "temporariamente indisponível"))
+
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", unavailable("Google Books"))
+    monkeypatch.setattr(books, "_isbnsearch_lookup", unavailable("ISBNsearch"))
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+
+    with pytest.raises(LookupError, match="não encontrado"):
+        books._lookup_isbn("9788576831303")
+
+
+def test_isbn_lookup_route_returns_not_found_for_partial_provider_outage(monkeypatch):
+    def unavailable(provider):
+        return lambda _isbn: (_ for _ in ()).throw(books._ProviderError(provider, "temporariamente indisponível"))
+
+    not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("Livro não encontrado"))
+    monkeypatch.setattr(books, "_google_books_lookup", unavailable("Google Books"))
+    monkeypatch.setattr(books, "_isbnsearch_lookup", unavailable("ISBNsearch"))
+    monkeypatch.setattr(books, "_openlibrary_lookup", not_found)
+    monkeypatch.setattr(books, "_openlibrary_search_lookup", not_found)
+    from app import app
+
+    with app.test_client() as client:
+        response = client.get("/api/books/isbn-lookup?isbn=9788576831303&source=manual")
+
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Livro não encontrado para este ISBN."
+
+
+def test_isbn_lookup_reports_unavailable_when_no_provider_responds(monkeypatch):
+    def unavailable(provider):
+        return lambda _isbn: (_ for _ in ()).throw(books._ProviderError(provider, "temporariamente indisponível"))
+
+    monkeypatch.setattr(books, "_google_books_lookup", unavailable("Google Books"))
+    monkeypatch.setattr(books, "_isbnsearch_lookup", unavailable("ISBNsearch"))
+    monkeypatch.setattr(books, "_openlibrary_lookup", unavailable("Open Library"))
+    monkeypatch.setattr(books, "_google_books_page_lookup", unavailable("Google Books Page"))
+    monkeypatch.setattr(books, "_openlibrary_search_lookup", unavailable("Open Library Search"))
+
+    with pytest.raises(RuntimeError, match="fontes de ISBN"):
+        books._lookup_isbn("9788576831303")
+
+
 def test_openlibrary_search_is_used_when_primary_sources_find_nothing(monkeypatch):
     not_found = lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado"))
     monkeypatch.setattr(books, "_google_books_lookup", not_found)
@@ -513,6 +560,68 @@ def test_openlibrary_search_maps_metadata_for_exact_isbn(monkeypatch):
         "isbn": "9788576831303", "titulo": "Diário de um banana",
         "autor": "Jeff Kinney", "categorias": ["Fiction"]
     }
+
+
+def test_google_books_page_lookup_extracts_metadata_without_api_key(monkeypatch):
+    response = io.BytesIO(b"""
+        <html>
+          <head>
+            <meta name="title" content="Aprender e Aplicar Matem\xc3\xa1tica - Volume 1">
+          </head>
+          <body>
+            <table>
+              <tr class="metadata_row">
+                <td class="metadata_label">Autor</td>
+                <td class="metadata_value"><a>Antonio Dos Santos Machado</a></td>
+              </tr>
+              <tr class="metadata_row">
+                <td class="metadata_label">ISBN</td>
+                <td class="metadata_value">9788535714432</td>
+              </tr>
+            </table>
+          </body>
+        </html>
+    """)
+    requests = []
+
+    def open_provider(request, source):
+        requests.append((request, source))
+        return response
+
+    monkeypatch.setattr(books, "_open_provider", open_provider)
+    monkeypatch.setattr(books, "_google_books_page_lookup", google_books_page_lookup)
+
+    result = books._google_books_page_lookup("9788535714432")
+
+    assert result == {
+        "isbn": "9788535714432",
+        "titulo": "Aprender e Aplicar Matemática - Volume 1",
+        "autor": "Antonio Dos Santos Machado",
+        "categorias": [],
+    }
+    assert "vid=ISBN9788535714432" in requests[0][0].full_url
+    assert requests[0][1] == "Google Books"
+
+
+def test_google_books_page_is_used_when_api_providers_are_unavailable(monkeypatch):
+    def unavailable(provider):
+        return lambda _isbn: (_ for _ in ()).throw(books._ProviderError(provider, "temporariamente indisponível"))
+
+    monkeypatch.setattr(books, "_google_books_lookup", unavailable("Google Books API"))
+    monkeypatch.setattr(books, "_isbnsearch_lookup", unavailable("ISBNsearch"))
+    monkeypatch.setattr(books, "_openlibrary_lookup", lambda _isbn: (_ for _ in ()).throw(LookupError("não encontrado")))
+    monkeypatch.setattr(books, "_google_books_page_lookup", lambda isbn: {
+        "isbn": isbn,
+        "titulo": "Aprender e Aplicar Matemática - Volume 1",
+        "autor": "Antonio Dos Santos Machado",
+        "categorias": [],
+    })
+    monkeypatch.setattr(books, "_match_genre", lambda _categories: ("", ""))
+
+    result = books._lookup_isbn("9788535714432")
+
+    assert result["titulo"] == "Aprender e Aplicar Matemática - Volume 1"
+    assert result["autor"] == "Antonio Dos Santos Machado"
 
 
 def test_isbndb_is_used_as_fallback_when_configured(monkeypatch):

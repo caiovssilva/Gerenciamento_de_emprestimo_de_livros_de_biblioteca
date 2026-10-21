@@ -5,6 +5,7 @@
 const QRScanner = (() => {
   const CAPTURE_INTERVAL_MS = 700;
   const READ_COOLDOWN_MS = 1800;
+  const SERVER_DECODE_INTERVAL_MS = 1000;
 
   let _stream = null;
   let _timer = null;
@@ -343,6 +344,7 @@ const QRScanner = (() => {
           _onFound(result);
           return;
         }
+        _retryAt = Date.now() + SERVER_DECODE_INTERVAL_MS;
         if (_statusEl) _statusEl.textContent = "Procurando código de barras...";
       } catch {
         _retryAt = Date.now() + 1000;

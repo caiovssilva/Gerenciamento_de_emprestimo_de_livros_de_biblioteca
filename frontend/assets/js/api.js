@@ -10,7 +10,7 @@ const API_BASE = (() => {
   return "http://localhost:5000/api";
 })();
 
-async function apiFetch(path, options = {}) {
+async function apiFetch(path, options = {}, retryGatewayErrors = false) {
   try {
     const res = await fetch(API_BASE + path, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -28,9 +28,17 @@ async function apiFetch(path, options = {}) {
       }
     }
 
-    if (!res.ok) throw new Error(data.error || `Erro HTTP ${res.status}`);
+    if (!res.ok) {
+      const error = new Error(data.error || `Erro HTTP ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
     return data;
   } catch (err) {
+    if (retryGatewayErrors && [502, 503, 504].includes(err.status)) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return apiFetch(path, options);
+    }
     console.error("[API]", path, err.message || err);
     throw err;
   }
@@ -101,7 +109,7 @@ const API = {
     delete: id         => apiFetch(`/genres/${id}`, { method:"DELETE" }),
   },
   qr: {
-    decode:        b64        => apiFetch("/qr/decode",             { method:"POST", body:JSON.stringify({ image:b64 }) }),
+    decode:        b64        => apiFetch("/qr/decode",             { method:"POST", body:JSON.stringify({ image:b64 }) }, true),
     generate:      (data,col) => apiFetch("/qr/generate",           { method:"POST", body:JSON.stringify({ data, color:col }) }),
     cardBook:      id         => apiFetch(`/qr/card/book/${id}`),
     cardStudent:   id         => apiFetch(`/qr/card/student/${id}`),

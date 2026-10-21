@@ -340,6 +340,75 @@ class _IsbnSearchParser(HTMLParser):
             self.authors += text.split(":", 1)[1].strip()
 
 
+class _GoogleBooksPageParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.description = ""
+        self.metadata = {}
+        self._row = None
+        self._capture = None
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "meta":
+            name = (attributes.get("name") or "").lower()
+            if name == "title":
+                self.title = attributes.get("content", "")
+            elif name == "description":
+                self.description = attributes.get("content", "")
+        elif tag == "tr" and "metadata_row" in (attributes.get("class") or "").split():
+            self._row = {"label": "", "value": ""}
+        elif tag == "td" and self._row is not None:
+            classes = (attributes.get("class") or "").split()
+            if "metadata_label" in classes:
+                self._capture = "label"
+            elif "metadata_value" in classes:
+                self._capture = "value"
+
+    def handle_endtag(self, tag):
+        if tag == "td":
+            self._capture = None
+        elif tag == "tr" and self._row is not None:
+            label = self._row["label"].strip().lower()
+            value = self._row["value"].strip()
+            if label and value:
+                self.metadata[label] = value
+            self._row = None
+
+    def handle_data(self, data):
+        if self._row is not None and self._capture:
+            self._row[self._capture] += data
+
+
+def _google_books_page_lookup(isbn: str) -> dict:
+    normalized = _normalize_isbn(isbn)
+    _validate_isbn(normalized)
+    request_obj = Request(
+        f"https://books.google.com/books?vid=ISBN{normalized}&hl=pt-BR",
+        headers={"Accept": "text/html", "User-Agent": "Mozilla/5.0"},
+    )
+    try:
+        with _open_provider(request_obj, "Google Books") as response:
+            parser = _GoogleBooksPageParser()
+            parser.feed(response.read().decode("utf-8", errors="replace"))
+    except (ValueError, TypeError, UnicodeError) as exc:
+        raise _ProviderError("Google Books", "A página do Google Books retornou uma resposta inválida.") from exc
+
+    title = parser.metadata.get("título") or parser.metadata.get("title") or parser.title
+    title = re.sub(r"\s+-\s+Google Books$", "", title, flags=re.IGNORECASE).strip()
+    author = parser.metadata.get("autor") or parser.metadata.get("author") or ""
+    categories = parser.metadata.get("assunto") or parser.metadata.get("subject") or ""
+    if not title and not author and not categories:
+        raise LookupError("Livro não encontrado para este ISBN.")
+    return {
+        "isbn": normalized,
+        "titulo": title,
+        "autor": author,
+        "categorias": [item.strip() for item in re.split(r"[,;]", categories) if item.strip()],
+    }
+
+
 def _isbnsearch_lookup(isbn: str) -> dict:
     normalized = _normalize_isbn(isbn)
     _validate_isbn(normalized)
@@ -564,6 +633,7 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
     errors = []
     groq_result = None
     unavailable_provider = False
+    provider_responded = False
 
     def call_provider(item):
         provider_name, provider = item
@@ -580,10 +650,13 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
     for provider_name, found, error in responses:
         if error:
             errors.append(error)
+            if isinstance(error, LookupError):
+                provider_responded = True
             if isinstance(error, _ProviderError):
                 unavailable_provider = True
                 logger.warning("Consulta de ISBN falhou no provedor %s: %s", error.source, error)
             continue
+        provider_responded = True
         try:
             if isinstance(found, dict):
                 if provider_name == "Groq":
@@ -598,7 +671,10 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
         result.get("titulo") and result.get("autor") for _, result in bibliographic_results
     )
     if not has_complete_metadata:
-        fallback_providers = [("Open Library Search", _openlibrary_search_lookup)]
+        fallback_providers = [
+            ("Google Books Page", _google_books_page_lookup),
+            ("Open Library Search", _openlibrary_search_lookup),
+        ]
         if os.getenv("ISBNDB_API_KEY", "").strip():
             fallback_providers.append(("ISBNdb", _isbndb_lookup))
         with ThreadPoolExecutor(max_workers=len(fallback_providers)) as executor:
@@ -606,10 +682,13 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
         for provider_name, found, error in fallback_responses:
             if error:
                 errors.append(error)
+                if isinstance(error, LookupError):
+                    provider_responded = True
                 if isinstance(error, _ProviderError):
                     unavailable_provider = True
                     logger.warning("Consulta de ISBN falhou no provedor %s: %s", error.source, error)
                 continue
+            provider_responded = True
             if isinstance(found, dict):
                 bibliographic_results.append((provider_name, found))
 
@@ -633,7 +712,7 @@ def _lookup_isbn(isbn: str, use_groq: bool = False) -> dict:
                 expired_isbn, _ = _ISBN_CACHE.popitem(last=False)
                 _ISBN_CACHE_TIMESTAMPS.pop(expired_isbn, None)
         return deepcopy(result)
-    if unavailable_provider and errors:
+    if unavailable_provider and errors and not provider_responded:
         raise RuntimeError("Não foi possível consultar fontes de ISBN agora.") from errors[-1]
     raise LookupError("Livro não encontrado para este ISBN.")
 

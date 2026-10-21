@@ -135,12 +135,16 @@ Você verá no terminal:
 **ou** (se o Supabase não estiver disponível):
 ```
 🚀 Biblioteca narceu de paiva filho v3 — http://localhost:5000
-[supabase] ⚠️  Falha: ... — usando dados locais (JSON).
+[supabase] ⚠️  Falha: ... — aguardando conexão real.
 ```
 
-Em ambos os casos, abra **http://localhost:5000** no navegador.
+O backend continuará respondendo, mas o sistema aguardará a conexão com o Supabase antes de liberar o acesso. Abra **http://localhost:5000** no navegador.
 
 > O backend serve o frontend automaticamente. Não é necessário abrir nenhum outro servidor.
+
+### Deploy no Render
+
+Configure o serviço Web com o diretório raiz do repositório, comando de build `pip install -r requirements.txt` e comando de inicialização `gunicorn --chdir backend app:app`. Defina o **Health Check Path** como `/api/health`; essa rota confirma que o Flask está respondendo sem depender do Supabase. Configure também `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (ou `SUPABASE_KEY`) e uma `SECRET_KEY` segura nas variáveis de ambiente do serviço. `/api/ready` verifica a conexão do banco e retorna `503` quando o Supabase não está disponível; não a use como health check do Render.
 
 ---
 
@@ -343,7 +347,8 @@ Os arquivos em `backend/data/` são apenas dados históricos de desenvolvimento 
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/api/health` | Status da conexão |
+| GET | `/api/health` | Liveness do backend, independente do banco (health check do Render) |
+| GET | `/api/ready` | Prontidão do Supabase (`200` conectado; `503` indisponível) |
 | GET | `/api/books/` | Listar livros (filtros: `q`, `genre`) |
 | POST | `/api/books/` | Criar livro |
 | PUT | `/api/books/<id>` | Editar livro |

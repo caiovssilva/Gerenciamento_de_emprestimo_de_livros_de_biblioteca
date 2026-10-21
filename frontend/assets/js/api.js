@@ -112,6 +112,7 @@ const API = {
     result:        ()         => apiFetch("/qr/result"),
   },
   health: () => apiFetch("/health"),
+  ready: () => apiFetch("/ready"),
 };
 
 function selfServiceHeaders(token) {

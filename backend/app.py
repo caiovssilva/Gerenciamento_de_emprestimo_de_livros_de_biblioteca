@@ -113,7 +113,7 @@ def restrict_self_service_api():
         return None
     if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
-    if request.path == "/api/health" and request.method == "GET":
+    if request.path in {"/api/health", "/api/ready"} and request.method == "GET":
         return None
     if request.method == "GET" and request.path in {
         "/api/controle/autoatendimento",
@@ -149,6 +149,7 @@ def require_database_for_api():
     """Impede que qualquer API de negócio sirva ou grave dados locais."""
     if not request.path.startswith("/api/") or request.path in {
         "/api/health",
+        "/api/ready",
         "/api/auth/config/supabase",
         "/api/config/supabase",
         "/api/auth/supabase-config",
@@ -183,13 +184,20 @@ def handle_generic(err):
 # ── Health check ──────────────────────────────────────────────────────
 @app.route("/api/health")
 def health():
+    """Liveness probe: confirma que o processo Flask está respondendo."""
+    return jsonify({"status": "ok", "service": "Biblioteca narceu de paiva filho v3"}), 200
+
+
+@app.route("/api/ready")
+def readiness():
+    """Readiness probe: confirma que a aplicação consegue consultar o Supabase."""
     from utils import get_client
     try:
         get_client().table("livros").select("id").limit(1).execute()
-        logger.info("Health check OK - Database connected")
-        return jsonify({"status": "ok", "service": "Biblioteca narceu de paiva filho v3", "database": "conectado"}), 200
+        logger.info("Readiness check OK - Database connected")
+        return jsonify({"status": "ready", "service": "Biblioteca narceu de paiva filho v3", "database": "conectado"}), 200
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error("Readiness check failed: %s", e)
         return jsonify({"status": "waiting", "service": "Biblioteca narceu de paiva filho v3", "database": "indisponível", "retry_after": 3}), 503
 
 # ── Serve o frontend ──────────────────────────────────────────────────

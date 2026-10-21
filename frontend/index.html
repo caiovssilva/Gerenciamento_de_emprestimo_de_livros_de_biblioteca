@@ -445,7 +445,7 @@
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn" onclick="syncAll()"><i class="ti ti-refresh"></i>Sincronizar</button>
-                <button class="btn" onclick="API.health().then(d=>Utils.toast('Backend OK: '+d.database,'success')).catch(e=>Utils.toast('Offline: '+e.message,'error'))"><i class="ti ti-heart-rate-monitor"></i>Testar</button>
+                <button class="btn" onclick="API.ready().then(d=>Utils.toast('Backend OK: '+d.database,'success')).catch(e=>Utils.toast('Offline: '+e.message,'error'))"><i class="ti ti-heart-rate-monitor"></i>Testar</button>
                 <button class="btn" onclick="API.reports.generateMonthly().then(()=>Utils.toast('Relatório mensal gerado!','success')).catch(e=>Utils.toast(e.message,'error'))"><i class="ti ti-report-analytics"></i>Gerar rel. mensal</button>
               </div>
             </div>

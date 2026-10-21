@@ -1430,7 +1430,7 @@ async function testConnection() {
   const btn = Utils.el("test-conn-btn");
   if (btn) btn.disabled = true;
   try {
-    const r = await API.health();
+    const r = await API.ready();
     Utils.toast(r.database === "conectado" ? "Supabase conectado!" : "Banco indisponível.", r.database==="conectado"?"success":"error");
   } catch { Utils.toast("Banco de dados indisponível.","error"); }
   finally { if (btn) btn.disabled = false; }
@@ -1519,7 +1519,7 @@ async function waitForDatabase() {
   const status = Utils.el("database-wait-status");
   while (true) {
     try {
-      const response = await fetch("/api/health", { cache: "no-store" });
+      const response = await fetch("/api/ready", { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.database === "conectado") {
         screen.style.display = "none";

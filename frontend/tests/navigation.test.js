@@ -107,6 +107,27 @@ vm.runInContext(
     'page-livros',
     'a conclusão da sincronização não deve substituir a página escolhida',
   );
+
+  let forcedSyncCalls = 0;
+  context.Store = {
+    books: () => [{}],
+    students: () => [],
+    loans: () => [],
+    setBooks: () => {},
+    setStudents: () => {},
+    setLoans: () => {},
+  };
+  context.API = {
+    books: { list: async () => { forcedSyncCalls += 1; return []; } },
+    students: { list: async () => { forcedSyncCalls += 1; return []; } },
+    loans: { list: async () => { forcedSyncCalls += 1; return []; } },
+  };
+  vm.runInContext('_lastSuccessfulSyncTs = Date.now()', context);
+  await context.syncData({ render: false });
+  assert.strictEqual(forcedSyncCalls, 0, 'a sincronização normal respeita o cooldown recente');
+  await context.syncData({ force: true, render: false });
+  assert.strictEqual(forcedSyncCalls, 3, 'a sincronização forçada atualiza mesmo durante o cooldown');
+
   vm.runInContext("currentUser = { role: 'self_service' }", context);
   let historyLoads = 0;
   context.loadSelfServiceHistory = () => { historyLoads += 1; };

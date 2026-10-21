@@ -89,8 +89,11 @@ async function toggleLibrarianAccess(studentId, grant) {
   })) return;
   try {
     await API.students.toggleAccess(studentId, grant);
+    Store.setStudents(Store.students().map(student =>
+      student.id === studentId ? { ...student, is_librarian: grant } : student
+    ));
+    renderStudents();
     Utils.toast(grant ? `${s.nome||s.name} agora é Bibliotecário(a)!` : "Acesso de bibliotecário revogado.", "success");
-    await syncData();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
@@ -135,6 +138,7 @@ async function saveStudent() {
 
   try {
     const payload = { nome, turma, carteirinha:card, sala_id:sala };
+    let result;
     const duplicate = card ? Store.students().find(s => (s.carteirinha||s.card||"") === card) : null;
     if (duplicate && (!editId || duplicate.id !== editId)) {
       Utils.toast(`Carteirinha já pertence a ${duplicate.nome||duplicate.name}. Corrija antes de salvar.`, "error");
@@ -142,11 +146,11 @@ async function saveStudent() {
     }
 
     if (editId) {
-      await API.students.update(editId, payload);
+      result = await API.students.update(editId, payload);
       Utils.toast("Aluno atualizado!","success");
       Utils.closeModal("modal-student");
     } else {
-      const result = await API.students.create(payload);
+      result = await API.students.create(payload);
       Utils.closeModal("modal-student");
       // Mostra QR gerado automaticamente
       if (result.qr_code) {
@@ -155,7 +159,13 @@ async function saveStudent() {
       }
       Utils.toast("Aluno cadastrado! QR Code gerado.","success");
     }
-    await syncData();
+    const savedStudent = { ...(editId ? Store.studentById(editId) : {}), ...payload, ...result };
+    delete savedStudent.qr_code;
+    Store.setStudents([
+      ...Store.students().filter(student => student.id !== savedStudent.id),
+      savedStudent,
+    ]);
+    renderStudents();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 
@@ -199,8 +209,9 @@ async function deleteStudent(id) {
   })) return;
   try {
     await API.students.delete(id);
+    Store.setStudents(Store.students().filter(student => student.id !== id));
+    renderStudents();
     Utils.toast("Aluno excluído.","info");
-    await syncData();
   } catch(e) { Utils.toast(e.message,"error"); }
 }
 

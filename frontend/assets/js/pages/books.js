@@ -270,12 +270,13 @@ async function saveBook() {
 
   try {
     const payload = { isbn, titulo, autor, area, exemplares:copies, genero_id:genre };
+    let result;
     if (editId) {
-      await API.books.update(editId, payload);
+      result = await API.books.update(editId, payload);
       Utils.toast("Livro atualizado!", "success");
       Utils.closeModal("modal-book");
     } else {
-      const result = await API.books.create(payload);
+      result = await API.books.create(payload);
       Utils.closeModal("modal-book");
       // Mostra QR Code gerado automaticamente
       if (result.qr_code) {
@@ -283,7 +284,21 @@ async function saveBook() {
       }
       Utils.toast("Livro cadastrado! QR Code gerado.", "success");
     }
-    await syncData();
+    const selectedGenre = Store.genreById(genre);
+    const savedBook = {
+      ...(editId ? Store.bookById(editId) : {}),
+      ...payload,
+      ...result,
+      genero_nome: selectedGenre?.nome || "",
+      genero_cor: selectedGenre?.cor || "",
+      genero_icone: selectedGenre?.icone || "",
+    };
+    delete savedBook.qr_code;
+    Store.setBooks([
+      ...Store.books().filter(book => book.id !== savedBook.id),
+      savedBook,
+    ]);
+    renderBooks();
     Charts.refresh();
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
@@ -298,8 +313,10 @@ async function deleteBook(id) {
   })) return;
   try {
     await API.books.delete(id);
+    Store.setBooks(Store.books().filter(book => book.id !== id));
+    renderBooks();
     Utils.toast("Livro excluído.","info");
-    await syncData(); Charts.refresh();
+    Charts.refresh();
   } catch(e) { Utils.toast(e.message,"error"); }
 }
 

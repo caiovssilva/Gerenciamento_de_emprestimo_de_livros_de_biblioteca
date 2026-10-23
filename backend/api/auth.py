@@ -326,6 +326,35 @@ def self_service_logout():
     return jsonify({"success": True}), 200
 
 
+@auth_bp.route("/self-service/verify-return-card", methods=["POST"])
+def self_service_verify_return_card():
+    """Valida a carteirinha do aluno ou o QR do exemplar antes da devolução."""
+    if not self_service_operation_allowed("allow_return"):
+        return jsonify({"error": "Devoluções pelo Autoatendimento estão desativadas pelo administrador."}), 403
+    body = request.get_json(force=True) or {}
+    loan_id = str(body.get("loan_id") or "").strip()
+    codes = body.get("codes")
+    if not isinstance(codes, list):
+        codes = [body.get("code")]
+    codes = list(dict.fromkeys(str(code or "").strip() for code in codes if str(code or "").strip()))
+    if not codes:
+        return jsonify({"error": "Leia a carteirinha do aluno ou o QR do exemplar emprestado."}), 400
+    student_id, response, status, loan = _self_service_owned_loan(loan_id, "allow_return")
+    if response:
+        return response, status
+    for code in codes:
+        try:
+            proof = _self_service_return_proof(student_id, loan, code)
+        except Exception as error:
+            current_app.logger.error("Erro ao verificar identificação para devolução: %s", error)
+            return jsonify({"error": "Não foi possível conferir a identificação lida."}), 500
+        if proof:
+            return jsonify({"valid": True, "proof": proof, "proof_code": code}), 200
+    return jsonify({
+        "error": "O QR não corresponde à carteirinha do aluno nem ao exemplar deste empréstimo.",
+    }), 403
+
+
 @auth_bp.route("/self-service/history", methods=["GET"])
 def self_service_history():
     """Retorna somente o histórico pertencente à carteirinha autenticada."""
@@ -451,15 +480,32 @@ def self_service_create_loan():
 
     resolved = _resolve_qr(exemplar_qr)
     book = resolved.get("data") or {}
-    if resolved.get("type") != "book" or not book.get("exemplar_code"):
+    if resolved.get("type") == "student":
+        return jsonify({
+            "error": "Esse QR é uma carteirinha de aluno, não um livro. Sua carteirinha já foi lida no acesso; agora leia o QR do livro.",
+        }), 400
+    if resolved.get("type") != "book":
         return jsonify({"error": "O QR Code não identifica um exemplar cadastrado."}), 400
 
-    from api.loans import _create_loan_record
+    from api.loans import _available_copies, _create_loan_record
+
+    exemplar_code = book.get("exemplar_code")
+    if not exemplar_code:
+        available = _available_copies(
+            get_client(),
+            book["id"],
+            book.get("exemplares", 1),
+            book.get("exemplares_ids"),
+            book.get("exemplares_meta"),
+        )
+        if not available:
+            return jsonify({"error": "Não há exemplares disponíveis deste livro."}), 409
+        exemplar_code = available[0]["code"]
 
     return _create_loan_record(
         {
             "livro_id": book["id"],
-            "exemplar": book["exemplar_code"],
+            "exemplar": exemplar_code,
             "dias": 7,
             "observacao": "",
         },
@@ -468,16 +514,43 @@ def self_service_create_loan():
     )
 
 
+def _self_service_return_proof(student_id, loan, code):
+    from scanner.routes import _resolve_qr
+
+    resolved = _resolve_qr(code)
+    data = resolved.get("data") or {}
+    if resolved.get("type") == "student" and str(data.get("id", "")) == student_id:
+        return "student_card"
+    if resolved.get("type") == "book":
+        if str(data.get("id", "")).casefold() != str(loan.get("livro_id", "")).casefold():
+            return None
+        exemplar_code = data.get("exemplar_code")
+        if not exemplar_code:
+            return "book"
+        if str(exemplar_code).lstrip("0") == str(loan.get("exemplar", "")).lstrip("0"):
+            return "exemplar"
+
+    student = _get_student_by_card(code)
+    if student and str(student.get("id", "")) == student_id:
+        return "student_card"
+
+    from api.loans import _matches_loan_exemplar_qr
+
+    if _matches_loan_exemplar_qr(loan, code):
+        return "exemplar"
+    return None
+
+
 def _self_service_owned_loan(loan_id, required_setting):
     from api.controle import self_service_operation_allowed
 
     if not self_service_operation_allowed(required_setting):
-        return None, jsonify({"error": "Esta operação está desativada pelo administrador."}), 403
+        return None, jsonify({"error": "Esta operação está desativada pelo administrador."}), 403, None
 
     student_id, error_response = _self_service_student_from_request()
     if error_response:
         response, status = error_response
-        return None, response, status
+        return None, response, status, None
 
     try:
         from utils import sb_exec
@@ -489,32 +562,44 @@ def _self_service_owned_loan(loan_id, required_setting):
             if str(loan.get("id", "")) == str(loan_id)
         ]
     if not rows:
-        return None, jsonify({"error": "Empréstimo não encontrado."}), 404
+        return None, jsonify({"error": "Empréstimo não encontrado."}), 404, None
     if str(rows[0].get("aluno_id", "")) != student_id:
-        return None, jsonify({"error": "Este empréstimo não pertence à carteirinha lida."}), 403
-    return student_id, None, None
+        return None, jsonify({"error": "Este empréstimo não pertence à carteirinha lida."}), 403, None
+    return student_id, None, None, rows[0]
 
 
 @auth_bp.route("/self-service/loans/<loan_id>/renew", methods=["POST"])
 def self_service_renew_loan(loan_id):
-    _student_id, response, status = _self_service_owned_loan(loan_id, "allow_renew")
+    _student_id, response, status, _loan = _self_service_owned_loan(loan_id, "allow_renew")
     if response:
         return response, status
 
     from api.loans import renew_loan
 
-    return renew_loan(loan_id)
+    return renew_loan(loan_id, trusted_self_service=True)
 
 
 @auth_bp.route("/self-service/loans/<loan_id>/return", methods=["POST"])
 def self_service_return_loan(loan_id):
-    _student_id, response, status = _self_service_owned_loan(loan_id, "allow_return")
+    student_id, response, status, loan = _self_service_owned_loan(loan_id, "allow_return")
     if response:
         return response, status
 
+    body = request.get_json(force=True) or {}
+    proof_code = str(body.get("proof_code") or "").strip()
+    if not proof_code:
+        return jsonify({"error": "Leia a carteirinha do aluno ou o QR do exemplar."}), 400
+    try:
+        proof = _self_service_return_proof(student_id, loan, proof_code)
+    except Exception as error:
+        current_app.logger.error("Erro ao conferir identificação na devolução: %s", error)
+        return jsonify({"error": "Não foi possível conferir a identificação lida."}), 500
+    if not proof:
+        return jsonify({"error": "O QR não corresponde à carteirinha do aluno nem ao exemplar deste empréstimo."}), 403
+
     from api.loans import return_loan
 
-    return return_loan(loan_id)
+    return return_loan(loan_id, trusted_self_service=True)
 
 
 # ── Endpoint: Configuração Supabase Segura ──────────────────────────

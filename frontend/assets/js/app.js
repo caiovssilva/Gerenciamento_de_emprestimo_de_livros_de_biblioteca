@@ -11,6 +11,7 @@ let pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
 let pendingDevolutionId = null;
 let pendingDevolutionStudentId = null;
 let pendingReturnLoanId = null;
+let pendingReturnExemplarQr = null;
 let pendingDevolutionQr = null;
 let scannedLoanStudentId = null;
 let _historyStudentId = null; // ID do aluno cujo histórico está aberto no momento
@@ -260,9 +261,9 @@ function returnFromSelfServiceLoginScreen() {
   Utils.el("login-screen").style.display = "flex";
 }
 
-function leaveSelfServiceStudentSession() {
+async function leaveSelfServiceStudentSession() {
   if (currentUser?.role !== "self_service") return;
-  API.auth.selfServiceLogout().catch(() => {});
+  await API.auth.selfServiceLogout().catch(() => {});
   currentUser = null;
   selfServiceHistory = [];
   clearSessionCookie();
@@ -478,7 +479,7 @@ async function doLogout({ confirmPrompt = true, reason = "" } = {}) {
     title: "Sair",
     confirmText: "Sair",
   })) return;
-  if (currentUser?.role === "self_service") API.auth.selfServiceLogout().catch(() => {});
+  if (currentUser?.role === "self_service") await API.auth.selfServiceLogout().catch(() => {});
   currentUser = null;
   clearSessionCookie();
   clearTimeout(window.__session_timeout_handle);
@@ -584,6 +585,7 @@ function _renderActivePage() {
 }
 
 async function syncData({ force = false, render = true } = {}) {
+  if (currentUser?.role === "self_service") return;
   if (document.hidden && !force) return;
   if (_syncInFlight && !force) return;
 
@@ -738,29 +740,98 @@ async function operateSelfServiceLoan(loanId, action) {
   const loan = selfServiceHistory.find(item => String(item.loan_id) === String(loanId));
   if (!loan || loan.returned_at) return;
 
-  try {
-    await QRScanner.start(null, async (result) => {
-      const code = String(result?.primary || "").trim();
-      if (!_matchesDevolutionQr({
-        livro_id: loan.book_id,
-        exemplar: loan.exemplar,
-        exemplar_id: loan.exemplar_id,
-      }, code)) {
-        Utils.toast("O QR lido não corresponde ao exemplar deste empréstimo.", "error");
-        return;
-      }
+  const actionLabel = action === "renew" ? "renovar" : "devolver";
+  const showOperationError = async (error) => {
+    const retry = await Utils.confirmDialog(
+      error.message || `Não foi possível ${actionLabel} este empréstimo.`,
+      {
+        title: "Operação não concluída",
+        confirmText: "Tentar novamente",
+        cancelText: "Fechar",
+      },
+    );
+    if (retry) await operateSelfServiceLoan(loanId, action);
+  };
 
-      if (action === "renew") {
-        await API.auth.selfServiceRenewLoan(currentUser.accessToken, loan.loan_id, { exemplar_qr: code });
-        Utils.toast(`Empréstimo renovado por ${selfServiceSettings.renewal_days} dias.`, "success");
-      } else {
-        await API.auth.selfServiceReturnLoan(currentUser.accessToken, loan.loan_id, { exemplar_qr: code });
-        Utils.toast("Livro devolvido.", "success");
-      }
-      await loadSelfServiceHistory();
-    });
+  if (action === "return") {
+    const shouldScanCard = await Utils.confirmDialog(
+      `Leia a carteirinha de ${currentUser.name || "—"} ou o QR do exemplar #${loan.exemplar || "—"} de ${loan.book_title || "este livro"}.`,
+      {
+        title: "Confirmar identificação para devolução",
+        confirmText: "Ler QR",
+        cancelText: "Cancelar",
+      },
+    );
+    if (!shouldScanCard) return;
+
+    try {
+      await QRScanner.start(null, async (result) => {
+        const scannedCodes = [...new Set([
+          result?.primary,
+          ...(Array.isArray(result?.codes) ? result.codes : []),
+        ].map((code) => String(code || "").trim()).filter(Boolean))];
+        let verifiedProof;
+        try {
+          verifiedProof = await API.auth.selfServiceVerifyReturnCard(currentUser.accessToken, loan.loan_id, scannedCodes);
+        } catch (error) {
+          await showOperationError(error);
+          return;
+        }
+
+        const confirmed = await Utils.confirmDialog(
+          `Identificação confirmada.\nAluno: ${currentUser.name || "—"}\nLivro: ${loan.book_title || "—"}\nExemplar: #${loan.exemplar || "—"}\n\nConfirma devolver?`,
+          {
+            title: "Confirmar devolução",
+            confirmText: "Sim, devolver",
+            cancelText: "Não",
+            danger: true,
+          },
+        );
+        if (!confirmed) return;
+
+        try {
+          await API.auth.selfServiceReturnLoan(currentUser.accessToken, loan.loan_id, { proof_code: verifiedProof.proof_code });
+          await loadSelfServiceHistory();
+        } catch (error) {
+          await showOperationError(error);
+        }
+      }, {
+        suppressToasts: true,
+        onError: (error) => { showOperationError(error); },
+      });
+    } catch (error) {
+      await showOperationError(error);
+    }
+    return;
+  }
+
+  const confirmed = await Utils.confirmDialog(
+    `Carteirinha: ${currentUser.name || "—"}\nLivro: ${loan.book_title || "—"}\nExemplar: #${loan.exemplar || "—"}\n\nConfirma ${actionLabel}?`,
+    {
+      title: `Confirmar ${actionLabel}`,
+      confirmText: `Sim, ${actionLabel}`,
+      cancelText: "Não",
+      danger: action === "return",
+    },
+  );
+  if (!confirmed) return;
+
+  try {
+    if (action === "renew") {
+      await API.auth.selfServiceRenewLoan(currentUser.accessToken, loan.loan_id, {});
+    } else {
+      await API.auth.selfServiceReturnLoan(currentUser.accessToken, loan.loan_id, {});
+    }
+    await loadSelfServiceHistory();
   } catch (error) {
-    Utils.toast(`Não foi possível concluir a operação: ${error.message}`, "error");
+    await Utils.confirmDialog(
+      error.message || `Não foi possível ${actionLabel} este empréstimo.`,
+      {
+        title: "Operação não concluída",
+        confirmText: "OK",
+        cancelText: "Fechar",
+      },
+    );
   }
 }
 
@@ -794,12 +865,20 @@ async function startSelfServiceBookScan() {
         await loadSelfServiceHistory();
       } catch (error) {
         if (status) status.textContent = error.message || "Não foi possível registrar o empréstimo.";
-        Utils.toast(error.message || "Não foi possível registrar o empréstimo.", "error");
+        await Utils.confirmDialog(
+          error.message || "Não foi possível registrar o empréstimo.",
+          {
+            title: "Empréstimo não registrado",
+            confirmText: "Entendi",
+            cancelText: "Fechar",
+          },
+        );
       } finally {
         if (button && originalLabel !== undefined) button.innerHTML = originalLabel;
         updateSelfServiceBorrowButton();
       }
     }, {
+      suppressToasts: true,
       onError: (error) => {
         if (status) status.textContent = `${error.message || "Não foi possível iniciar a câmera."} Verifique a permissão da câmera.`;
       },
@@ -822,8 +901,8 @@ function normalizeQueryValue(value) {
 
 function parseExemplarCode(code) {
   const normalized = String(code || "").trim();
-  if (!normalized.toUpperCase().startsWith("EXEMPLAR-")) return null;
-  const rest = normalized.slice("EXEMPLAR-".length);
+  const hasPrefix = normalized.toUpperCase().startsWith("EXEMPLAR-");
+  const rest = hasPrefix ? normalized.slice("EXEMPLAR-".length) : normalized;
   const exIdx = rest.indexOf("-EX-");
   if (exIdx === -1) return null;
   const bookId = rest.slice(0, exIdx);
@@ -831,14 +910,14 @@ function parseExemplarCode(code) {
   const dashIdx = tail.indexOf("-");
   if (dashIdx === -1) return null;
   const exemplar = tail.slice(0, dashIdx);
-  return { bookId, exemplar, exemplarId: `EXEMPLAR-${rest}` };
+  return { bookId, exemplar, exemplarId: hasPrefix ? `EXEMPLAR-${rest}` : rest };
 }
 
 function isKnownExemplarQr(book, parsed, scannedCode) {
   const metadata = Array.isArray(book?.exemplares_meta) ? book.exemplares_meta : [];
   if (metadata.length) {
     return metadata.some(item => String(item.code) === parsed.exemplar &&
-      (String(item.qr_data || "") === scannedCode || `EXEMPLAR-${item.id}` === scannedCode));
+      (String(item.qr_data || "") === scannedCode || String(item.id || "") === scannedCode || `EXEMPLAR-${item.id}` === scannedCode));
   }
 
   const total = Number(book?.exemplares || book?.copies || 1);
@@ -1072,14 +1151,48 @@ function openDevolution(loanId, studentId = null) {
 }
 
 function _matchesDevolutionQr(loan, code) {
-  const parsed = parseExemplarCode(code);
-  if (!parsed || parsed.bookId !== String(loan.livro_id) || parsed.exemplar !== String(loan.exemplar)) return false;
+  const exemplarId = String(loan.exemplar_id ?? "").trim();
+  const withoutPrefix = (value) => {
+    const normalized = String(value ?? "").trim();
+    return normalized.toLocaleUpperCase().startsWith("EXEMPLAR-")
+      ? normalized.slice("EXEMPLAR-".length)
+      : normalized;
+  };
+  if (exemplarId && withoutPrefix(code).toLocaleLowerCase() === withoutPrefix(exemplarId).toLocaleLowerCase()) {
+    return true;
+  }
 
-  const exemplarId = String(loan.exemplar_id || "").trim();
-  if (!exemplarId) return true;
-  if (exemplarId.startsWith("EXEMPLAR-")) return code === exemplarId;
-  if (exemplarId.includes("-EX-")) return code === `EXEMPLAR-${exemplarId}`;
-  return code === `EXEMPLAR-${exemplarId}` || code.endsWith(`-${exemplarId}`);
+  const parsed = parseExemplarCode(code);
+  if (!parsed) return false;
+
+  const normalizeCode = (value) => {
+    const normalized = String(value ?? "").trim();
+    return /^\d+$/.test(normalized) ? String(Number(normalized)) : normalized.toLocaleLowerCase();
+  };
+
+  return parsed.bookId.trim().toLocaleLowerCase() === String(loan.livro_id ?? "").trim().toLocaleLowerCase()
+    && normalizeCode(parsed.exemplar) === normalizeCode(loan.exemplar);
+}
+
+function _verifiedDevolutionQr(loan, result) {
+  const data = result?.data || {};
+  const normalizeCode = (value) => {
+    const normalized = String(value ?? "").trim();
+    return /^\d+$/.test(normalized) ? String(Number(normalized)) : normalized.toLocaleLowerCase();
+  };
+  const scannedBookId = String(data.id ?? "").trim().toLocaleLowerCase();
+  const loanBookId = String(loan.book_id ?? loan.livro_id ?? "").trim().toLocaleLowerCase();
+  const scannedExemplar = data.exemplar_code ?? data.exemplar;
+
+  if (result?.type === "book" && scannedBookId === loanBookId
+      && normalizeCode(scannedExemplar) === normalizeCode(loan.exemplar)) {
+    const exemplarId = String(data.exemplar_id ?? "").trim();
+    if (exemplarId.toLocaleUpperCase().startsWith("EXEMPLAR-")) return exemplarId;
+    if (exemplarId.includes("-EX-")) return `EXEMPLAR-${exemplarId}`;
+    return `EXEMPLAR-${data.id}-EX-${scannedExemplar}-${exemplarId || "verified"}`;
+  }
+
+  return _matchesDevolutionQr(loan, result?.primary) ? String(result.primary).trim() : "";
 }
 
 async function scanDevolutionQr() {
@@ -1089,8 +1202,12 @@ async function scanDevolutionQr() {
   const status = Utils.el("dev-qr-status");
   status.textContent = "Aponte a câmera para o QR do exemplar emprestado.";
   await QRScanner.start(null, (result) => {
-    const code = String(result?.primary || "").trim();
-    if (!_matchesDevolutionQr(loan, code)) {
+    const verifiedQr = _verifiedDevolutionQr({
+      livro_id: loan.livro_id,
+      exemplar: loan.exemplar,
+      exemplar_id: loan.exemplar_id,
+    }, result);
+    if (!verifiedQr) {
       pendingDevolutionQr = null;
       status.textContent = "QR não corresponde a este exemplar. Tente novamente.";
       Utils.el("dev-confirm-btn").disabled = true;
@@ -1098,10 +1215,9 @@ async function scanDevolutionQr() {
       return;
     }
 
-    pendingDevolutionQr = code;
+    pendingDevolutionQr = verifiedQr;
     status.textContent = "QR do exemplar confirmado.";
     Utils.el("dev-confirm-btn").disabled = false;
-    Utils.toast("Exemplar confirmado pelo QR.", "success");
   });
 }
 
@@ -1198,7 +1314,7 @@ async function confirmRenewal() {
   }
   const days = selfServiceSettings.renewal_days;
   try {
-    await API.loans.renew(pendingRenewalId, { dias: days });
+    await API.loans.renew(pendingRenewalId, { dias: days, exemplar_qr: pendingRenewalQr });
     Utils.toast(`Empréstimo renovado por +${days} dias!`, "success");
     Utils.closeModal("modal-renewal");
     pendingRenewalId = null;
@@ -1290,10 +1406,19 @@ async function openLoanScanner() {
       if (pendingReturnLoanId) {
         const loan = Store.loanById(pendingReturnLoanId);
         if (loan && !loan.devolvido_em && String(loan.aluno_id) === String(scanned.data.id)) {
-          await API.loans.return(pendingReturnLoanId, { student_id: scanned.data.id, observacao: "" });
-          Utils.toast(`Devolução registrada para ${scanned.data.nome||scanned.data.name}.`, "success");
+          if (!pendingReturnExemplarQr || !_matchesDevolutionQr(loan, pendingReturnExemplarQr)) {
+            Utils.toast("O QR selecionado não corresponde ao exemplar deste empréstimo.", "error");
+            return;
+          }
+          const loanId = pendingReturnLoanId;
+          const exemplarQr = pendingReturnExemplarQr;
           pendingReturnLoanId = null;
-          await syncData(); Charts.refresh(); _refreshOpenStudentHistory(); renderLoanScanPanel();
+          pendingReturnExemplarQr = null;
+          openDevolution(loanId, scanned.data.id);
+          pendingDevolutionQr = exemplarQr;
+          Utils.el("dev-qr-status").textContent = "Carteirinha e exemplar confirmados. Confira os dados antes de concluir.";
+          Utils.el("dev-confirm-btn").disabled = false;
+          Utils.toast("Carteirinha confirmada. Confira o livro e o exemplar e confirme a devolução.", "info");
           return;
         }
         if (loan && !loan.devolvido_em) {
@@ -1310,25 +1435,42 @@ async function openLoanScanner() {
     }
     if (scanned.type === "book" && scanned.data?.id) {
       const targetExemplar = scanned.data.exemplar || null;
-      const targetExemplarId = scanned.data.exemplarId || null;
+      if (pendingReturnLoanId) {
+        const pendingLoanRecord = Store.loanById(pendingReturnLoanId);
+        if (pendingLoanRecord && !_matchesDevolutionQr(pendingLoanRecord, code)) {
+          Utils.toast("Já existe um exemplar selecionado. Leia a carteirinha correspondente ou limpe a seleção.", "error");
+          return;
+        }
+      }
+
+      if (!targetExemplar) {
+        const hasActiveLoans = Store.loans().some((loan) => loan.livro_id === scanned.data.id && !loan.devolvido_em);
+        if (hasActiveLoans) {
+          Utils.toast("Este QR identifica o livro, mas não a cópia. Leia o QR individual do exemplar para devolver.", "error");
+          return;
+        }
+        const total = scanned.data.exemplares||scanned.data.copies||1;
+        const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
+        Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
+        return;
+      }
+
       const activeLoan = Store.loans().find((loan) => {
-        if (loan.livro_id !== scanned.data.id || loan.devolvido_em) return false;
-        if (targetExemplar && String(loan.exemplar) !== String(targetExemplar)) return false;
-        if (targetExemplarId && String(loan.exemplar_id || "") !== String(targetExemplarId)) return false;
-        return true;
+        if (loan.devolvido_em) return false;
+        return _matchesDevolutionQr(loan, code);
       });
       if (activeLoan) {
         const borrower = Store.studentById(activeLoan.aluno_id);
         pendingReturnLoanId = activeLoan.id;
+        pendingReturnExemplarQr = code;
         scannedLoanStudentId = activeLoan.aluno_id;
         renderLoanScanPanel();
         Utils.toast(`📖 Exemplar emprestado para ${borrower?.nome||borrower?.name||"o aluno responsável"}. Leia a carteirinha do aluno para devolver.`, "info");
         return;
       }
       pendingReturnLoanId = null;
-      const total = scanned.data.exemplares||scanned.data.copies||1;
-      const active = Store.loans().filter(l=>l.livro_id===scanned.data.id && !l.devolvido_em).length;
-      Utils.toast(`📖 ${scanned.data.titulo||scanned.data.title} — ${total-active} de ${total} disponíveis`, "info");
+      pendingReturnExemplarQr = null;
+      Utils.toast("Este exemplar não corresponde a um empréstimo ativo. Confira o QR lido.", "error");
       return;
     }
     if (scanned.type === "admin") {
@@ -1351,6 +1493,7 @@ function selectLoanStudent(studentId) {
 function clearLoanScanStudent() {
   scannedLoanStudentId = null;
   pendingReturnLoanId = null;
+  pendingReturnExemplarQr = null;
   renderLoanScanPanel();
 }
 

@@ -109,7 +109,7 @@ def restrict_self_service_api():
 
     if scope != "self_service":
         return None
-    if request.path == "/api/auth/login" and request.method == "POST":
+    if request.path in {"/api/auth/login", "/api/auth/self-service/login"} and request.method == "POST":
         return None
     if request.path == "/api/auth/self-service/logout" and request.method == "POST":
         return None
@@ -127,6 +127,10 @@ def restrict_self_service_api():
     if not self_service_operation_allowed():
         return jsonify({"error": "O Autoatendimento está desativado pelo administrador."}), 403
     if request.path == "/api/auth/self-service/history" and request.method == "GET":
+        return None
+    if request.path == "/api/auth/self-service/verify-return-card" and request.method == "POST":
+        if not self_service_operation_allowed("allow_return"):
+            return jsonify({"error": "Devoluções pelo Autoatendimento estão desativadas pelo administrador."}), 403
         return None
     if request.path == "/api/auth/self-service/books" and request.method == "GET":
         if not self_service_operation_allowed("allow_borrow"):

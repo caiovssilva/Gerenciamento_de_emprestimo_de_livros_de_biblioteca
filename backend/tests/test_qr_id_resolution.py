@@ -74,6 +74,49 @@ def test_qr_decode_resolves_student_by_id(client):
     assert payload["data"]["id"] == student["id"]
 
 
+def test_resolve_qr_accepts_legacy_raw_exemplar_id(monkeypatch):
+    exemplar_id = "book-1-EX-002-copy-2"
+    book = {
+        "id": "book-1",
+        "titulo": "Livro legado",
+        "exemplares": 2,
+        "exemplares_meta": [{"id": exemplar_id, "code": "002", "qr_data": ""}],
+    }
+
+    class Query:
+        def __init__(self, table_name):
+            self.table_name = table_name
+            self.field = None
+            self.value = None
+
+        def select(self, *_columns):
+            return self
+
+        def eq(self, field, value):
+            self.field = field
+            self.value = value
+            return self
+
+    class Client:
+        def table(self, table_name):
+            return Query(table_name)
+
+    def execute(query):
+        if query.table_name == "livros" and query.field == "id" and query.value == "book-1":
+            return [book]
+        return []
+
+    monkeypatch.setattr(utils, "get_client", lambda: Client())
+    monkeypatch.setattr(utils, "sb_exec", execute)
+
+    resolved = scanner_module._resolve_qr(exemplar_id)
+
+    assert resolved["type"] == "book"
+    assert resolved["data"]["id"] == "book-1"
+    assert resolved["data"]["exemplar_code"] == "002"
+    assert resolved["data"]["exemplar_id"] == exemplar_id
+
+
 def test_self_service_qr_decode_only_returns_registered_exemplar(monkeypatch, client):
     exemplar_qr = "EXEMPLAR-book-1-EX-001-copy-1"
     settings = {

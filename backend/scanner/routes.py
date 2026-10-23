@@ -230,7 +230,11 @@ def _is_known_exemplar_qr(book: dict, code: str, exemplar_code: str) -> bool:
     if metadata:
         return any(
             str(item.get("code", "")) == exemplar_code
-            and code in {str(item.get("qr_data", "")), f"EXEMPLAR-{item.get('id', '')}"}
+            and code in {
+                str(item.get("qr_data", "")),
+                str(item.get("id", "")),
+                f"EXEMPLAR-{item.get('id', '')}",
+            }
             for item in metadata
         )
     try:
@@ -256,15 +260,14 @@ def _resolve_qr(code: str) -> dict:
     book_ref = code
     exemplar_code = None
     exemplar_id = None
-    if code.startswith("EXEMPLAR-"):
-        rest = code[len("EXEMPLAR-"):]
-        if "-EX-" in rest:
-            book_part, tail = rest.split("-EX-", 1)
-            tail_parts = tail.split("-", 1)
-            if len(tail_parts) == 2:
-                book_ref = book_part
-                exemplar_code = tail_parts[0]
-                exemplar_id = rest
+    rest = code[len("EXEMPLAR-"):] if code.upper().startswith("EXEMPLAR-") else code
+    if "-EX-" in rest:
+        book_part, tail = rest.split("-EX-", 1)
+        tail_parts = tail.split("-", 1)
+        if len(tail_parts) == 2:
+            book_ref = book_part
+            exemplar_code = tail_parts[0]
+            exemplar_id = rest
 
     try:
         from utils import get_client, sb_exec
@@ -486,6 +489,12 @@ def book_card(book_id):
         cards = []
         if exemplares_meta:
             for item in exemplares_meta:
+                exemplar_id = str(item.get("id") or "")
+                fallback_qr = (
+                    f"EXEMPLAR-{exemplar_id}"
+                    if "-EX-" in exemplar_id
+                    else f"EXEMPLAR-{book_id}-EX-{item.get('code', '')}-{exemplar_id}"
+                )
                 img_b64 = _build_card(
                     entity_type = "livro",
                     title       = book.get("titulo", ""),
@@ -493,7 +502,7 @@ def book_card(book_id):
                     field1      = f"Gênero: {book.get('genero_nome', '') or 'N/A'}",
                     field2      = f"Exemplar: {item.get('code','')} de {total_exemplares}",
                     field3      = f"ISBN: {book.get('isbn', '') or 'N/A'}",
-                    qr_data     = item.get("qr_data") or item.get("id", book["id"]),
+                    qr_data     = item.get("qr_data") or fallback_qr,
                     badge       = book.get("genero_nome", ""),
                     color       = "#1a4f8a",
                 )

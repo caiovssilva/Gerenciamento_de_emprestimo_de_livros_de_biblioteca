@@ -419,19 +419,10 @@ async function confirmHistoryLoan(studentId) {
       criado_por: currentUser?.login||"sistema",
     };
     if (pendingHistoryLoan.exemplarId) payload.exemplar_id = pendingHistoryLoan.exemplarId;
-    if (selfServiceMode) {
-      await API.auth.selfServiceCreateLoan(selfServiceAccessToken, payload);
-    } else {
-      await API.loans.create(payload);
-    }
+    await API.loans.create(payload);
     Utils.toast(`Empréstimo registrado — ${pendingHistoryLoan.book.titulo||pendingHistoryLoan.book.title}`,"success");
-    if (selfServiceMode) {
-      await refreshSelfServiceHistory();
-      showStudentHistory(selfServiceStudentId);
-    } else {
-      await syncData(); Charts.refresh();
-      showStudentHistory(studentId); // redesenha tudo, já com o novo empréstimo
-    }
+    await syncData(); Charts.refresh();
+    showStudentHistory(studentId);
   } catch(e) { Utils.toast("Erro: "+e.message,"error"); }
 }
 

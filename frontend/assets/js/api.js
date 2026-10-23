@@ -48,6 +48,11 @@ const API = {
   auth: {
     selfServiceLogin: code => apiFetch("/auth/self-service/login", { method:"POST", body:JSON.stringify({ code }) }),
     selfServiceHistory: token => apiFetch("/auth/self-service/history", { headers:{ Authorization:`Bearer ${token}` } }),
+    selfServiceVerifyReturnCard: (token, loanId, codes) => apiFetch("/auth/self-service/verify-return-card", {
+      method:"POST",
+      headers:selfServiceHeaders(token),
+      body:JSON.stringify({ loan_id:loanId, codes:Array.isArray(codes) ? codes : [codes] }),
+    }),
     selfServiceCreateLoan: (token, body) => apiFetch("/auth/self-service/loans", { method:"POST", headers:{ Authorization:`Bearer ${token}` }, body:JSON.stringify(body) }),
     selfServiceRenewLoan: (token, id, body) => apiFetch(`/auth/self-service/loans/${id}/renew`, { method:"POST", headers:selfServiceHeaders(token), body:JSON.stringify(body) }),
     selfServiceReturnLoan: (token, id, body) => apiFetch(`/auth/self-service/loans/${id}/return`, { method:"POST", headers:selfServiceHeaders(token), body:JSON.stringify(body) }),

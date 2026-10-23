@@ -106,6 +106,101 @@ def test_self_service_history_requires_valid_token(monkeypatch):
     assert response.status_code == 401
 
 
+def test_self_service_verify_return_card_accepts_only_authenticated_student(monkeypatch):
+    import api.controle as controle_module
+    import scanner.routes as scanner_module
+
+    client = FakeClient({
+        "livros": [],
+        "alunos": [
+            {"id": "student-1", "nome": "Ana", "carteirinha": "CARD-1"},
+            {"id": "student-2", "nome": "Bia", "carteirinha": "CARD-2"},
+        ],
+        "emprestimos": [{
+            "id": "loan-own",
+            "aluno_id": "student-1",
+            "livro_id": "book-1",
+            "exemplar": "001",
+            "exemplar_id": "book-1-EX-001-copy-1",
+        }],
+    })
+    settings = {
+        **controle_module.DEFAULT_SETTINGS,
+        "enabled": True,
+        "allow_return": True,
+    }
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setattr(utils, "get_client", lambda: client)
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: settings)
+
+    def resolve_qr(code):
+        if code in {"CARD-1", "CARD-2"}:
+            return {"type": "student", "data": {"id": "student-1" if code == "CARD-1" else "student-2"}}
+        if code == "unrelated-primary":
+            return {"type": "unknown", "data": None}
+        book_id = "book-2" if "book-2" in code else "book-1"
+        data = {"id": book_id}
+        if code.startswith("EXEMPLAR-") and book_id == "book-1":
+            data.update(exemplar_code="001", exemplar_id="book-1-EX-001-copy-1")
+        return {"type": "book", "data": data}
+
+    monkeypatch.setattr(scanner_module, "_resolve_qr", resolve_qr)
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-1"})
+        headers = {"Authorization": f"Bearer {login.get_json()['token']}"}
+        correct = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={"loan_id": "loan-own", "code": "CARD-1"},
+            headers=headers,
+        )
+        wrong = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={"loan_id": "loan-own", "code": "CARD-2"},
+            headers=headers,
+        )
+        correct_exemplar = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={"loan_id": "loan-own", "code": "EXEMPLAR-book-1-EX-001-copy-1"},
+            headers=headers,
+        )
+        same_book = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={"loan_id": "loan-own", "code": "book-1"},
+            headers=headers,
+        )
+        other_exemplar = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={"loan_id": "loan-own", "code": "EXEMPLAR-book-2-EX-001-copy-1"},
+            headers=headers,
+        )
+        secondary_code = test_client.post(
+            "/api/auth/self-service/verify-return-card",
+            json={
+                "loan_id": "loan-own",
+                "codes": ["unrelated-primary", "CARD-1"],
+            },
+            headers=headers,
+        )
+
+    assert login.status_code == 200
+    assert correct.status_code == 200
+    assert correct.get_json() == {"valid": True, "proof": "student_card", "proof_code": "CARD-1"}
+    assert correct_exemplar.status_code == 200
+    assert correct_exemplar.get_json() == {
+        "valid": True,
+        "proof": "exemplar",
+        "proof_code": "EXEMPLAR-book-1-EX-001-copy-1",
+    }
+    assert same_book.status_code == 200
+    assert same_book.get_json() == {"valid": True, "proof": "book", "proof_code": "book-1"}
+    assert wrong.status_code == 403
+    assert other_exemplar.status_code == 403
+    assert secondary_code.status_code == 200
+    assert secondary_code.get_json()["proof_code"] == "CARD-1"
+
+
 def test_traditional_staff_login_still_requires_valid_password(monkeypatch):
     client = FakeClient({
         "livros": [],
@@ -207,13 +302,88 @@ def test_self_service_allows_only_own_history_and_logout(monkeypatch):
             "/api/loans/", json={"aluno_id": "student-1", "livro_id": "book-1"}, headers=headers,
         )
         renew_loan = test_client.post("/api/loans/loan-own/renew", json={}, headers=headers)
+        second_login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-2"})
+        second_history = test_client.get(
+            "/api/auth/self-service/history",
+            headers={"Authorization": f"Bearer {second_login.get_json()['token']}"},
+        )
         logout = test_client.post("/api/auth/self-service/logout")
 
     assert history.status_code == 200
     assert catalog.status_code == 403
     assert create_loan.status_code == 403
     assert renew_loan.status_code == 403
+    assert second_login.status_code == 200
+    assert second_history.status_code == 200
+    assert second_history.get_json()["student"]["name"] == "Bia"
     assert logout.status_code == 200
+
+
+def test_self_service_return_requires_owner_card_and_loan(monkeypatch):
+    import api.controle as controle_module
+    import api.loans as loans_module
+    from flask import jsonify
+
+    client = FakeClient({
+        "livros": [],
+        "alunos": [
+            {"id": "student-1", "nome": "Ana", "carteirinha": "CARD-1"},
+            {"id": "student-2", "nome": "Bia", "carteirinha": "CARD-2"},
+        ],
+        "emprestimos": [
+            {"id": "loan-own", "aluno_id": "student-1"},
+            {"id": "loan-other", "aluno_id": "student-2"},
+        ],
+    })
+    settings = {
+        **controle_module.DEFAULT_SETTINGS,
+        "enabled": True,
+        "allow_renew": True,
+        "allow_return": True,
+    }
+    actions = []
+
+    def mark_action(action):
+        def callback(loan_id, trusted_self_service=False):
+            actions.append((action, loan_id, trusted_self_service))
+            return jsonify({"id": loan_id}), 200
+        return callback
+
+    monkeypatch.setattr(auth_module, "get_client", lambda: client)
+    monkeypatch.setattr(utils, "get_client", lambda: client)
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: settings)
+    monkeypatch.setattr(loans_module, "renew_loan", mark_action("renew"))
+    monkeypatch.setattr(loans_module, "return_loan", mark_action("return"))
+    monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
+
+    with app.test_client() as test_client:
+        login = test_client.post("/api/auth/self-service/login", json={"code": "CARD-1"})
+        headers = {"Authorization": f"Bearer {login.get_json()['token']}"}
+        renew = test_client.post("/api/auth/self-service/loans/loan-own/renew", json={}, headers=headers)
+        returned = test_client.post(
+            "/api/auth/self-service/loans/loan-own/return",
+            json={"proof_code": "CARD-1"},
+            headers=headers,
+        )
+        wrong_card = test_client.post(
+            "/api/auth/self-service/loans/loan-own/return",
+            json={"proof_code": "CARD-2"},
+            headers=headers,
+        )
+        other = test_client.post("/api/auth/self-service/loans/loan-other/return", json={}, headers=headers)
+
+    assert login.status_code == 200
+    assert renew.status_code == 200
+    assert returned.status_code == 200
+    assert wrong_card.status_code == 403
+    assert "não corresponde" in wrong_card.get_json()["error"]
+    assert other.status_code == 403
+    assert actions == [
+        ("renew", "loan-own", True),
+        ("return", "loan-own", True),
+    ]
+
+
 
 
 def test_self_service_can_login_decode_qr_and_load_runtime_config(monkeypatch):
@@ -289,10 +459,14 @@ def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
     monkeypatch.setattr(loans_module, "_available_copies_from_rows", lambda *_args: [{"code": "001", "id": "copy-1"}])
     monkeypatch.setitem(app.config, "SECRET_KEY", "test-secret-that-is-not-default")
 
-    captured = {}
+    captured = []
 
     def create_record(body, forced_student_id=None, created_by_override=None):
-        captured.update(body=body, student_id=forced_student_id, created_by=created_by_override)
+        captured.append({
+            "body": body,
+            "student_id": forced_student_id,
+            "created_by": created_by_override,
+        })
         from flask import jsonify
         return jsonify({"aluno_id": forced_student_id, "livro_id": body["livro_id"]}), 201
 
@@ -312,6 +486,11 @@ def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
             json={"exemplar_qr": "book-1"},
             headers=headers,
         )
+        student_card_qr = test_client.post(
+            "/api/auth/self-service/loans",
+            json={"exemplar_qr": "CARD-2"},
+            headers=headers,
+        )
         blocked_catalog = test_client.get("/api/books/", headers=headers)
         blocked_renewal = test_client.post("/api/loans/loan-own/renew", json={}, headers=headers)
 
@@ -319,10 +498,14 @@ def test_self_service_can_browse_books_and_create_only_own_loan(monkeypatch):
     assert books.get_json() == [{"id": "book-1", "titulo": "Livro disponível", "autor": "", "isbn": "", "available_copies": 1}]
     assert loan.status_code == 201
     assert loan.get_json()["aluno_id"] == "student-1"
-    assert generic_book_qr.status_code == 400
-    assert captured["student_id"] == "student-1"
-    assert captured["created_by"] == "autoatendimento"
-    assert captured["body"] == {
+    assert generic_book_qr.status_code == 201
+    assert captured[1]["body"]["exemplar"] == "001"
+    assert captured[1]["student_id"] == "student-1"
+    assert student_card_qr.status_code == 400
+    assert "carteirinha de aluno" in student_card_qr.get_json()["error"]
+    assert captured[0]["student_id"] == "student-1"
+    assert captured[0]["created_by"] == "autoatendimento"
+    assert captured[0]["body"] == {
         "livro_id": "book-1",
         "exemplar": "001",
         "dias": 7,
@@ -361,6 +544,8 @@ def test_renewal_ignores_client_days_and_uses_admin_setting(monkeypatch):
 
     loan = {
         "id": "loan-1",
+        "livro_id": "book-1",
+        "exemplar": "001",
         "data_devolucao_prevista": "2026-10-15",
         "renovacoes": 0,
         "devolvido_em": None,
@@ -400,7 +585,7 @@ def test_renewal_ignores_client_days_and_uses_admin_setting(monkeypatch):
     with app.test_request_context(
         "/api/loans/loan-1/renew",
         method="POST",
-        json={"dias": 1},
+        json={"dias": 1, "exemplar_qr": "EXEMPLAR-book-1-EX-001"},
     ):
         response = loans_module.renew_loan("loan-1")
 

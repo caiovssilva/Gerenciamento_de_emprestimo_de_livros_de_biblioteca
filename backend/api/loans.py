@@ -75,28 +75,31 @@ def _find_student_by_ref(sb, student_ref):
 def _matches_loan_exemplar_qr(loan, scanned_qr):
     code = str(scanned_qr or "").strip()
     prefix = "EXEMPLAR-"
-    if not code.startswith(prefix):
+    loan_exemplar_id = str(loan.get("exemplar_id", "")).strip()
+
+    def without_prefix(value):
+        value = str(value or "").strip()
+        return value[len(prefix):] if value.upper().startswith(prefix) else value
+
+    if loan_exemplar_id and without_prefix(code).casefold() == without_prefix(loan_exemplar_id).casefold():
+        return True
+    if not code.upper().startswith(prefix):
         return False
 
     rest = code[len(prefix):]
     if "-EX-" not in rest:
         return False
     book_id, tail = rest.split("-EX-", 1)
-    parts = tail.split("-", 1)
-    exemplar_code = parts[0]
-    exemplar_id_suffix = parts[1] if len(parts) == 2 else ""
+    exemplar_code = tail.split("-", 1)[0]
 
-    if book_id != str(loan.get("livro_id", "")) or exemplar_code != str(loan.get("exemplar", "")):
-        return False
+    def normalize_code(value):
+        value = str(value or "").strip()
+        return str(int(value)) if value.isdigit() else value.casefold()
 
-    loan_exemplar_id = str(loan.get("exemplar_id", "")).strip()
-    if loan_exemplar_id.startswith(prefix):
-        return code == loan_exemplar_id
-    if "-EX-" in loan_exemplar_id:
-        return rest == loan_exemplar_id
-    if loan_exemplar_id:
-        return exemplar_id_suffix == loan_exemplar_id
-    return True
+    return (
+        book_id.casefold() == str(loan.get("livro_id", "")).strip().casefold()
+        and normalize_code(exemplar_code) == normalize_code(loan.get("exemplar"))
+    )
 
 
 @loans_bp.route("/", methods=["GET"])
@@ -172,10 +175,11 @@ def _create_loan_record(body, forced_student_id=None, created_by_override=None):
 
 
 @loans_bp.route("/<loan_id>/renew", methods=["POST"])
-def renew_loan(loan_id):
+def renew_loan(loan_id, trusted_self_service=False):
     """Renova um empréstimo ativo, estendendo a data de devolução prevista."""
     from api.controle import get_self_service_settings
 
+    body = request.get_json(force=True) or {}
     days = get_self_service_settings()["renewal_days"]
     sb = get_client()
     try:    loans = sb_exec(sb.table("emprestimos").select("*").eq("id",loan_id))
@@ -183,6 +187,12 @@ def renew_loan(loan_id):
     if not loans: return jsonify({"error":"Empréstimo não encontrado"}),404
     loan = loans[0]
     if loan.get("devolvido_em"): return jsonify({"error":"Empréstimo já foi devolvido — não é possível renovar"}),409
+    if not trusted_self_service:
+        exemplar_qr = body.get("exemplar_qr")
+        if not exemplar_qr:
+            return jsonify({"error":"Leia o QR do exemplar emprestado para confirmar a renovação."}),400
+        if not _matches_loan_exemplar_qr(loan, exemplar_qr):
+            return jsonify({"error":"O QR lido não corresponde ao exemplar deste empréstimo."}),403
 
     base = loan.get("data_devolucao_prevista") or today_str()
     nova_data = add_days(base, days)
@@ -204,7 +214,7 @@ def renew_loan(loan_id):
 
 
 @loans_bp.route("/<loan_id>/return", methods=["POST"])
-def return_loan(loan_id):
+def return_loan(loan_id, trusted_self_service=False):
     body = request.get_json(force=True) or {}
     sb   = get_client()
     try:    loans = sb_exec(sb.table("emprestimos").select("*").eq("id",loan_id))
@@ -212,11 +222,12 @@ def return_loan(loan_id):
     if not loans: return jsonify({"error":"Empréstimo não encontrado"}),404
     if loans[0].get("devolvido_em"): return jsonify({"error":"Empréstimo já foi devolvido"}),409
 
-    exemplar_qr = body.get("exemplar_qr")
-    if not exemplar_qr:
-        return jsonify({"error":"Leia o QR do exemplar emprestado para confirmar a devolução."}),400
-    if not _matches_loan_exemplar_qr(loans[0], exemplar_qr):
-        return jsonify({"error":"O QR lido não corresponde ao exemplar deste empréstimo."}),403
+    if not trusted_self_service:
+        exemplar_qr = body.get("exemplar_qr")
+        if not exemplar_qr:
+            return jsonify({"error":"Leia o QR do exemplar emprestado para confirmar a devolução."}),400
+        if not _matches_loan_exemplar_qr(loans[0], exemplar_qr):
+            return jsonify({"error":"O QR lido não corresponde ao exemplar deste empréstimo."}),403
 
     student_ref = body.get("student_id") or body.get("student_qr") or body.get("student_card") or body.get("carteirinha")
     if student_ref:

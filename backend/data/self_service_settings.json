@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "allow_borrow": true,
+  "allow_return": true,
+  "allow_renew": true,
+  "renewal_days": 7
+}

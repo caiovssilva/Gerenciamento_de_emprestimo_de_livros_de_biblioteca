@@ -191,6 +191,67 @@ def test_renew_accepts_authenticated_self_service_without_qr(monkeypatch):
     assert loan["renovacoes"] == 1
 
 
+def test_create_loan_ignores_custom_days_for_librarian(monkeypatch):
+    import api.controle as controle_module
+
+    class FakeTableQuery:
+        def __init__(self, table_name, rows):
+            self.table_name = table_name
+            self.rows = rows
+            self.inserted = None
+
+        def select(self, *_columns):
+            return self
+
+        def eq(self, field, value):
+            if field == "id":
+                self.rows = [row for row in self.rows if str(row.get(field)) == str(value)]
+            return self
+
+        def insert(self, payload):
+            self.inserted = payload
+            return [payload]
+
+    class FakeClient:
+        def __init__(self):
+            self.data = {
+                "livros": [{"id": "book-1", "titulo": "Livro Teste", "exemplares": 1, "exemplares_meta": [{"id": "copy-1", "code": "001"}]}],
+                "alunos": [{"id": "student-1", "nome": "Ana"}],
+            }
+
+        def table(self, name):
+            return FakeTableQuery(name, self.data.get(name, []))
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(loans_module, "get_client", lambda: fake_client)
+    monkeypatch.setattr(loans_module, "read_json", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(loans_module, "write_json", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(controle_module, "get_self_service_settings", lambda: {"renewal_days": 9})
+
+    def fake_sb_exec(query):
+        return query.rows if hasattr(query, "rows") else query
+
+    monkeypatch.setattr(loans_module, "sb_exec", fake_sb_exec)
+
+    with app.test_request_context(
+        "/api/loans/",
+        method="POST",
+        json={"livro_id": "book-1", "aluno_id": "student-1", "dias": 30, "data_emprestimo": "2026-10-01"},
+    ):
+        session = __import__("flask").session
+        session["access_scope"] = "staff_librarian"
+        response = loans_module._create_loan_record({
+            "livro_id": "book-1",
+            "aluno_id": "student-1",
+            "dias": 30,
+            "data_emprestimo": "2026-10-01",
+        })
+
+    assert response[1] == 201
+    payload = response[0].get_json()
+    assert payload["data_devolucao_prevista"] == utils.add_days("2026-10-01", 9)
+
+
 def test_legacy_book_cards_get_unique_qr_per_copy(monkeypatch):
     book = {
         "id": "book-legacy",

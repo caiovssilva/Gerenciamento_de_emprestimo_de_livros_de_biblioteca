@@ -254,11 +254,24 @@ body.theme-dark #login-screen {
   color: var(--hint); margin-top: 1rem;
 }
 .btn-self-service-entry {
-  display: block; width: 100%; min-height: 40px; margin-top: .55rem;
-  border: 1px solid var(--brand); border-radius: var(--r);
-  color: var(--brand); background: transparent; font-weight: 600; cursor: pointer;
+  display: flex; width: 100%; min-height: 52px; margin-top: .7rem;
+  align-items: center; justify-content: center; gap: .55rem;
+  padding: .55rem .9rem; border: 1px solid rgba(22, 101, 52, .35); border-radius: var(--r);
+  color: var(--green); background: linear-gradient(135deg, var(--green-bg), var(--surface));
+  font-weight: 700; cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
-.btn-self-service-entry:hover { background: var(--brand-light); }
+.btn-self-service-entry i { font-size: 19px; }
+.btn-self-service-entry span { font-size: 13px; }
+.btn-self-service-entry small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.btn-self-service-entry:hover {
+  border-color: var(--green); box-shadow: 0 8px 18px rgba(22, 101, 52, .14);
+  transform: translateY(-1px);
+}
+.btn-self-service-entry:focus-visible {
+  outline: 3px solid rgba(22, 163, 74, .25); outline-offset: 2px;
+}
+.btn-self-service-entry[hidden] { display: none; }
 .self-service-camera-screen {
   position: fixed; inset: 0; z-index: 1300;
   align-items: center; justify-content: center;

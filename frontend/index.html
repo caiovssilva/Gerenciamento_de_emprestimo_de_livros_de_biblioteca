@@ -41,7 +41,11 @@
     <p class="login-err" id="login-err"></p>
     <div class="login-divider">ou</div>
     <button type="button" class="btn-qr-login"><i class="ti ti-qrcode"></i>Entrar com carteirinha (QR Code)</button>
-    <button type="button" class="btn-self-service-entry" id="self-service-open-btn">Autoatendimento</button>
+    <button type="button" class="btn-self-service-entry" id="self-service-open-btn" hidden>
+      <i class="ti ti-device-desktop-analytics" aria-hidden="true"></i>
+      <span>Autoatendimento</span>
+      <small>Consultar sua situação</small>
+    </button>
     <p class="login-hint">Logins do banco: <strong>admin</strong> e <strong>bibliotecario</strong></p>
   </div>
 
@@ -103,7 +107,7 @@
           <span class="sb-user-name" id="sb-user-name">Administrador</span>
           <span id="sb-role-badge"></span>
         </div>
-        <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout"></i></button>
+        <button class="logout-btn" type="button" aria-label="Sair do sistema" title="Sair do sistema"><i class="ti ti-logout"></i></button>
       </footer>
     </nav>
 
@@ -213,6 +217,7 @@
                       <option value="7">7 dias (padrão)</option><option value="14">14 dias</option>
                       <option value="3">3 dias</option><option value="30">30 dias</option>
                     </select>
+                    <small id="loan-days-help" class="form-help">O prazo é definido pelo administrador.</small>
                   </div>
                 </div>
                 <div class="alert alert-amber"><i class="ti ti-calendar-due"></i><span id="due-date-text">Selecione o livro e o aluno.</span></div>
@@ -395,8 +400,8 @@
               <div class="control-renewal">
                 <span class="control-option-icon control-icon-renewal"><i class="ti ti-calendar-clock" aria-hidden="true"></i></span>
                 <div class="control-renewal-copy">
-                  <strong>Prazo fixo de renovação</strong>
-                  <small>O mesmo número de dias será aplicado em cada renovação.</small>
+                  <strong>Prazo fixo de empréstimo e renovação</strong>
+                  <small>O mesmo número de dias será aplicado no empréstimo e em cada renovação.</small>
                 </div>
                 <label class="control-days-field" for="self-service-setting-renewal_days">
                   <input type="number" id="self-service-setting-renewal_days" min="1" max="365" step="1" value="7" aria-label="Prazo fixo de renovação em dias">

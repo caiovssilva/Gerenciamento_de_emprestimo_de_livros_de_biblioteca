@@ -383,6 +383,7 @@ function _applyRolePermissions() {
   Utils.qsa('[data-role="admin"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
   Utils.qsa('[data-role="librarian-hide"]').forEach(el => el.classList.toggle("lib-hidden", isLibrarian));
   document.body.classList.toggle("role-librarian", isLibrarian);
+  updateLoanDaysControl();
   if (isLibrarian) {
     const active = Utils.qs(".page.active");
     const adminOnlyPages = ["alunos","salas","generos","relatorios","livros","controle"];
@@ -399,12 +400,45 @@ function isOperationAllowedForCurrentUser(setting) {
   return true;
 }
 
+function configuredLoanDays() {
+  const days = Number(selfServiceSettings.renewal_days);
+  return Number.isInteger(days) && days >= 1 && days <= 365 ? days : 7;
+}
+
+function updateLoanDaysControl() {
+  const select = Utils.el("loan-days");
+  if (!select) return;
+
+  const days = configuredLoanDays();
+  const isAdmin = currentUser?.role === "admin";
+  if (!isAdmin) {
+    select.innerHTML = `<option value="${days}">${days} dias (definido pelo administrador)</option>`;
+    select.value = String(days);
+  } else {
+    const options = [...new Set([days, 7, 14, 3, 30])];
+    select.innerHTML = options.map(option =>
+      `<option value="${option}">${option} dias${option === days ? " (padrão)" : ""}</option>`
+    ).join("");
+    select.value = String(days);
+  }
+  select.disabled = !isAdmin;
+  const help = Utils.el("loan-days-help");
+  if (help) {
+    help.textContent = isAdmin
+      ? "O administrador pode ajustar o prazo deste empréstimo."
+      : "Prazo definido pelo administrador; este perfil não pode alterá-lo.";
+  }
+}
+
 function updateSelfServiceEntryButton() {
   const button = Utils.el("self-service-open-btn");
   if (!button) return;
-  button.disabled = !selfServiceSettings.enabled;
-  button.setAttribute("aria-disabled", String(!selfServiceSettings.enabled));
-  button.title = selfServiceSettings.enabled ? "Abrir Autoatendimento" : "Autoatendimento desativado";
+  const enabled = Boolean(selfServiceSettings.enabled);
+  button.disabled = !enabled;
+  button.hidden = !enabled;
+  button.style.display = enabled ? "inline-flex" : "none";
+  button.setAttribute("aria-disabled", String(!enabled));
+  button.title = enabled ? "Abrir Autoatendimento" : "Autoatendimento desativado";
 }
 
 function updateSelfServiceBorrowButton() {
@@ -432,6 +466,7 @@ async function loadSelfServiceSettings() {
     }
     const daysInput = Utils.el("self-service-setting-renewal_days");
     if (daysInput) daysInput.value = selfServiceSettings.renewal_days;
+    updateLoanDaysControl();
     if (status) status.textContent = "Controles carregados.";
     return selfServiceSettings;
   } catch (error) {
@@ -454,7 +489,7 @@ async function saveSelfServiceSettings() {
   }
   settings.renewal_days = Number(Utils.el("self-service-setting-renewal_days").value);
   if (!Number.isInteger(settings.renewal_days) || settings.renewal_days < 1 || settings.renewal_days > 365) {
-    Utils.toast("O prazo de renovação deve ser um número inteiro entre 1 e 365 dias.", "error");
+    Utils.toast("O prazo de empréstimo e renovação deve ser um número inteiro entre 1 e 365 dias.", "error");
     return;
   }
   const status = Utils.el("self-service-settings-status");
@@ -464,6 +499,7 @@ async function saveSelfServiceSettings() {
   try {
     selfServiceSettings = await API.controle.updateSelfServiceSettings(settings);
     updateSelfServiceEntryButton();
+    updateLoanDaysControl();
     if (status) status.textContent = "Controles salvos.";
     Utils.toast("Controles do Autoatendimento atualizados.", "success");
   } catch (error) {
@@ -475,10 +511,15 @@ async function saveSelfServiceSettings() {
 }
 
 async function doLogout({ confirmPrompt = true, reason = "" } = {}) {
-  if (confirmPrompt && !await Utils.confirmDialog("Deseja sair do sistema?", {
-    title: "Sair",
-    confirmText: "Sair",
-  })) return;
+  if (confirmPrompt) {
+    const confirmed = await Utils.confirmDialog("Deseja realmente sair do sistema?", {
+      title: "Confirmar saída",
+      confirmText: "Sim, sair",
+      cancelText: "Continuar no sistema",
+      danger: true,
+    });
+    if (!confirmed) return;
+  }
   if (currentUser?.role === "self_service") await API.auth.selfServiceLogout().catch(() => {});
   currentUser = null;
   clearSessionCookie();
@@ -890,8 +931,11 @@ async function startSelfServiceBookScan() {
 
 // ── Empréstimo ────────────────────────────────────────────────────────
 function updateDueDate() {
-  const days = parseInt(Utils.el("loan-days").value) || 7;
+  const days = currentUser?.role === "admin"
+    ? parseInt(Utils.el("loan-days").value) || configuredLoanDays()
+    : configuredLoanDays();
   const base = Utils.el("loan-date").value || Utils.today();
+  Utils.el("loan-days").value = String(days);
   Utils.el("due-date-text").textContent = `Devolução prevista: ${Utils.fmtDate(Utils.addDays(base,days))} (em ${days} dias)`;
 }
 
@@ -1100,7 +1144,9 @@ async function confirmLoan() {
   if (!pendingLoan.book)    { Utils.toast("Selecione um livro.",  "error"); return; }
   if (!pendingLoan.exemplar){ Utils.toast("Selecione um exemplar.","error"); return; }
   if (!pendingLoan.student) { Utils.toast("Selecione um aluno.", "error"); return; }
-  const days = parseInt(Utils.el("loan-days").value) || 7;
+  const days = currentUser?.role === "admin"
+    ? parseInt(Utils.el("loan-days").value) || configuredLoanDays()
+    : configuredLoanDays();
   const date = Utils.el("loan-date").value || Utils.today();
   const obsEl = Utils.el("loan-obs");
   const obs = obsEl ? obsEl.value.trim() : "";
@@ -1126,7 +1172,8 @@ function resetLoanForm() {
   pendingLoan = { book:null, exemplar:null, student:null, exemplarId:null };
   ["isbn-input","student-input","loan-obs"].forEach(id => { const el=Utils.el(id); if(el) el.value=""; });
   Utils.el("loan-date").value = Utils.today();
-  Utils.el("loan-days").value = 7;
+  updateLoanDaysControl();
+  Utils.el("loan-days").value = String(configuredLoanDays());
   Utils.el("book-result").innerHTML    = "";
   Utils.el("student-result").innerHTML = "";
   updateDueDate();

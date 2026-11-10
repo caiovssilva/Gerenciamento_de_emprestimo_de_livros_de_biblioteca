@@ -1,8 +1,29 @@
 """api/loans.py — Empréstimos e devoluções com fallback JSON local."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from pathlib import Path
 from utils import get_client, sb_exec, new_id, today_str, add_days, loan_status
 from api._helpers import read_json, write_json, table_ok, is_offline_error
+
+
+def _coerce_days(value, fallback=7):
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        return max(1, min(365, int(fallback)))
+    return max(1, min(365, days))
+
+
+def _effective_loan_days(body):
+    from api.controle import get_self_service_settings
+
+    settings = get_self_service_settings()
+    default_days = _coerce_days(settings.get("renewal_days", 7), 7)
+    access_scope = session.get("access_scope")
+
+    if access_scope == "staff_admin":
+        requested = body.get("dias")
+        return default_days if requested is None else _coerce_days(requested, default_days)
+    return default_days
 
 loans_bp    = Blueprint("loans", __name__)
 DATA_DIR    = Path(__file__).resolve().parent.parent / "data"
@@ -129,8 +150,7 @@ def create_loan():
 
 def _create_loan_record(body, forced_student_id=None, created_by_override=None):
     book_id = body.get("livro_id"); student_id = forced_student_id or body.get("aluno_id")
-    try: days = max(1, int(body.get("dias",7)))
-    except: days = 7
+    days = _effective_loan_days(body)
     if not book_id or not student_id:
         return jsonify({"error":"livro_id e aluno_id são obrigatórios"}),400
     sb = get_client()
@@ -180,7 +200,10 @@ def renew_loan(loan_id, trusted_self_service=False):
     from api.controle import get_self_service_settings
 
     body = request.get_json(force=True) or {}
-    days = get_self_service_settings()["renewal_days"]
+    settings = get_self_service_settings()
+    days = settings["renewal_days"]
+    if session.get("access_scope") == "staff_admin" and body.get("dias") is not None:
+        days = _coerce_days(body.get("dias"), days)
     sb = get_client()
     try:    loans = sb_exec(sb.table("emprestimos").select("*").eq("id",loan_id))
     except: loans = [l for l in read_json(LOANS_FILE) if l.get("id")==loan_id]

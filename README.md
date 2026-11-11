@@ -1,70 +1,117 @@
-# 📚 Biblioteca IFES — Campus Aracruz v3
+# Sistema de Gerenciamento de Empréstimos da Biblioteca
 
-## Novidades desta versão
+Aplicação web para administração de acervo, alunos, empréstimos e devoluções,
+com relatórios, exportação CSV e leitura/geração de QR Codes.
 
-| Funcionalidade | Descrição |
-|---|---|
-| **QR Code inteligente** | Ao escanear, o sistema identifica automaticamente se é livro ou aluno e busca as informações |
-| **QR gerado no cadastro** | Ao criar livro ou aluno, o QR Code é gerado automaticamente e exibido |
-| **Cartão imprimível** | Gera cartão PNG (livro) ou carteirinha (aluno) com QR Code para impressão |
-| **Salas** | Crie salas físicas e associe alunos a elas |
-| **Gêneros de livro** | Categorize o acervo por tipo (Comédia, Ficção, Técnico...) com cor e ícone |
-| **Dashboard melhorado** | Mostra sala e gênero nas devoluções pendentes |
+## Tecnologias
 
-## Estrutura
+- Backend: Python, Flask e Supabase (PostgreSQL).
+- Frontend: HTML, CSS e JavaScript.
+- Testes: pytest no backend e `node --test` no frontend.
 
-```
-biblioteca/
-├── database.sql              ← Execute PRIMEIRO no Supabase
-├── backend/
-│   ├── app.py
-│   ├── api/
-│   │   ├── books.py          ← + genero_id + QR no POST
-│   │   ├── students.py       ← + sala_id + QR no POST
-│   │   ├── loans.py
-│   │   ├── reports.py
-│   │   ├── rooms.py          ← NOVO: CRUD de salas
-│   │   └── genres.py         ← NOVO: CRUD de gêneros
-│   ├── scanner/
-│   │   └── routes.py         ← + resolve QR → tipo + cartão PNG
-│   └── utils/
-└── frontend/
-    ├── index.html
-    └── assets/js/
-        ├── pages/
-        │   ├── books.js      ← + filtro gênero, QR, impressão
-        │   ├── students.js   ← + sala, QR, carteirinha
-        │   ├── loans.js      ← + sala/gênero no dashboard
-        │   ├── rooms.js      ← NOVO
-        │   └── genres.js     ← NOVO
-        └── qr-scanner.js     ← + resolve tipo automaticamente
-```
+## Requisitos
 
-## Início rápido
+- Python 3.11 ou superior.
+- Git.
+- Node.js para executar os testes JavaScript.
+- Projeto Supabase configurado para executar operações que dependem do banco.
+
+## Executar localmente
+
+1. Crie e ative um ambiente virtual:
+
+   ```bash
+   python -m venv .venv
+   ```
+
+   Linux/macOS:
+
+   ```bash
+   source .venv/bin/activate
+   ```
+
+   Windows PowerShell:
+
+   ```powershell
+   .venv\Scripts\Activate.ps1
+   ```
+
+2. Instale as dependências:
+
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+3. Configure as variáveis de ambiente do backend (por exemplo,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` e `SECRET_KEY`) como variáveis do
+   processo ou em `backend/.env`.
+
+   O arquivo [.env.example](.env.example) é apenas um modelo de referência na
+   raiz; o backend carrega `backend/.env`. Se já existir um `.env`, preserve-o:
+   não o substitua nem o versione. Nunca publique chaves ou segredos no
+   frontend, neste README ou em logs.
+
+4. Inicie o servidor:
+
+   ```bash
+   python backend/app.py
+   ```
+
+5. Abra <http://localhost:5000>.
+
+O Flask serve a aplicação frontend e a API. A API depende da conexão Supabase
+para as operações de negócio; quando o banco não estiver disponível, essas
+rotas podem retornar `503`. A rota `/api/health` verifica se o Flask responde;
+`/api/ready` verifica a prontidão do banco.
+
+## Testes
+
+Na raiz do repositório:
 
 ```bash
-# 1. Supabase — cole database.sql no SQL Editor e clique Run
-
-# 2. Backend
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python app.py   # → http://localhost:5000
-
-# 3. Frontend
-cd frontend
-python -m http.server 8080   # → http://localhost:8080
+python -m pytest backend/tests
+node --test frontend/tests/*.test.js
 ```
 
-## Login
-| Usuário | Senha |
-|---|---|
-| `admin` | `ifes2024` |
-| `biblioteca` | `ifes2024` |
+`pytest` precisa estar instalado no ambiente Python. Os testes podem usar mocks
+e não substituem validação com banco Supabase isolado ou navegador real.
 
-## Como funciona o QR Code
+Na última execução documentada em 30/10/2026, a suíte Python teve 180 aprovados
+e 12 falhos; os testes Node tiveram 7 aprovados. Consulte
+[as evidências e limitações da auditoria](docs/auditoria-final/13_EVIDENCIAS.md)
+antes de interpretar esses resultados.
 
-1. **Cadastrar livro/aluno** → QR Code é gerado automaticamente com o UUID do registro
-2. **Escanear na tela de empréstimo** → câmera captura, backend decodifica e identifica se é livro ou aluno, preenche o campo automaticamente
-3. **Botão QR** (🔲) na lista → exibe o QR Code com opção de baixar PNG
-4. **Botão Imprimir** (🖨️) → abre nova aba com cartão profissional para impressão
+## Estrutura principal
+
+```text
+backend/             API Flask, integrações e testes Python
+frontend/            interface web, módulos JavaScript e testes Node
+database.sql         script SQL do schema e políticas do Supabase
+docs/auditoria-final/ resultados e limites da auditoria mais recente
+docs/relatorio-tecnico/ documentação técnica do projeto
+```
+
+## Banco de dados
+
+O arquivo [database.sql](database.sql) descreve a estrutura e as políticas do
+banco. **Ele contém comandos destrutivos (`DROP ... CASCADE`)**: revise-o e faça
+backup antes de qualquer execução. Não o execute em uma base com dados que
+precisam ser preservados.
+
+## Segurança e limitações conhecidas
+
+Este README não certifica o sistema para produção. A auditoria estática
+registrou questões de autorização, configuração Supabase, segredo de sessão,
+QR e outros pontos ainda não validados dinamicamente. Use um ambiente isolado,
+credenciais de menor privilégio e segredos fortes; não exponha uma chave
+`service_role` ao navegador.
+
+Consulte [a conclusão da auditoria](docs/auditoria-final/15_CONCLUSAO_DA_VALIDACAO.md)
+e [a análise de segurança](docs/auditoria-final/09_AUDITORIA_DE_SEGURANCA.md)
+para detalhes e limitações.
+
+## Documentação
+
+- [Índice dos relatórios finais](docs/auditoria-final/00_RESUMO_DA_AUDITORIA.md)
+- [README do backend](backend/README.md)
+- [Andamento da auditoria](ANDAMENTO_AUDITORIA.md)

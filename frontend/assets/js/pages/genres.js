@@ -75,7 +75,11 @@ async function saveGenre() {
 }
 
 async function deleteGenre(id) {
-  if (!confirm("Excluir este gênero? Os livros vinculados ficarão sem gênero.")) return;
+  if (!await Utils.confirmDialog("Excluir este gênero? Os livros vinculados ficarão sem gênero.", {
+    title: "Excluir gênero",
+    confirmText: "Excluir gênero",
+    danger: true,
+  })) return;
   try {
     await API.genres.delete(id);
     Utils.toast("Gênero excluído.","info");
@@ -84,10 +88,10 @@ async function deleteGenre(id) {
   } catch(e) { Utils.toast(e.message,"error"); }
 }
 
-async function syncGenres() {
+async function syncGenres({ render = true } = {}) {
   try {
     const genres = await API.genres.list();
     Store.setGenres(genres);
-    renderGenres();
+    if (render && Utils.el("page-generos")?.classList.contains("active")) renderGenres();
   } catch(e) { console.warn("genres sync:", e.message); }
 }

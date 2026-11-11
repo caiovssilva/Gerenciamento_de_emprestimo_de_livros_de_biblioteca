@@ -1,0 +1,105 @@
+[
+  {
+    "id": "cd0db7a1-b9bf-4f94-9b7a-1fa389ec4a1d",
+    "nome": "Ana Paula Souza",
+    "turma": "INFO3A",
+    "carteirinha": "2024001",
+    "sala_id": "s1",
+    "is_librarian": true
+  },
+  {
+    "id": "1e3b0a1f-f10f-4ed0-80e0-a00d0066db5f",
+    "nome": "Carlos Eduardo Lima",
+    "turma": "INFO3A",
+    "carteirinha": "2024002",
+    "sala_id": "s1"
+  },
+  {
+    "id": "1808c89c-e206-44fd-a695-20324b57e2e0",
+    "nome": "Beatriz Ferreira",
+    "turma": "ELET2B",
+    "carteirinha": "2024003",
+    "sala_id": "s2"
+  },
+  {
+    "id": "d7956f55-1e83-47bc-b236-ee47533fb53c",
+    "nome": "Rafael Oliveira",
+    "turma": "ELET2B",
+    "carteirinha": "2024004",
+    "sala_id": "s2"
+  },
+  {
+    "id": "cb67bd72-37c1-4cd1-9a2a-a7fe6496ec03",
+    "nome": "Larissa Costa",
+    "turma": "EDIF1C",
+    "carteirinha": "2024005",
+    "sala_id": "s3"
+  },
+  {
+    "id": "a5d8012f-1862-41fa-81b7-8b71a73eec91",
+    "nome": "Pedro Henrique Nunes",
+    "turma": "INFO3A",
+    "carteirinha": "2024006",
+    "sala_id": "s1"
+  },
+  {
+    "id": "51c709e3-5ba4-41ea-a1f4-23735159c1d4",
+    "nome": "Teste",
+    "turma": "INF1A",
+    "carteirinha": "51c709e3"
+  },
+  {
+    "id": "c41e0ce2-b8c8-47c2-9d5d-0e07fa353c61",
+    "nome": "Aluno Card",
+    "turma": "INF1B",
+    "carteirinha": "c41e0ce2"
+  },
+  {
+    "id": "f15c7df3-a557-43eb-9057-cf65ca1f3bf2",
+    "nome": "Aluno Card 2",
+    "turma": "INF1B",
+    "carteirinha": "f15c7df3"
+  },
+  {
+    "id": "d7ed7e74-1c5d-4bf5-a05c-21c288462375",
+    "nome": "Aluno Card Fix",
+    "turma": "INF1C",
+    "carteirinha": "d7ed7e74"
+  },
+  {
+    "id": "0e51437e-09fe-4ef8-b7e1-b47c42243d65",
+    "nome": "caio",
+    "turma": "2",
+    "carteirinha": "0e51437e"
+  },
+  {
+    "id": "735eb389-c16a-4e33-9d1e-5568ad86d3dd",
+    "nome": "caio",
+    "turma": "2",
+    "carteirinha": "185548.1.32021194"
+  },
+  {
+    "id": "e36ff547-eb73-486d-a8cc-80f75f2a3b0d",
+    "nome": "Aluno QR",
+    "turma": "INF3A",
+    "carteirinha": "ALUQR001"
+  },
+  {
+    "id": "6f3fa176-3f3d-4b77-adef-36fa43706acd",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR002"
+  },
+  {
+    "id": "00ef7b96-121e-42e3-b0a9-0dddd18bccaf",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR777"
+  },
+  {
+    "id": "9d912f3e-f0ca-4be7-93ea-cb883ec1a286",
+    "nome": "Aluno QR Decode",
+    "turma": "INF3B",
+    "carteirinha": "ALUQR888"
+  }
+]

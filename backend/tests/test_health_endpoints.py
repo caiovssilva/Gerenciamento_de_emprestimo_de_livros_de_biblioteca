@@ -7,6 +7,15 @@ import utils
 from app import app
 
 
+def test_frontend_revalidates_html_and_caches_static_assets():
+    with app.test_client() as client:
+        page = client.get("/")
+        script = client.get("/assets/js/utils.js")
+
+    assert page.headers["Cache-Control"] == "no-cache, must-revalidate"
+    assert script.headers["Cache-Control"] == "public, max-age=3600"
+
+
 def test_health_stays_available_when_database_is_offline(monkeypatch):
     def unavailable_client():
         raise ConnectionError("Supabase indisponível")

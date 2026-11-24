@@ -9,6 +9,7 @@
  */
 
 const Charts = (() => {
+  const CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js";
   let _charts   = { summary: null, topbooks: null, byclass: null, exports: null };
   let _summarySeq = 0;
   let _topBooksSeq = 0;
@@ -25,6 +26,20 @@ const Charts = (() => {
       "#f97316","#eab308","#22c55e","#14b8a6",
     ],
   };
+
+  async function _ensureChartJs() {
+    if (typeof Chart !== "undefined") return true;
+
+    try {
+      await Utils.loadScript(CHART_JS_URL);
+      if (typeof Chart !== "undefined") return true;
+      throw new Error("Chart.js não foi disponibilizado após o carregamento.");
+    } catch (error) {
+      console.error("Não foi possível carregar Chart.js:", error);
+      Utils.toast("Não foi possível carregar os gráficos. Verifique sua conexão e tente novamente.", "error");
+      return false;
+    }
+  }
 
   // ── Opções base por tipo ───────────────────────────────────────
   function _opts(rawType) {
@@ -243,6 +258,7 @@ const Charts = (() => {
   return {
     async init() {
       this.destroy();
+      if (!await _ensureChartJs()) return;
       await Promise.all([
         _buildSummary( Utils.el("chart-type-summary")?.value  || "bar"),
         _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar"),
@@ -254,11 +270,12 @@ const Charts = (() => {
     start() { return this.init(); },
     stop() { this.destroy(); },
 
-    async changeSummaryType(t)  { await _buildSummary(t);  },
-    async changeTopBooksType(t) { await _buildTopBooks(t); },
-    async changeClassType(t)    { await _buildByClass(t);  },
+    async changeSummaryType(t)  { if (await _ensureChartJs()) await _buildSummary(t);  },
+    async changeTopBooksType(t) { if (await _ensureChartJs()) await _buildTopBooks(t); },
+    async changeClassType(t)    { if (await _ensureChartJs()) await _buildByClass(t);  },
 
     async refresh() {
+      if (!await _ensureChartJs()) return;
       await Promise.all([
         _buildSummary( Utils.el("chart-type-summary")?.value  || "bar"),
         _buildTopBooks(Utils.el("chart-type-topbooks")?.value || "bar"),

@@ -2,6 +2,9 @@
  * pages/books.js  —  Acervo com filtro por gênero + QR + cartão imprimível
  */
 
+let _booksPage = 1;
+let _booksFilterKey = "";
+
 function renderBooks() {
   const q      = (Utils.el("books-search")?.value||"").toLowerCase();
   const genre  = Utils.el("books-genre-filter")?.value||"";
@@ -25,6 +28,20 @@ function renderBooks() {
     (b.id||"").toLowerCase().startsWith(q)
   );
   if (genre) filtered = filtered.filter(b => b.genero_id === genre);
+  const filterKey = JSON.stringify([q, genre]);
+  if (filterKey !== _booksFilterKey) {
+    _booksFilterKey = filterKey;
+    _booksPage = 1;
+  }
+  const page = Utils.paginate(filtered, {
+    containerId: "books-pagination",
+    page: _booksPage,
+    onPageChange: nextPage => {
+      _booksPage = nextPage;
+      renderBooks();
+    },
+  });
+  _booksPage = page.page;
 
   const sel = Utils.el("books-genre-filter");
   if (sel) {
@@ -36,7 +53,7 @@ function renderBooks() {
   const tbody = Utils.el("books-tbody");
   if (!filtered.length) { tbody.innerHTML = Utils.emptyState("ti-books","Nenhum livro encontrado."); return; }
 
-  tbody.innerHTML = filtered.map(b => {
+  tbody.innerHTML = page.items.map(b => {
     const copies = b.exemplares||b.copies||1;
     const active = loanByBook.get(b.id) || 0;
     const avail  = copies - active;

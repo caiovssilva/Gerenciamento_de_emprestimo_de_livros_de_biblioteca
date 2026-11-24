@@ -3,6 +3,7 @@
  * Scanner QR local no navegador, com troca de câmera e fechamento confiável.
  */
 const QRScanner = (() => {
+  const JS_QR_URL = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
   const CAPTURE_INTERVAL_MS = 700;
   const READ_COOLDOWN_MS = 1800;
   const SERVER_DECODE_INTERVAL_MS = 1000;
@@ -424,6 +425,11 @@ const QRScanner = (() => {
   return {
     async start(inputId, cb, options = {}) {
       if (_stream || _container) stop();
+      if (!_getBarcodeDetector() && typeof window.jsQR !== "function") {
+        Utils.loadScript(JS_QR_URL).catch((error) => {
+          console.warn("Leitura QR local indisponível:", error);
+        });
+      }
       _inputId = inputId;
       _callback = cb;
       _frameHandler = typeof options.frameHandler === "function" ? options.frameHandler : null;

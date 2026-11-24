@@ -3,21 +3,40 @@
  * Empréstimos + Dashboard com sala e gênero.
  */
 
+let _loansPage = 1;
+let _loansFilterKey = "";
+
 function renderLoans() {
   const q      = (Utils.el("loans-search")?.value||"").toLowerCase();
   const filter = Utils.el("loans-filter")?.value||"";
   const books  = Store.books();
   const studs  = Store.students();
+  const bookById = new Map(books.map(book => [book.id, book]));
+  const studentById = new Map(studs.map(student => [student.id, student]));
 
   let loans = [...Store.loans()].sort((a,b)=>b.data_emprestimo.localeCompare(a.data_emprestimo));
   if (filter) loans = loans.filter(l=>Store.loanStatus(l)===filter);
   if (q) loans = loans.filter(l=>{
-    const b=books.find(x=>x.id===l.livro_id);
-    const s=studs.find(x=>x.id===l.aluno_id);
+    const b=bookById.get(l.livro_id);
+    const s=studentById.get(l.aluno_id);
     return (b&&(b.titulo||b.title||"").toLowerCase().includes(q))||
            (s&&(s.nome||s.name||"").toLowerCase().includes(q))||
            (s&&(s.turma||s.class||"").toLowerCase().includes(q));
   });
+  const filterKey = JSON.stringify([q, filter]);
+  if (filterKey !== _loansFilterKey) {
+    _loansFilterKey = filterKey;
+    _loansPage = 1;
+  }
+  const page = Utils.paginate(loans, {
+    containerId: "loans-pagination",
+    page: _loansPage,
+    onPageChange: nextPage => {
+      _loansPage = nextPage;
+      renderLoans();
+    },
+  });
+  _loansPage = page.page;
 
   const tbody = Utils.el("loans-tbody");
   const loanConfirmButton = Utils.el("loan-confirm-btn");
@@ -26,16 +45,16 @@ function renderLoans() {
   }
   if (!loans.length) { tbody.innerHTML = Utils.emptyState("ti-transfer","Nenhum registro encontrado."); return; }
 
-  tbody.innerHTML = loans.map((l,i)=>{
-    const b  = books.find(x=>x.id===l.livro_id);
-    const s  = studs.find(x=>x.id===l.aluno_id);
+  tbody.innerHTML = page.items.map((l,i)=>{
+    const b  = bookById.get(l.livro_id);
+    const s  = studentById.get(l.aluno_id);
     const st = Store.loanStatus(l);
     const dl = Utils.daysLeft(l.data_devolucao_prevista);
     const action = st!=="returned" && isOperationAllowedForCurrentUser("allow_return")
       ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>`
       : "";
     return `<tr>
-      <td class="td-muted" style="font-size:11px;">${String(i+1).padStart(3,"0")}</td>
+      <td class="td-muted" style="font-size:11px;">${String(page.startIndex+i+1).padStart(3,"0")}</td>
       <td><strong>${s?.nome||s?.name||"—"}</strong></td>
       <td>${s?.turma||s?.class||"—"}</td>
       <td>${b?.titulo||b?.title||"—"}</td>

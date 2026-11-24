@@ -1,7 +1,65 @@
 /**
  * assets/js/utils.js — Utilitários gerais: datas, toast, modal, DOM.
  */
+const _scriptLoads = new Map();
+
 const Utils = {
+  loadScript(src) {
+    if (_scriptLoads.has(src)) return _scriptLoads.get(src);
+
+    const promise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => {
+        script.remove();
+        _scriptLoads.delete(src);
+        reject(new Error(`Não foi possível carregar o script: ${src}`));
+      };
+      document.head.appendChild(script);
+    });
+
+    _scriptLoads.set(src, promise);
+    return promise;
+  },
+
+  paginate(items, { containerId, page = 1, pageSize = 50, onPageChange } = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return { items, page: 1, startIndex: 0 };
+
+    const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+    const currentPage = Math.min(Math.max(1, page), totalPages);
+    const startIndex = (currentPage - 1) * pageSize;
+    container.innerHTML = "";
+    container.hidden = totalPages <= 1;
+
+    if (totalPages > 1) {
+      const addButton = (label, nextPage, disabled) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-sm";
+        button.textContent = label;
+        button.disabled = disabled;
+        button.addEventListener("click", () => onPageChange?.(nextPage));
+        container.appendChild(button);
+      };
+
+      addButton("Anterior", currentPage - 1, currentPage === 1);
+      const status = document.createElement("span");
+      status.className = "table-pagination-status";
+      status.textContent = `Página ${currentPage} de ${totalPages} · ${items.length} registros`;
+      container.appendChild(status);
+      addButton("Próxima", currentPage + 1, currentPage === totalPages);
+    }
+
+    return {
+      items: items.slice(startIndex, startIndex + pageSize),
+      page: currentPage,
+      startIndex,
+    };
+  },
+
   today: () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;

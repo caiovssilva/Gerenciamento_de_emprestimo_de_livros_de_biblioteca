@@ -2,6 +2,9 @@
  * pages/students.js  —  Alunos com salas + QR + carteirinha imprimível
  */
 
+let _studentsPage = 1;
+let _studentsFilterKey = "";
+
 function renderStudents() {
   const q    = (Utils.el("students-search")?.value||"").toLowerCase();
   const cls  = Utils.el("students-class-filter")?.value||"";
@@ -37,11 +40,25 @@ function renderStudents() {
   if (q)    studs = studs.filter(s=>(s.nome||s.name||"").toLowerCase().includes(q)||(s.turma||s.class||"").toLowerCase().includes(q)||(s.carteirinha||s.card||"").includes(q));
   if (cls)  studs = studs.filter(s=>(s.turma||s.class)===cls);
   if (sala) studs = studs.filter(s=>s.sala_id===sala);
+  const filterKey = JSON.stringify([q, cls, sala]);
+  if (filterKey !== _studentsFilterKey) {
+    _studentsFilterKey = filterKey;
+    _studentsPage = 1;
+  }
+  const page = Utils.paginate(studs, {
+    containerId: "students-pagination",
+    page: _studentsPage,
+    onPageChange: nextPage => {
+      _studentsPage = nextPage;
+      renderStudents();
+    },
+  });
+  _studentsPage = page.page;
 
   const tbody = Utils.el("students-tbody");
   if (!studs.length) { tbody.innerHTML = Utils.emptyState("ti-users","Nenhum aluno encontrado."); return; }
 
-  tbody.innerHTML = studs.map(s => {
+  tbody.innerHTML = page.items.map(s => {
     const actives = loanMap.get(s.id) || [];
     const overdue = actives.filter(l=>Utils.daysLeft(l.data_devolucao_prevista)<0);
     const bcls    = overdue.length?"badge-red":actives.length?"badge-amber":"badge-green";

@@ -38,6 +38,7 @@ from sync_hub import realtime
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY", "narceu-biblioteca-2026-dev-only")
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600
 
 # ── Configuração de logging ──────────────────────────────────────────
 logging.basicConfig(
@@ -262,8 +263,10 @@ def serve_frontend(path):
     if path.startswith("api/"):
         return jsonify({"error": "Not found"}), 404
     if path and os.path.exists(os.path.join(FRONTEND_DIR, path)):
-        return send_from_directory(FRONTEND_DIR, path)
-    return send_from_directory(FRONTEND_DIR, "index.html")
+        return send_from_directory(FRONTEND_DIR, path, max_age=3600)
+    response = send_from_directory(FRONTEND_DIR, "index.html", max_age=0)
+    response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 
 @app.route('/favicon.ico')

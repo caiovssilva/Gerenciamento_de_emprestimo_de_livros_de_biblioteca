@@ -135,6 +135,7 @@ function toggleTheme() {
 let _syncInFlight = false;
 let _lastSuccessfulSyncTs = 0;
 const SYNC_COOLDOWN_MS = 7000;
+let _realtimeEventSource = null;
 
 function debounce(fn, wait = 120) {
   let timer = null;
@@ -601,9 +602,9 @@ function improveFormAccessibility() {
 
 
 // ── Sync ──────────────────────────────────────────────────────────────
-async function syncAll() {
+async function syncAll({ force = false } = {}) {
   await Promise.all([
-    syncData({ render: false }),
+    syncData({ force, render: false }),
     syncRooms({ render: false }),
     syncGenres({ render: false }),
   ]);
@@ -1723,10 +1724,53 @@ async function waitForDatabase() {
   }
 }
 
+function setupRealtimeSync() {
+  if (_realtimeEventSource || typeof EventSource === "undefined") return;
+
+  const refreshFromRealtimeEvent = debounce(async (event) => {
+    let payload = {};
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (currentUser?.role === "self_service") {
+      if (payload.resource === "loans" || payload.resource === "settings") {
+        await loadSelfServiceSettings();
+        await loadSelfServiceHistory();
+      }
+      return;
+    }
+
+    if (!currentUser) return;
+    await syncAll({ force: true });
+    if (payload.resource === "settings") {
+      await loadSelfServiceSettings();
+    }
+  }, 180);
+
+  _realtimeEventSource = new EventSource("/api/events");
+  _realtimeEventSource.onmessage = refreshFromRealtimeEvent;
+  _realtimeEventSource.onerror = () => {
+    const status = Utils.el("cloud-status");
+    if (status) {
+      status.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Reconectando sincronização...</span>`;
+    }
+  };
+  _realtimeEventSource.onopen = () => {
+    const status = Utils.el("cloud-status");
+    if (status && currentUser) {
+      status.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — tempo real</span>`;
+    }
+  };
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   await waitForDatabase();
   await loadSelfServiceSettings();
+  setupRealtimeSync();
   loadSupabaseConfig?.().then((config) => {
     if (!config) {
       const status = Utils.el("cloud-status");

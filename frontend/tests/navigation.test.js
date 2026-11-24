@@ -21,6 +21,8 @@ const configPageMarkup = loginMarkup.split('id="page-config"')[1].split('<!--')[
 assert.doesNotMatch(configPageMarkup, /self-service-setting-enabled/);
 const appSource = fs.readFileSync(path.join(__dirname, '../assets/js/app.js'), 'utf8');
 assert.match(appSource, /onError:\s*\(error\)\s*=>/);
+assert.match(appSource, /new EventSource\("\/api\/events"\)/);
+assert.match(appSource, /syncAll\(\{ force: true \}\)/);
 assert.match(appSource, /function leaveSelfServiceStudentSession\(\)/);
 assert.match(appSource, /self-service-login-screen.*style\.display = "flex"/s);
 assert.doesNotMatch(appSource, /onStop:\s*returnFromSelfServiceLoginScreen/);

@@ -6,7 +6,7 @@ import os, sys
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, jsonify, send_from_directory, request, session
+from flask import Flask, Response, jsonify, send_from_directory, request, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
@@ -34,6 +34,7 @@ from api.genres   import genres_bp
 from api.auth     import auth_bp
 from api.controle import controle_bp, librarian_operation_allowed
 from scanner.routes import qr_bp
+from sync_hub import realtime
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY", "narceu-biblioteca-2026-dev-only")
@@ -60,6 +61,29 @@ app.register_blueprint(genres_bp,   url_prefix="/api/genres")
 app.register_blueprint(qr_bp,       url_prefix="/api/qr")
 
 
+@app.route("/api/events")
+def realtime_events():
+    """Abre um canal SSE para atualizações feitas pela aplicação."""
+    subscriber = realtime.subscribe()
+
+    def stream():
+        try:
+            yield ": conectado\n\n"
+            while True:
+                try:
+                    message = subscriber.get(timeout=15)
+                    yield f"data: {message}\n\n"
+                except Exception:
+                    yield ": keepalive\n\n"
+        finally:
+            realtime.unsubscribe(subscriber)
+
+    response = Response(stream(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
 @app.route("/api/config/supabase", methods=["GET"])
 @app.route("/api/supabase-config", methods=["GET"])
 def legacy_supabase_config():
@@ -69,6 +93,28 @@ def legacy_supabase_config():
 
 @app.after_request
 def apply_security_headers(response):
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.path.startswith("/api/"):
+        if 200 <= response.status_code < 300:
+            path = request.path
+            resource = None
+            if "/api/books" in path:
+                resource = "books"
+            elif "/api/students" in path:
+                resource = "students"
+            elif "/api/loans" in path or "/api/auth/self-service/loans" in path:
+                resource = "loans"
+            elif "/api/rooms" in path:
+                resource = "rooms"
+            elif "/api/genres" in path:
+                resource = "genres"
+            elif "/api/controle/autoatendimento" in path:
+                resource = "settings"
+            elif "/api/reports/" in path:
+                resource = "reports"
+
+            if resource:
+                realtime.publish("data_changed", resource, request.method)
+
     # CSP compatível com frontend atual, incluindo execução por CDN, câmera,
     # WebSocket/Supabase e handlers legados inline.
     csp = (
@@ -92,6 +138,8 @@ def apply_security_headers(response):
 def restrict_self_service_api():
     """Limita a sessão do aluno ao próprio histórico e à saída."""
     if not request.path.startswith("/api/"):
+        return None
+    if request.path == "/api/events":
         return None
 
     scope = session.get("access_scope")
@@ -160,6 +208,7 @@ def require_database_for_api():
         "/api/supabase-config",
         "/api/books/isbn-lookup",
         "/api/books/isbn-vision",
+        "/api/events",
     }:
         return None
     try:

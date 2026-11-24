@@ -98,6 +98,12 @@ banco. **Ele contém comandos destrutivos (`DROP ... CASCADE`)**: revise-o e fa�
 backup antes de qualquer execução. Não o execute em uma base com dados que
 precisam ser preservados.
 
+Para que a execução local e o Render compartilhem livros e demais registros,
+ambos precisam usar o mesmo projeto Supabase (`SUPABASE_URL`). A interface
+atualiza os dados periodicamente e também recebe eventos do próprio servidor;
+se cada ambiente apontar para um projeto Supabase diferente, os registros
+continuarão separados e nenhuma sincronização de interface os combinará.
+
 ## Segurança e limitações conhecidas
 
 Este README não certifica o sistema para produção. A auditoria estática

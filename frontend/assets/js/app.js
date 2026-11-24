@@ -135,7 +135,10 @@ function toggleTheme() {
 let _syncInFlight = false;
 let _lastSuccessfulSyncTs = 0;
 const SYNC_COOLDOWN_MS = 7000;
+const CROSS_INSTANCE_SYNC_INTERVAL_MS = 15000;
 let _realtimeEventSource = null;
+let _crossInstanceSyncTimer = null;
+let _crossInstanceSyncInFlight = false;
 
 function debounce(fn, wait = 120) {
   let timer = null;
@@ -602,16 +605,16 @@ function improveFormAccessibility() {
 
 
 // ── Sync ──────────────────────────────────────────────────────────────
-async function syncAll({ force = false } = {}) {
+async function syncAll({ force = false, render = true } = {}) {
   await Promise.all([
     syncData({ force, render: false }),
     syncRooms({ render: false }),
     syncGenres({ render: false }),
   ]);
-  _renderActivePage();
+  if (render) _renderActivePage({ preserveLoanForm: force });
 }
 
-function _renderActivePage() {
+function _renderActivePage({ preserveLoanForm = false } = {}) {
   const activePage = Utils.qs(".page.active")?.id?.replace("page-", "") || "dashboard";
   if (activePage === "dashboard") renderDashboard();
   if (activePage === "livros") renderBooks();
@@ -620,8 +623,10 @@ function _renderActivePage() {
   if (activePage === "generos") renderGenres();
   if (activePage === "emprestimo") {
     renderLoans();
-    resetLoanForm();
-    renderLoanScanPanel();
+    if (!preserveLoanForm) {
+      resetLoanForm();
+      renderLoanScanPanel();
+    }
   }
   if (activePage === "relatorios") Charts.refresh();
 }
@@ -1761,9 +1766,22 @@ function setupRealtimeSync() {
   _realtimeEventSource.onopen = () => {
     const status = Utils.el("cloud-status");
     if (status && currentUser) {
-      status.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — tempo real</span>`;
+      status.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — sincronização ativa</span>`;
     }
   };
+}
+
+function setupCrossInstanceSync() {
+  if (_crossInstanceSyncTimer !== null) return;
+
+  _crossInstanceSyncTimer = setInterval(() => {
+    if (!currentUser || currentUser.role === "self_service" || document.hidden || _crossInstanceSyncInFlight) return;
+
+    _crossInstanceSyncInFlight = true;
+    syncAll({ force: true })
+      .catch(error => console.warn("cross-instance sync:", error.message))
+      .finally(() => { _crossInstanceSyncInFlight = false; });
+  }, CROSS_INSTANCE_SYNC_INTERVAL_MS);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -1771,6 +1789,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await waitForDatabase();
   await loadSelfServiceSettings();
   setupRealtimeSync();
+  setupCrossInstanceSync();
   loadSupabaseConfig?.().then((config) => {
     if (!config) {
       const status = Utils.el("cloud-status");

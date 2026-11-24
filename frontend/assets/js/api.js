@@ -14,6 +14,7 @@ async function apiFetch(path, options = {}, retryGatewayErrors = false) {
   try {
     const res = await fetch(API_BASE + path, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      cache: "no-store",
       ...options,
     });
     if (res.status === 204) return {};

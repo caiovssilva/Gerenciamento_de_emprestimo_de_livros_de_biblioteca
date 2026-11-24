@@ -23,6 +23,7 @@ const appSource = fs.readFileSync(path.join(__dirname, '../assets/js/app.js'), '
 assert.match(appSource, /onError:\s*\(error\)\s*=>/);
 assert.match(appSource, /new EventSource\("\/api\/events"\)/);
 assert.match(appSource, /syncAll\(\{ force: true \}\)/);
+assert.match(appSource, /setupCrossInstanceSync\(\)/);
 assert.match(appSource, /function leaveSelfServiceStudentSession\(\)/);
 assert.match(appSource, /self-service-login-screen.*style\.display = "flex"/s);
 assert.doesNotMatch(appSource, /onStop:\s*returnFromSelfServiceLoginScreen/);
@@ -65,12 +66,18 @@ const context = {
   console,
   document: {
     cookie: '',
+    hidden: false,
     body: { classList: classList() },
     addEventListener: () => {},
   },
   window: {},
   setTimeout: () => 1,
   clearTimeout: () => {},
+  setInterval: (callback, delay) => {
+    context.crossInstanceSyncCallback = callback;
+    context.crossInstanceSyncDelay = delay;
+    return 1;
+  },
   Utils: {
     el: getElement,
     qsa: (selector) => selector === '.page' ? pages
@@ -364,6 +371,23 @@ vm.runInContext(
   assert.strictEqual(syncOptions.length, 3);
   assert.strictEqual(syncOptions.every((options) => options.render === false), true);
   assert.strictEqual(roomRenders, 1, 'o sync agregado renderiza apenas a página ativa');
+
+  let crossInstanceSyncCalls = 0;
+  context.syncAll = async (options) => {
+    assert.strictEqual(options.force, true);
+    crossInstanceSyncCalls += 1;
+  };
+  vm.runInContext("currentUser = { role: 'admin' }", context);
+  context.setupCrossInstanceSync();
+  assert.strictEqual(context.crossInstanceSyncDelay, 15000);
+  context.crossInstanceSyncCallback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.strictEqual(crossInstanceSyncCalls, 1, 'usuários autenticados sincronizam com a base compartilhada');
+
+  context.document.hidden = true;
+  context.crossInstanceSyncCallback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.strictEqual(crossInstanceSyncCalls, 1, 'a sincronização não consulta a API em uma aba oculta');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

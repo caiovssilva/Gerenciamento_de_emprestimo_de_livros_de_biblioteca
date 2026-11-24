@@ -146,6 +146,11 @@ O backend continuará respondendo, mas o sistema aguardará a conexão com o Sup
 
 Configure o serviço Web com o diretório raiz do repositório, comando de build `pip install -r requirements.txt` e comando de inicialização `gunicorn --chdir backend app:app`. Defina o **Health Check Path** como `/api/health`; essa rota confirma que o Flask está respondendo sem depender do Supabase. Configure também `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (ou `SUPABASE_KEY`) e uma `SECRET_KEY` segura nas variáveis de ambiente do serviço. `/api/ready` verifica a conexão do banco e retorna `503` quando o Supabase não está disponível; não a use como health check do Render.
 
+Para compartilhar os mesmos dados entre a execução local e o Render, configure
+`SUPABASE_URL` nos dois ambientes para o mesmo projeto Supabase. A interface
+consulta atualizações periodicamente; eventos em tempo real são locais a cada
+processo. Projetos Supabase diferentes mantêm bases independentes.
+
 ---
 
 ## Login

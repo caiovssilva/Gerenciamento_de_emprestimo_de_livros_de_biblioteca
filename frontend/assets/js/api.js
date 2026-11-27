@@ -10,7 +10,9 @@ const API_BASE = (() => {
   return "http://localhost:5000/api";
 })();
 
-async function apiFetch(path, options = {}, retryGatewayErrors = false) {
+const DB_READ_RETRY_DELAYS_MS = [250, 750];
+
+async function apiFetch(path, options = {}, retryGatewayErrors = false, attempt = 0) {
   try {
     const res = await fetch(API_BASE + path, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -36,9 +38,17 @@ async function apiFetch(path, options = {}, retryGatewayErrors = false) {
     }
     return data;
   } catch (err) {
-    if (retryGatewayErrors && [502, 503, 504].includes(err.status)) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return apiFetch(path, options);
+    const method = String(options.method || "GET").toUpperCase();
+    const retryDatabaseRead = ["GET", "HEAD"].includes(method)
+      && attempt < DB_READ_RETRY_DELAYS_MS.length
+      && (err.status === 503 || err.status == null);
+    const retryGatewayRequest = retryGatewayErrors
+      && [502, 503, 504].includes(err.status)
+      && attempt === 0;
+    if (retryDatabaseRead || retryGatewayRequest) {
+      const delay = DB_READ_RETRY_DELAYS_MS[attempt] || 500;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return apiFetch(path, options, retryGatewayErrors, attempt + 1);
     }
     console.error("[API]", path, err.message || err);
     throw err;

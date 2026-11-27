@@ -93,6 +93,76 @@ def test_table_retries_transient_read_disconnections(monkeypatch, method):
     assert client.query.attempts == 2
 
 
+def test_table_retries_closed_http2_connection_on_read(monkeypatch):
+    class Request:
+        http_method = "GET"
+
+    class Response:
+        data = [{"id": "book-1"}]
+
+    class Query:
+        request = Request()
+
+        def __init__(self):
+            self.attempts = 0
+
+        def execute(self):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError(
+                    "Invalid input ConnectionInputs.RECV_DATA in state ConnectionState.CLOSED"
+                )
+            return Response()
+
+    class Client:
+        def __init__(self):
+            self.query = Query()
+
+        def table(self, _name):
+            return self.query
+
+    monkeypatch.setattr(sb.time, "sleep", lambda _delay: None)
+    client = Client()
+    result = sb.SupabaseTable(client, "livros").execute()
+
+    assert result == [{"id": "book-1"}]
+    assert client.query.attempts == 2
+
+
+def test_table_retries_temporarily_unavailable_resource_on_read(monkeypatch):
+    class Request:
+        http_method = "GET"
+
+    class Response:
+        data = [{"id": "student-1"}]
+
+    class Query:
+        request = Request()
+
+        def __init__(self):
+            self.attempts = 0
+
+        def execute(self):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("[Errno 11] Resource temporarily unavailable")
+            return Response()
+
+    class Client:
+        def __init__(self):
+            self.query = Query()
+
+        def table(self, _name):
+            return self.query
+
+    monkeypatch.setattr(sb.time, "sleep", lambda _delay: None)
+    client = Client()
+    result = sb.SupabaseTable(client, "alunos").execute()
+
+    assert result == [{"id": "student-1"}]
+    assert client.query.attempts == 2
+
+
 def test_table_does_not_retry_transient_write_disconnections(monkeypatch):
     class Request:
         http_method = "POST"

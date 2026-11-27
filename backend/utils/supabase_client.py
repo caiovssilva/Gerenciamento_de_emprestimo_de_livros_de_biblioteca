@@ -20,6 +20,8 @@ _NETWORK_ERROR_TOKENS = (
     "server disconnected",
     "remoteprotocolerror",
     "remote protocol error",
+    "connectioninputs.recv_data",
+    "resource temporarily unavailable",
 )
 _READ_RETRY_DELAYS = (0.25, 0.75)
 

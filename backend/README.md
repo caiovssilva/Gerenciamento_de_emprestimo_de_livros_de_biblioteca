@@ -299,6 +299,9 @@ Os arquivos em `backend/data/` são apenas dados históricos de desenvolvimento 
 
 ## Estrutura de pastas
 
+Para entender a arquitetura e seguir uma requisição passo a passo, consulte o
+[Guia para entender o backend](./GUIA_ENTENDENDO_BACKEND.md).
+
 ```
 .
 ├── README.md

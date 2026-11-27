@@ -3,6 +3,8 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
+let imageDataReadCount = 0;
+
 class FakeElement {
   constructor(tagName = 'div', id = '') {
     this.tagName = tagName.toUpperCase();
@@ -28,7 +30,10 @@ class FakeElement {
     this.videoHeight = 480;
     this.getContext = () => ({
       drawImage: () => {},
-      getImageData: () => ({ data: new Uint8ClampedArray(640 * 480 * 4), width: 640, height: 480 }),
+      getImageData: () => {
+        imageDataReadCount += 1;
+        return { data: new Uint8ClampedArray(640 * 480 * 4), width: 640, height: 480 };
+      },
     });
   }
 
@@ -187,6 +192,25 @@ vm.runInContext(source, context);
   await pendingStart;
   assert.strictEqual(trackStopCount, 3, 'A stream que chega depois do fechamento deveria ser parada imediatamente');
   assert.strictEqual(pendingOverlay.removed, true, 'A tela fechada não deveria ser reaberta após liberar a câmera');
+
+  nextMediaRequest = null;
+  let detectedValue = 'FAST-QR';
+  windowStub.BarcodeDetector = class {
+    async detect() {
+      return [{ rawValue: detectedValue }];
+    }
+  };
+  imageDataReadCount = 0;
+  let nativeDetectorCalled = false;
+  await context.window.QRScanner.start(null, (result) => {
+    nativeDetectorCalled = true;
+    assert.strictEqual(result.primary, detectedValue);
+    assert.strictEqual(result.source, 'client');
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.strictEqual(nativeDetectorCalled, true, 'O decodificador nativo deveria ler o QR');
+  assert.strictEqual(imageDataReadCount, 0, 'O leitor nativo não deveria copiar pixels para o JavaScript');
+  detectedValue = null;
   console.log('qr-scanner callback test passed');
 })().catch((error) => {
   console.error(error);

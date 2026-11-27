@@ -4,7 +4,7 @@
  */
 const QRScanner = (() => {
   const JS_QR_URL = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
-  const CAPTURE_INTERVAL_MS = 700;
+  const CAPTURE_INTERVAL_MS = 300;
   const READ_COOLDOWN_MS = 1800;
   const SERVER_DECODE_INTERVAL_MS = 1000;
 
@@ -235,10 +235,9 @@ const QRScanner = (() => {
       if (_statusEl) _statusEl.textContent = "Trocando câmera...";
       await _startWithPreferredCamera();
       if (_container !== container) return;
-      await refreshCameras();
-      if (_container !== container) return;
       if (_statusEl) _statusEl.textContent = "Procurando código...";
       _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
+      void refreshCameras();
     } catch (error) {
       Utils.toast("Não foi possível trocar a câmera: " + error.message, "error");
     } finally {
@@ -261,7 +260,6 @@ const QRScanner = (() => {
     _canvasEl.width = width;
     _canvasEl.height = height;
     ctx.drawImage(_videoEl, 0, 0, width, height);
-    const imageData = ctx.getImageData(0, 0, width, height);
 
     if (_frameHandler && !_frameRequestActive && now >= _nextFrameAt) {
       _frameRequestActive = true;
@@ -290,27 +288,6 @@ const QRScanner = (() => {
       }
     }
 
-    const jsQr = typeof window.jsQR === "function" ? window.jsQR : null;
-    if (jsQr) {
-      _decoding = true;
-      try {
-        const result = jsQr(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "attemptBoth",
-        });
-        if (result?.data) {
-          const candidate = String(result.data).trim();
-          if (candidate && candidate !== _lastDecodedValue) {
-            _lastDecodedValue = candidate;
-            _lastReadAt = Date.now();
-            _onFound({ primary: candidate, type: "unknown", data: null, codes: [candidate], source: "client" });
-            return;
-          }
-        }
-      } finally {
-        _decoding = false;
-      }
-    }
-
     const detector = _getBarcodeDetector();
     if (detector && typeof detector.detect === "function") {
       _decoding = true;
@@ -328,6 +305,28 @@ const QRScanner = (() => {
       } catch {
         _retryAt = Date.now() + 2500;
         if (_statusEl) _statusEl.textContent = "Não consegui ler ainda. Aponte melhor o QR ou troque a câmera.";
+      } finally {
+        _decoding = false;
+      }
+    }
+
+    const jsQr = typeof window.jsQR === "function" ? window.jsQR : null;
+    if (jsQr) {
+      _decoding = true;
+      try {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const result = jsQr(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "attemptBoth",
+        });
+        if (result?.data) {
+          const candidate = String(result.data).trim();
+          if (candidate && candidate !== _lastDecodedValue) {
+            _lastDecodedValue = candidate;
+            _lastReadAt = Date.now();
+            _onFound({ primary: candidate, type: "unknown", data: null, codes: [candidate], source: "client" });
+            return;
+          }
+        }
       } finally {
         _decoding = false;
       }
@@ -444,11 +443,10 @@ const QRScanner = (() => {
         if (_statusEl) _statusEl.textContent = "Solicitando permissão da câmera...";
         await _startWithPreferredCamera();
         if (_container !== container) return;
-        await refreshCameras();
-        if (_container !== container) return;
         if (_statusEl) _statusEl.textContent = "Procurando código...";
         clearInterval(_timer);
         _timer = setInterval(_capture, CAPTURE_INTERVAL_MS);
+        void refreshCameras();
       } catch (error) {
         if (_container !== container) return;
         if (_statusEl) _statusEl.textContent = "Câmera indisponível.";

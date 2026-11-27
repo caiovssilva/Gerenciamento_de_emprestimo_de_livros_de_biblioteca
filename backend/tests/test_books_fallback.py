@@ -1,26 +1,38 @@
-import json
 import sys
 from pathlib import Path
+
+import pytest
+from werkzeug.exceptions import HTTPException
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as app_module
 import api.books as books_module
+import api._helpers as helpers_module
 
 
-def test_list_books_falls_back_to_local_data_when_supabase_is_unavailable(monkeypatch):
+def test_list_books_does_not_fall_back_to_local_data_when_supabase_is_unavailable(monkeypatch):
     def failing_client():
         raise OSError("[Errno -2] Name or service not known")
 
     monkeypatch.setattr(books_module, "get_client", failing_client)
 
     with app_module.app.test_request_context("/api/books/?q=&genre="):
-        response = books_module.list_books()
+        with pytest.raises(HTTPException) as error:
+            books_module.list_books()
 
-    assert response.status_code == 200
-    data = json.loads(response.get_data(as_text=True))
-    assert isinstance(data, list)
-    assert data
+    assert error.value.code == 503
+
+
+def test_database_records_cannot_be_written_to_local_json_during_request(tmp_path):
+    local_file = tmp_path / "alunos.json"
+
+    with app_module.app.test_request_context("/api/students/", method="POST"):
+        with pytest.raises(HTTPException) as error:
+            helpers_module.write_json(local_file, [{"id": "local-student"}])
+
+    assert error.value.code == 503
+    assert not local_file.exists()
 
 
 def test_delete_book_with_loan_history_does_not_delete_book_or_touch_students(monkeypatch):

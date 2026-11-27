@@ -143,5 +143,9 @@ async function syncRooms({ render = true } = {}) {
     const rooms = await API.rooms.list();
     Store.setRooms(rooms);
     if (render && Utils.el("page-salas")?.classList.contains("active")) renderRooms();
-  } catch(e) { console.warn("rooms sync:", e.message); }
+  } catch(e) {
+    Store.setRooms([]);
+    console.warn("rooms sync:", e.message);
+    if (render && Utils.el("page-salas")?.classList.contains("active")) renderRooms();
+  }
 }

@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "allow_borrow": true,
   "allow_return": true,
   "allow_renew": true,

@@ -71,7 +71,16 @@ const QRScanner = (() => {
         <div class="cam-viewport">
           <video id="cam-video" autoplay playsinline muted></video>
           <canvas id="cam-canvas" style="display:none;"></canvas>
-          <div class="cam-reticle"></div>
+          <div class="cam-reticle" aria-hidden="true">
+            <div class="cam-reticle-frame">
+              <span class="cam-reticle-corner cam-reticle-corner--tl"></span>
+              <span class="cam-reticle-corner cam-reticle-corner--tr"></span>
+              <span class="cam-reticle-corner cam-reticle-corner--bl"></span>
+              <span class="cam-reticle-corner cam-reticle-corner--br"></span>
+              <span class="cam-reticle-scanline"></span>
+            </div>
+            <span class="cam-reticle-hint">Centralize o QR Code</span>
+          </div>
         </div>
         <p class="cam-status">Inicializando câmera...</p>
         <button class="btn btn-danger cam-cancel-btn" type="button" aria-label="Fechar câmera">

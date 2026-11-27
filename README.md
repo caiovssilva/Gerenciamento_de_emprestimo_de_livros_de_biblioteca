@@ -64,6 +64,11 @@ para as operações de negócio; quando o banco não estiver disponível, essas
 rotas podem retornar `503`. A rota `/api/health` verifica se o Flask responde;
 `/api/ready` verifica a prontidão do banco.
 
+Os registros de livros, alunos, empréstimos, salas e gêneros vêm somente do
+Supabase: a interface não os persiste no navegador, e a API não os substitui
+por arquivos JSON locais. Se o banco ficar indisponível, esses dados deixam de
+ser exibidos até a conexão voltar.
+
 ## Testes
 
 Na raiz do repositório:

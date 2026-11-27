@@ -56,3 +56,66 @@ def test_get_client_returns_cached_connection_when_online(monkeypatch):
 
     assert client is client2
     assert isinstance(client, SuccessfulClient)
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_table_retries_transient_read_disconnections(monkeypatch, method):
+    class Request:
+        http_method = method
+
+    class Response:
+        data = [{"id": "book-1"}]
+
+    class Query:
+        request = Request()
+
+        def __init__(self):
+            self.attempts = 0
+
+        def execute(self):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise ConnectionError("Server disconnected")
+            return Response()
+
+    class Client:
+        def __init__(self):
+            self.query = Query()
+
+        def table(self, _name):
+            return self.query
+
+    monkeypatch.setattr(sb.time, "sleep", lambda _delay: None)
+    client = Client()
+    result = sb.SupabaseTable(client, "livros").execute()
+
+    assert result == [{"id": "book-1"}]
+    assert client.query.attempts == 2
+
+
+def test_table_does_not_retry_transient_write_disconnections(monkeypatch):
+    class Request:
+        http_method = "POST"
+
+    class Query:
+        request = Request()
+
+        def __init__(self):
+            self.attempts = 0
+
+        def execute(self):
+            self.attempts += 1
+            raise ConnectionError("Server disconnected")
+
+    class Client:
+        def __init__(self):
+            self.query = Query()
+
+        def table(self, _name):
+            return self.query
+
+    client = Client()
+    with pytest.raises(Exception, match="Supabase indisponível"):
+        sb.SupabaseTable(client, "emprestimos").execute()
+
+    assert client.query.attempts == 1

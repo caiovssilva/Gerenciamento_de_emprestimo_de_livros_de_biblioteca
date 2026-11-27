@@ -93,5 +93,9 @@ async function syncGenres({ render = true } = {}) {
     const genres = await API.genres.list();
     Store.setGenres(genres);
     if (render && Utils.el("page-generos")?.classList.contains("active")) renderGenres();
-  } catch(e) { console.warn("genres sync:", e.message); }
+  } catch(e) {
+    Store.setGenres([]);
+    console.warn("genres sync:", e.message);
+    if (render && Utils.el("page-generos")?.classList.contains("active")) renderGenres();
+  }
 }

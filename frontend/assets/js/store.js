@@ -2,13 +2,15 @@
  * assets/js/store.js — Estado global da aplicação.
  */
 const Store = (() => {
-  const LS = {
-    get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-    set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-  };
-
   let _books=[], _students=[], _loans=[], _rooms=[], _genres=[];
   const _state = { books: _books, students: _students, loans: _loans, rooms: _rooms, genres: _genres };
+
+  try {
+    ["lib_books", "lib_students", "lib_loans", "lib_rooms", "lib_genres"]
+      .forEach(key => localStorage.removeItem(key));
+  } catch (error) {
+    console.warn("Não foi possível remover caches antigos da biblioteca:", error);
+  }
 
   function _normBook(b) {
     return { ...b, title: b.titulo||b.title||"", author: b.autor||b.author||"", copies: b.exemplares||b.copies||1 };
@@ -34,11 +36,20 @@ const Store = (() => {
     genres:   () => _genres,
     state:    () => _syncState(),
 
-    setBooks:    arr => { _books    = arr.map(_normBook);    LS.set("lib_books",    _books);    _syncState(); },
-    setStudents: arr => { _students = arr.map(_normStudent); LS.set("lib_students", _students); _syncState(); },
-    setLoans:    arr => { _loans    = arr;                   LS.set("lib_loans",    _loans);    _syncState(); },
-    setRooms:    arr => { _rooms    = arr;                   LS.set("lib_rooms",    _rooms);    _syncState(); },
-    setGenres:   arr => { _genres   = arr;                   LS.set("lib_genres",   _genres);   _syncState(); },
+    setBooks:    arr => { _books    = arr.map(_normBook);    _syncState(); },
+    setStudents: arr => { _students = arr.map(_normStudent); _syncState(); },
+    setLoans:    arr => { _loans    = arr;                   _syncState(); },
+    setRooms:    arr => { _rooms    = arr;                   _syncState(); },
+    setGenres:   arr => { _genres   = arr;                   _syncState(); },
+
+    clear() {
+      _books = [];
+      _students = [];
+      _loans = [];
+      _rooms = [];
+      _genres = [];
+      _syncState();
+    },
 
     setPartial: (partial = {}) => {
       if (Array.isArray(partial.books)) _books = partial.books.map(_normBook);
@@ -46,15 +57,6 @@ const Store = (() => {
       if (Array.isArray(partial.loans)) _loans = partial.loans;
       if (Array.isArray(partial.rooms)) _rooms = partial.rooms;
       if (Array.isArray(partial.genres)) _genres = partial.genres;
-      _syncState();
-    },
-
-    loadLocal() {
-      _books    = (LS.get("lib_books")    ||[]).map(_normBook);
-      _students = (LS.get("lib_students") ||[]).map(_normStudent);
-      _loans    = LS.get("lib_loans")    || [];
-      _rooms    = LS.get("lib_rooms")    || [];
-      _genres   = LS.get("lib_genres")   || [];
       _syncState();
     },
 

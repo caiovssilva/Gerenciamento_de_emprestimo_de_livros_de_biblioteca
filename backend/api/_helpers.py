@@ -3,9 +3,23 @@ import json
 import logging
 from pathlib import Path
 from utils import sb_exec
-from flask import current_app
+from flask import abort, current_app, has_request_context
 
 logger = logging.getLogger(__name__)
+
+DATABASE_DATA_FILES = {
+    "alunos.json",
+    "emprestimos.json",
+    "generos.json",
+    "livros.json",
+    "salas.json",
+}
+
+
+def _reject_local_database_data(path: Path):
+    if has_request_context() and Path(path).name in DATABASE_DATA_FILES:
+        abort(503, description="Não foi possível consultar o banco agora. Dados locais não serão usados.")
+
 
 def ensure(path: Path):
     """Garante que o arquivo JSON existe."""
@@ -16,6 +30,7 @@ def ensure(path: Path):
 
 def read_json(path: Path):
     """Lê um arquivo JSON com tratamento de erro."""
+    _reject_local_database_data(path)
     ensure(path)
     try:
         content = path.read_text(encoding="utf-8") or "[]"
@@ -30,6 +45,7 @@ def read_json(path: Path):
 
 def write_json(path: Path, data: list) -> bool:
     """Escreve dados em arquivo JSON com validação."""
+    _reject_local_database_data(path)
     ensure(path)
     try:
         if not isinstance(data, (list, dict)):

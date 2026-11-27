@@ -778,9 +778,8 @@ def list_books():
     if genre:
         books = [b for b in books if b.get("genero_id") == genre]
 
-    gmap = {g["id"]: g for g in read_json(GENR_FILE)}
     for b in books:
-        g = b.pop("generos", None) or gmap.get(b.get("genero_id"), {})
+        g = b.pop("generos", None) or {}
         b["genero_nome"] = g.get("nome",""); b["genero_cor"] = g.get("cor",""); b["genero_icone"] = g.get("icone","")
     return jsonify(books)
 

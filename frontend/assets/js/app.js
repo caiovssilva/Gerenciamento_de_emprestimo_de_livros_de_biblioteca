@@ -652,9 +652,10 @@ async function syncData({ force = false, render = true } = {}) {
     _lastSuccessfulSyncTs = Date.now();
     if (st) st.innerHTML = `<span style="color:var(--green)"><i class="ti ti-cloud-check"></i> Conectado — ${new Date().toLocaleTimeString("pt-BR")}</span>`;
     if (render) _renderActivePage();
-  } catch {
-    if (st) st.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Offline — cache local</span>`;
-    Store.loadLocal();
+  } catch (error) {
+    Store.clear();
+    if (st) st.innerHTML = `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Banco indisponível — aguardando reconexão</span>`;
+    console.warn("Sincronização de dados interrompida:", error.message);
     if (render) _renderActivePage();
   } finally {
     _syncInFlight = false;

@@ -1,5 +1,6 @@
 """Cliente central do Supabase; o sistema exige conexão real com o banco."""
 import os
+import time
 
 _URL  = os.getenv("SUPABASE_URL", "")
 _KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or ""
@@ -16,7 +17,11 @@ _NETWORK_ERROR_TOKENS = (
     "temporary failure",
     "network is unreachable",
     "certificate verify failed",
+    "server disconnected",
+    "remoteprotocolerror",
+    "remote protocol error",
 )
+_READ_RETRY_DELAYS = (0.25, 0.75)
 
 
 def _looks_like_offline_error(exc: Exception) -> bool:
@@ -54,12 +59,22 @@ class SupabaseTable:
     def delete(self):                 self.q = self.q.delete();                       return self
     def upsert(self, p, on_conflict=None): self.q = self.q.upsert(p, on_conflict=on_conflict); return self
     def execute(self):
-        try:
-            r = self.q.execute()
-        except Exception as exc:
-            if _looks_like_offline_error(exc):
+        method = getattr(getattr(self.q, "request", None), "http_method", None)
+        method = getattr(method, "value", method)
+        retry_delays = _READ_RETRY_DELAYS if method in {"GET", "HEAD"} else ()
+
+        for attempt in range(len(retry_delays) + 1):
+            try:
+                r = self.q.execute()
+                break
+            except Exception as exc:
+                if not _looks_like_offline_error(exc):
+                    raise
+                if attempt < len(retry_delays):
+                    time.sleep(retry_delays[attempt])
+                    continue
                 raise Exception("Supabase indisponível") from exc
-            raise
+
         if hasattr(r, "error") and r.error:
             raise Exception(r.error.message or str(r.error))
         if isinstance(r, dict) and r.get("error"):

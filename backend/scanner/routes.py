@@ -456,31 +456,15 @@ def book_card(book_id):
     Gera imagem PNG do cartão do livro com QR Code para impressão.
     """
     try:
-        from pathlib import Path
-        from api._helpers import read_json
         from utils import get_client, sb_exec
 
-        data_dir = Path(__file__).resolve().parent.parent / "data"
-        books_file = data_dir / "livros.json"
-        genres_file = data_dir / "generos.json"
-
-        sb    = get_client()
-        book = None
-        try:
-            books = sb_exec(sb.table("livros").select("*").eq("id", book_id))
-        except Exception:
-            books = []
-        if books:
-            book = books[0]
-        if not book:
-            rows = [b for b in read_json(books_file) if b.get("id") == book_id or b.get("isbn") == book_id]
-            if rows:
-                book = rows[0]
+        sb = get_client()
+        books = sb_exec(sb.table("livros").select("*, generos(nome)").eq("id", book_id))
+        book = books[0] if books else None
         if not book:
             return jsonify({"error": "Livro não encontrado"}), 404
 
-        genres = {g.get("id"): g for g in read_json(genres_file)}
-        genero = genres.get(book.get("genero_id"), {})
+        genero = book.pop("generos", None) or {}
         book["genero_nome"] = book.get("genero_nome") or genero.get("nome", "")
 
         exemplares_meta = book.get("exemplares_meta") or []
@@ -548,31 +532,15 @@ def student_card(student_id):
     Gera imagem PNG da carteirinha do aluno com QR Code para impressão.
     """
     try:
-        from pathlib import Path
-        from api._helpers import read_json
         from utils import get_client, sb_exec
 
-        data_dir = Path(__file__).resolve().parent.parent / "data"
-        students_file = data_dir / "alunos.json"
-        rooms_file = data_dir / "salas.json"
-
-        sb       = get_client()
-        student = None
-        try:
-            students = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
-        except Exception:
-            students = []
-        if students:
-            student = students[0]
-        if not student:
-            rows = [s for s in read_json(students_file) if s.get("id") == student_id or s.get("carteirinha") == student_id]
-            if rows:
-                student = rows[0]
+        sb = get_client()
+        students = sb_exec(sb.table("alunos").select("*, salas(nome)").eq("id", student_id))
+        student = students[0] if students else None
         if not student:
             return jsonify({"error": "Aluno não encontrado"}), 404
 
-        rooms = {r.get("id"): r for r in read_json(rooms_file)}
-        sala_data = rooms.get(student.get("sala_id"), {})
+        sala_data = student.pop("salas", None) or {}
         sala_nome = sala_data.get("nome", "") or "Não atribuída"
 
         img_b64 = _build_card(

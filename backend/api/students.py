@@ -34,9 +34,8 @@ def list_students():
     if cls:  students = [s for s in students if s.get("turma")==cls]
     if sala: students = [s for s in students if s.get("sala_id")==sala]
 
-    rmap = {r["id"]: r for r in read_json(ROOMS_FILE)}
     for s in students:
-        sala_data = s.pop("salas", None) or rmap.get(s.get("sala_id"),{})
+        sala_data = s.pop("salas", None) or {}
         s["sala_nome"] = sala_data.get("nome",""); s["sala_codigo"] = sala_data.get("codigo","")
         s["is_librarian"] = bool(s.get("is_librarian", False))
     return jsonify(students)
@@ -48,7 +47,7 @@ def get_student(student_id):
     rows = []
     if table_ok(sb, "alunos"):
         try:
-            rows = sb_exec(sb.table("alunos").select("*").eq("carteirinha", student_id))
+            rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("carteirinha", student_id))
         except Exception:
             rows = []
         if not rows:
@@ -58,7 +57,7 @@ def get_student(student_id):
                 pass
             else:
                 try:
-                    rows = sb_exec(sb.table("alunos").select("*").eq("id", student_id))
+                    rows = sb_exec(sb.table("alunos").select("*, salas(nome,codigo)").eq("id", student_id))
                 except Exception:
                     rows = []
     if not rows:
@@ -66,8 +65,6 @@ def get_student(student_id):
         rows  = [s for s in all_s if s.get("id")==student_id or s.get("carteirinha")==student_id]
     if not rows: return jsonify({"error": "Aluno não encontrado"}), 404
     s = rows[0]; sala_data = s.pop("salas",None) or {}
-    rmap = {r["id"]:r for r in read_json(ROOMS_FILE)}
-    if not sala_data: sala_data = rmap.get(s.get("sala_id"),{})
     s["sala_nome"] = sala_data.get("nome",""); s["sala_codigo"] = sala_data.get("codigo","")
     s["is_librarian"] = bool(s.get("is_librarian", False))
     return jsonify(s)

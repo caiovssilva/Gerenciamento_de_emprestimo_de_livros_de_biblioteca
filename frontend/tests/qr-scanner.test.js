@@ -166,6 +166,8 @@ vm.runInContext(source, context);
   );
 
   const firstOverlay = documentStub.body.children.find((child) => child.id === 'cam-overlay');
+  assert.match(firstOverlay.innerHTML, /cam-reticle-frame/, 'A câmera deve exibir uma moldura central');
+  assert.match(firstOverlay.innerHTML, /cam-reticle-scanline/, 'A moldura deve indicar a área de leitura');
   const firstVideo = firstOverlay.querySelector('#cam-video');
   assert.strictEqual(trackStopCount, 1, 'A câmera deveria desligar após ler um código');
   assert.strictEqual(firstVideo.srcObject, null, 'O vídeo deveria soltar a stream após a leitura');

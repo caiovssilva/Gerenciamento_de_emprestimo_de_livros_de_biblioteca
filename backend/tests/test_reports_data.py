@@ -7,6 +7,19 @@ import app as app_module
 import api.reports as reports_module
 
 
+class Query:
+    def __init__(self, table):
+        self.table = table
+
+    def select(self, *_columns):
+        return self
+
+
+class Client:
+    def table(self, name):
+        return Query(name)
+
+
 def test_report_data_and_csv_remove_duplicate_records(monkeypatch):
     loan = {
         "id": "l1",
@@ -17,7 +30,8 @@ def test_report_data_and_csv_remove_duplicate_records(monkeypatch):
         "data_devolucao_prevista": "2026-06-08",
         "devolvido_em": None,
     }
-    monkeypatch.setattr(reports_module, "get_client", lambda: None)
+    monkeypatch.setattr(reports_module, "get_client", Client)
+    monkeypatch.setattr(reports_module, "sb_exec", lambda query: [])
     monkeypatch.setattr(
         reports_module,
         "_fetch_all",
@@ -43,7 +57,12 @@ def test_report_data_and_csv_remove_duplicate_records(monkeypatch):
 
 
 def test_student_directory_export_includes_students_without_loans_and_room_details(monkeypatch):
-    monkeypatch.setattr(reports_module, "get_client", lambda: None)
+    monkeypatch.setattr(reports_module, "get_client", Client)
+    monkeypatch.setattr(
+        reports_module,
+        "sb_exec",
+        lambda query: [{"id": "r1", "nome": "Sala 1", "codigo": "A"}] if query.table == "salas" else [],
+    )
     monkeypatch.setattr(reports_module, "_fetch_all", lambda _sb: (
         [],
         [
@@ -62,12 +81,6 @@ def test_student_directory_export_includes_students_without_loans_and_room_detai
         }],
     ))
     monkeypatch.setattr(reports_module, "loan_status", lambda loan: "overdue" if loan.get("id") == "l1" else "active")
-    monkeypatch.setattr(
-        reports_module,
-        "read_json",
-        lambda path: [{"id": "r1", "nome": "Sala 1", "codigo": "A"}] if str(path).endswith("salas.json") else [],
-    )
-
     with app_module.app.test_client() as client:
         response = client.get("/api/reports/data")
         exported = client.get("/api/reports/export/students")

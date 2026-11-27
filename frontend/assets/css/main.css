@@ -1142,17 +1142,79 @@ body.modal-open { overflow: hidden; }
   filter: none !important;
 }
 .cam-reticle {
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   pointer-events: none;
+  display: grid;
+  place-items: center;
 }
-.cam-reticle::before,
-.cam-reticle::after {
-  content: ""; position: absolute;
-  width: 28px; height: 28px;
-  border-color: #fff; border-style: solid;
+.cam-reticle-frame {
+  position: relative;
+  width: min(76%, 260px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255,255,255,.55);
+  border-radius: 16px;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.42);
 }
-.cam-reticle::before { top: 14px; left: 14px; border-width: 3px 0 0 3px; }
-.cam-reticle::after  { bottom: 14px; right: 14px; border-width: 0 3px 3px 0; }
+.cam-reticle-corner {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 3px solid #fff;
+  border-radius: 5px;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
+}
+.cam-reticle-corner--tl {
+  top: -2px;
+  left: -2px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.cam-reticle-corner--tr {
+  top: -2px;
+  right: -2px;
+  border-left: 0;
+  border-bottom: 0;
+}
+.cam-reticle-corner--bl {
+  bottom: -2px;
+  left: -2px;
+  border-right: 0;
+  border-top: 0;
+}
+.cam-reticle-corner--br {
+  right: -2px;
+  bottom: -2px;
+  border-left: 0;
+  border-top: 0;
+}
+.cam-reticle-scanline {
+  position: absolute;
+  top: 14%;
+  right: 12%;
+  left: 12%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #7dffbd, transparent);
+  box-shadow: 0 0 8px rgba(125,255,189,.8);
+  animation: cam-reticle-scan 2.2s ease-in-out infinite alternate;
+}
+.cam-reticle-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  left: 10px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0,0,0,.9);
+}
+@keyframes cam-reticle-scan {
+  to { top: 84%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cam-reticle-scanline { animation: none; }
+}
 .cam-status { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 
 /* ── CHARTS PAGE ───────────────────────────────────────────── */

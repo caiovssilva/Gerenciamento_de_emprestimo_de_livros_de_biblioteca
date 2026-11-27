@@ -1,0 +1,68 @@
+[
+  {
+    "id": "7dcd01d7-63ee-44fc-b065-4657d21b5c23",
+    "livro_id": "84ca2e5e-a13c-4f10-9ebf-48219a5d191f",
+    "aluno_id": "cd0db7a1-b9bf-4f94-9b7a-1fa389ec4a1d",
+    "exemplar": "001",
+    "data_emprestimo": "2026-06-06",
+    "data_devolucao_prevista": "2026-06-20",
+    "devolvido_em": null,
+    "observacao": "",
+    "criado_por": "biblioteca"
+  },
+  {
+    "id": "560a6ae6-baa2-4b94-a585-8e0f38b9a5a6",
+    "livro_id": "c2e64b28-4b77-480f-9d88-296dace7e0f8",
+    "aluno_id": "1e3b0a1f-f10f-4ed0-80e0-a00d0066db5f",
+    "exemplar": "001",
+    "data_emprestimo": "2026-05-30",
+    "data_devolucao_prevista": "2026-06-13",
+    "devolvido_em": null,
+    "observacao": "",
+    "criado_por": "biblioteca"
+  },
+  {
+    "id": "fc7580c7-ce50-4815-9fb5-993944d12449",
+    "livro_id": "bdf290cb-aa24-48fd-af3d-745da1e0cf62",
+    "aluno_id": "1808c89c-e206-44fd-a695-20324b57e2e0",
+    "exemplar": "001",
+    "data_emprestimo": "2026-05-22",
+    "data_devolucao_prevista": "2026-06-05",
+    "devolvido_em": null,
+    "observacao": "",
+    "criado_por": "admin"
+  },
+  {
+    "id": "612780c1-b2b1-4a99-b1e7-fd28ad83319b",
+    "livro_id": "dac33372-ced6-4d9c-b7a9-7e189260d140",
+    "aluno_id": "cb67bd72-37c1-4cd1-9a2a-a7fe6496ec03",
+    "exemplar": "001",
+    "data_emprestimo": "2026-05-27",
+    "data_devolucao_prevista": "2026-06-10",
+    "devolvido_em": null,
+    "observacao": "",
+    "criado_por": "biblioteca"
+  },
+  {
+    "id": "01e58863-17b0-49e5-b6d4-533396753dbe",
+    "livro_id": "e1b63b3a-8073-4b04-9f09-59943e58da8c",
+    "aluno_id": "d7956f55-1e83-47bc-b236-ee47533fb53c",
+    "exemplar": "001",
+    "data_emprestimo": "2026-05-12",
+    "data_devolucao_prevista": "2026-05-19",
+    "devolvido_em": "2026-05-18",
+    "observacao": "Devolvido antecipado",
+    "criado_por": "admin"
+  },
+  {
+    "id": "e1665850-1a61-4512-9bc9-4c9114f4a2a9",
+    "livro_id": "e21801df-a4d6-4aca-b62c-221277f4b315",
+    "aluno_id": "a5d8012f-1862-41fa-81b7-8b71a73eec91",
+    "exemplar": "001",
+    "data_emprestimo": "2026-06-01",
+    "data_devolucao_prevista": "2026-06-08",
+    "devolvido_em": "2026-06-08",
+    "observacao": "",
+    "criado_por": "biblioteca"
+  }
+]

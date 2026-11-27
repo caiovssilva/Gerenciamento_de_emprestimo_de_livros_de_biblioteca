@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+venvScriptsactivate/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+
+# Local data / runtime
+*.log

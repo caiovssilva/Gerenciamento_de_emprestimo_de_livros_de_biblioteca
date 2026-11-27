@@ -3,35 +3,58 @@
  * Empréstimos + Dashboard com sala e gênero.
  */
 
+let _loansPage = 1;
+let _loansFilterKey = "";
+
 function renderLoans() {
   const q      = (Utils.el("loans-search")?.value||"").toLowerCase();
   const filter = Utils.el("loans-filter")?.value||"";
   const books  = Store.books();
   const studs  = Store.students();
+  const bookById = new Map(books.map(book => [book.id, book]));
+  const studentById = new Map(studs.map(student => [student.id, student]));
 
   let loans = [...Store.loans()].sort((a,b)=>b.data_emprestimo.localeCompare(a.data_emprestimo));
   if (filter) loans = loans.filter(l=>Store.loanStatus(l)===filter);
   if (q) loans = loans.filter(l=>{
-    const b=books.find(x=>x.id===l.livro_id);
-    const s=studs.find(x=>x.id===l.aluno_id);
+    const b=bookById.get(l.livro_id);
+    const s=studentById.get(l.aluno_id);
     return (b&&(b.titulo||b.title||"").toLowerCase().includes(q))||
            (s&&(s.nome||s.name||"").toLowerCase().includes(q))||
            (s&&(s.turma||s.class||"").toLowerCase().includes(q));
   });
+  const filterKey = JSON.stringify([q, filter]);
+  if (filterKey !== _loansFilterKey) {
+    _loansFilterKey = filterKey;
+    _loansPage = 1;
+  }
+  const page = Utils.paginate(loans, {
+    containerId: "loans-pagination",
+    page: _loansPage,
+    onPageChange: nextPage => {
+      _loansPage = nextPage;
+      renderLoans();
+    },
+  });
+  _loansPage = page.page;
 
   const tbody = Utils.el("loans-tbody");
+  const loanConfirmButton = Utils.el("loan-confirm-btn");
+  if (loanConfirmButton) {
+    loanConfirmButton.disabled = !isOperationAllowedForCurrentUser("allow_borrow");
+  }
   if (!loans.length) { tbody.innerHTML = Utils.emptyState("ti-transfer","Nenhum registro encontrado."); return; }
 
-  tbody.innerHTML = loans.map((l,i)=>{
-    const b  = books.find(x=>x.id===l.livro_id);
-    const s  = studs.find(x=>x.id===l.aluno_id);
+  tbody.innerHTML = page.items.map((l,i)=>{
+    const b  = bookById.get(l.livro_id);
+    const s  = studentById.get(l.aluno_id);
     const st = Store.loanStatus(l);
     const dl = Utils.daysLeft(l.data_devolucao_prevista);
-    const action = st!=="returned"
+    const action = st!=="returned" && isOperationAllowedForCurrentUser("allow_return")
       ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>`
       : "";
     return `<tr>
-      <td class="td-muted" style="font-size:11px;">${String(i+1).padStart(3,"0")}</td>
+      <td class="td-muted" style="font-size:11px;">${String(page.startIndex+i+1).padStart(3,"0")}</td>
       <td><strong>${s?.nome||s?.name||"—"}</strong></td>
       <td>${s?.turma||s?.class||"—"}</td>
       <td>${b?.titulo||b?.title||"—"}</td>
@@ -42,6 +65,7 @@ function renderLoans() {
       <td>${action}</td>
     </tr>`;
   }).join("");
+
 }
 
 function renderDashboard() {
@@ -58,6 +82,31 @@ function renderDashboard() {
     <div class="metric-card"><div class="metric-label">Emprestados</div><div class="metric-val c-amber">${active.length}</div></div>
     <div class="metric-card"><div class="metric-label">Alunos cadastrados</div><div class="metric-val c-green">${studs.length}</div></div>
     <div class="metric-card"><div class="metric-label">Atrasados</div><div class="metric-val c-red">${overdue.length}</div></div>`;
+
+  const priorityStudents = studs
+    .map((student) => {
+      const studentLoans = loans.filter((loan) => loan.aluno_id === student.id && !loan.devolvido_em);
+      const overdueLoans = studentLoans.filter((loan) => Utils.daysLeft(loan.data_devolucao_prevista) < 0);
+      const urgentLoans = studentLoans.filter((loan) => Utils.daysLeft(loan.data_devolucao_prevista) >= 0 && Utils.daysLeft(loan.data_devolucao_prevista) <= 2);
+      return { student, studentLoans, overdueLoans, urgentLoans };
+    })
+    .filter((item) => item.studentLoans.length)
+    .sort((a, b) => {
+      if (b.overdueLoans.length !== a.overdueLoans.length) return b.overdueLoans.length - a.overdueLoans.length;
+      if (b.urgentLoans.length !== a.urgentLoans.length) return b.urgentLoans.length - a.urgentLoans.length;
+      return (a.student.nome || a.student.name || "").localeCompare(b.student.nome || b.student.name || "");
+    })
+    .slice(0, 6);
+
+  const priorityPanel = Utils.el("dashboard-priority-students");
+  if (priorityPanel) {
+    priorityPanel.innerHTML = priorityStudents.length
+      ? `<div class="card" style="margin-bottom:1rem;"><div class="card-header"><h2><i class="ti ti-user-check" style="vertical-align:-2px;margin-right:6px;color:var(--amber);"></i>Alunos com atenção</h2></div><div class="card-body">${priorityStudents.map(({ student, overdueLoans, urgentLoans }) => {
+          const badge = overdueLoans.length ? `<span class="badge badge-red">${overdueLoans.length} atrasado(s)</span>` : urgentLoans.length ? `<span class="badge badge-amber">Vence em até 2 dias</span>` : `<span class="badge badge-green">Em dia</span>`;
+          return `<button class="btn" style="display:block;width:100%;text-align:left;margin-bottom:0.5rem;" onclick="showStudentHistory('${student.id}')"><strong>${student.nome || student.name}</strong><div style="font-size:0.85rem;color:var(--muted);margin-top:0.2rem;">${badge}</div></button>`;
+        }).join("")}</div></div>`
+      : `<div class="card" style="margin-bottom:1rem;"><div class="card-header"><h2><i class="ti ti-user-check" style="vertical-align:-2px;margin-right:6px;color:var(--green);"></i>Alunos com atenção</h2></div><div class="card-body"><div class="empty-state"><i class="ti ti-mood-happy"></i><p>Nenhum aluno com empréstimo em risco no momento.</p></div></div></div>`;
+  }
 
   const tbody = Utils.el("dash-loans-tbody");
   if (!active.length) {
@@ -88,7 +137,7 @@ function renderDashboard() {
       <td class="td-mono">#${l.exemplar}</td>
       <td>${Utils.fmtDate(l.data_devolucao_prevista)}</td>
       <td><span class="badge ${bc}">${bt}</span></td>
-      <td><button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button></td>
+      <td>${isOperationAllowedForCurrentUser("allow_return") ? `<button class="btn btn-sm btn-success" onclick="openDevolution('${l.id}')"><i class="ti ti-check"></i>Devolver</button>` : ""}</td>
     </tr>`;
   }).join("");
 }
